@@ -3,8 +3,11 @@ import { StyleSheet, View, Text, FlatList, Image } from "react-native";
 import MapView, { Circle, Marker } from "react-native-maps"; // Import Circle and Marker components
 import { events } from "../data";
 import AntDesign from '@expo/vector-icons/AntDesign';
+import { useRouter } from 'expo-router'; // Import useRouter for navigation
 
 export default function HomeScreen() {
+  const router = useRouter(); // Initialize the router
+
   const renderItem = ({ item }: { item: typeof events[0] }) => (
     <View style={styles.eventCard}>
       <Image source={{ uri: item.image }} style={styles.eventImage} />
@@ -16,6 +19,10 @@ export default function HomeScreen() {
       </View>
     </View>
   );
+
+  const handleSearchPress = () => {
+    router.push('/search'); // Navigate to the search screen
+  };
 
   return (
     <View style={styles.container}>
@@ -58,15 +65,14 @@ export default function HomeScreen() {
       <FlatList
         data={events}
         renderItem={renderItem}
-        backgroundColor="transparent"
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
       />
       
       {/* Icon and text positioned together */}
       <View style={styles.searchContainer}>
-        <AntDesign name="search1" size={24} color="black" />
-        <Text style={styles.searchText}>Search</Text>
+        <AntDesign name="search1" size={24} color="white" />
+        <Text style={styles.searchText} onPress={handleSearchPress}>Search</Text>
       </View>
     </View>
   );
@@ -75,6 +81,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "black", // Set background color to black
   },
   map: {
     width: "100%",
@@ -85,13 +92,14 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
     marginVertical: 10,
+    color: "white", // Set text color to white
   },
   listContent: {
     padding: 10,
   },
   eventCard: {
     flexDirection: "row",
-    backgroundColor: "#fff",
+    backgroundColor: "#333", // Dark background for the event card
     marginVertical: 8,
     borderRadius: 8,
     overflow: "hidden",
@@ -114,19 +122,19 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#333",
+    color: "white", // Set text color to white
   },
   eventDescription: {
     fontSize: 14,
-    color: "#555",
+    color: "white", // Set text color to white
   },
   eventDate: {
     fontSize: 12,
-    color: "#999",
+    color: "white", // Set text color to white
   },
   eventLocation: {
     fontSize: 12,
-    color: "#777",
+    color: "white", // Set text color to white
   },
   searchContainer: {
     position: "absolute",
@@ -138,6 +146,6 @@ const styles = StyleSheet.create({
   searchText: {
     fontSize: 23,
     marginLeft: 20, // Space between the icon and the text
-    color: "black",
+    color: "white", // Set text color to white
   },
 });
