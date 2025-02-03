@@ -89,11 +89,32 @@ export default function RootLayout() {
           ),
         }}
       />
-      {/* Event Creation Continued Screen */}
+
+      {/* Login Screen */}
       <Stack.Screen
         name="profile"
         options={{
-          headerShown: true,
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      {/* User Onboarding */}
+      <Stack.Screen
+        name="userOnboarding"
+        options={{
+          headerShown: false,
           headerStyle: {
             backgroundColor: "white",
           },

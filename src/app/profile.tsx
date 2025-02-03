@@ -31,6 +31,7 @@ const Profile = () => {
     const users = await getUsers();
     if (users) {
       setUsers(users);
+      console.log(users);
     }
   };
 
@@ -142,6 +143,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
     padding: 20,
+    marginTop: 60,
   },
   profileHeader: {
     alignItems: "center",
