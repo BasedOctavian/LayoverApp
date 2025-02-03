@@ -3,22 +3,27 @@ import {
   View,
   Text,
   TextInput,
-  Button,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
+import useAuth from "../hooks/auth";// Import your auth hook
 
 const UserOnboarding = () => {
-  const [step, setStep] = useState<number>(1); // Current step in the walkthrough
-  const [userData, setUserData] = useState<any>({}); // Object to store user data
+  const [step, setStep] = useState<number>(1);
+  const [userData, setUserData] = useState<any>({});
+  const { signup, loading, error } = useAuth();
 
-  // Fields to collect
+  // Updated steps to include email/password first
   const steps = [
+    { key: "email", label: "What's your email?", placeholder: "Enter your email", keyboardType: "email-address" },
+    { key: "password", label: "Create a password", placeholder: "Enter your password", secure: true },
     { key: "name", label: "What's your name?", placeholder: "Enter your name" },
-    { key: "age", label: "How old are you?", placeholder: "Enter your age" },
+    { key: "age", label: "How old are you?", placeholder: "Enter your age", keyboardType: "numeric" },
     { key: "bio", label: "Tell us about yourself", placeholder: "Write a short bio" },
     { key: "languages", label: "What languages do you speak?", placeholder: "e.g., English, Spanish" },
     { key: "interests", label: "What are your interests?", placeholder: "e.g., Hiking, Photography" },
@@ -28,41 +33,61 @@ const UserOnboarding = () => {
     { key: "profilePicture", label: "Add a profile picture URL", placeholder: "Enter a URL for your profile picture" },
   ];
 
-  // Handle input change
   const handleInputChange = (key: string, value: string) => {
     setUserData({ ...userData, [key]: value });
   };
 
-  // Move to the next step
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step < steps.length) {
       setStep(step + 1);
     } else {
-      // On the last step, print the user data to the console
-      console.log("User Data:", userData);
+      try {
+        // Convert string inputs to proper formats
+        const userProfile = {
+          ...userData,
+          age: Number(userData.age),
+          languages: userData.languages.split(/,\s*/),
+          interests: userData.interests.split(/,\s*/),
+          goals: userData.goals.split(/,\s*/),
+          travelHistory: userData.travelHistory.split(/,\s*/),
+          isAnonymous: false,
+        };
+
+        await signup(
+          userData.email,
+          userData.password,
+          userProfile
+        );
+
+        Alert.alert("Success", "Account created successfully!");
+      } catch (err) {
+        Alert.alert("Error", error || "Failed to create account");
+      }
     }
   };
 
-  // Move to the previous step
   const handleBack = () => {
-    if (step > 1) {
-      setStep(step - 1);
-    }
+    if (step > 1) setStep(step - 1);
   };
+
+  const currentStep = steps[step - 1];
 
   return (
     <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerText}>Step {step} of {steps.length}</Text>
-          <Text style={styles.stepLabel}>{steps[step - 1].label}</Text>
+          <Text style={styles.stepLabel}>{currentStep.label}</Text>
         </View>
 
         <TextInput
           style={styles.input}
-          placeholder={steps[step - 1].placeholder}
-          value={userData[steps[step - 1].key] || ""}
-          onChangeText={(text) => handleInputChange(steps[step - 1].key, text)}
+          placeholder={currentStep.placeholder}
+          value={userData[currentStep.key] || ""}
+          onChangeText={(text) => handleInputChange(currentStep.key, text)}
+          secureTextEntry={currentStep.secure}
+         
+          autoCapitalize="none"
         />
 
         <View style={styles.buttonContainer}>
@@ -71,10 +96,19 @@ const UserOnboarding = () => {
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>
-              {step === steps.length ? "Finish" : "Next"}
-            </Text>
+          
+          <TouchableOpacity 
+            style={styles.nextButton} 
+            onPress={handleNext}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#6a11cb" />
+            ) : (
+              <Text style={styles.nextButtonText}>
+                {step === steps.length ? "Create Account" : "Next"}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -82,6 +116,7 @@ const UserOnboarding = () => {
   );
 };
 
+// Keep your existing styles, add this new style
 const styles = StyleSheet.create({
   gradient: {
     flex: 1,

@@ -8,32 +8,50 @@ import {
   ScrollView,
   Animated,
 } from "react-native";
-import useFirestore from "../hooks/useFirestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
+import { doc, getDoc } from "firebase/firestore";
+// Adjust the path to your firebase config file
+import useAuth from "../hooks/auth"; // Import the useAuth hook
+import { db } from "../../firebaseConfig";
 
 const Profile = () => {
-  const [users, setUsers] = useState<any[]>([]);
-  const { getUsers, loading, error } = useFirestore();
+  const [userData, setUserData] = useState<any>(null); // Store the authenticated user's data
+  const [loading, setLoading] = useState<boolean>(true); // Track loading state
+  const [error, setError] = useState<string | null>(null); // Track errors
   const fadeAnim = useState(new Animated.Value(0))[0]; // For fade-in animation
+  const { user, userId } = useAuth(); // Get the authenticated user and userId
 
-  // Fetch users on component mount
+  // Fetch the authenticated user's data from Firestore
   useEffect(() => {
-    fetchUsers();
+    const fetchUserData = async () => {
+      if (userId) {
+        setLoading(true);
+        try {
+          const userDocRef = doc(db, "users", userId); // Reference the user's document
+          const userDoc = await getDoc(userDocRef);
+
+          if (userDoc.exists()) {
+            setUserData(userDoc.data()); // Set the user's data
+          } else {
+            setError("No user data found.");
+          }
+        } catch (error) {
+          setError("Failed to fetch user data.");
+          console.error(error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchUserData();
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 1000,
       useNativeDriver: true,
     }).start();
-  }, []);
-
-  const fetchUsers = async () => {
-    const users = await getUsers();
-    if (users) {
-      setUsers(users);
-      console.log(users);
-    }
-  };
+  }, [userId]);
 
   if (loading) {
     return (
@@ -51,10 +69,7 @@ const Profile = () => {
     );
   }
 
-  // Use the first user as a static example
-  const user = users[0];
-
-  if (!user) {
+  if (!userData) {
     return (
       <View style={styles.container}>
         <Text>No user data found.</Text>
@@ -69,21 +84,21 @@ const Profile = () => {
           {/* Profile Header */}
           <View style={styles.profileHeader}>
             <Image
-              source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
+              source={{ uri: userData.profilePicture || "https://via.placeholder.com/150" }}
               style={styles.profileImage}
             />
             <Text style={styles.nameText}>
-              {user.name}, {user.age}
+              {userData.name}, {userData.age}
             </Text>
             <Text style={styles.moodText}>
-              <MaterialIcons name="mood" size={16} color="#fff" /> {user.moodStatus}
+              <MaterialIcons name="mood" size={16} color="#fff" /> {userData.moodStatus}
             </Text>
           </View>
 
           {/* Bio Section */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>About Me</Text>
-            <Text style={styles.cardContent}>{user.bio}</Text>
+            <Text style={styles.cardContent}>{userData.bio}</Text>
           </View>
 
           {/* Languages Section */}
@@ -92,7 +107,7 @@ const Profile = () => {
               <MaterialIcons name="language" size={20} color="#6a11cb" /> Languages
             </Text>
             <Text style={styles.cardContent}>
-              {user.languages.join(", ")}
+              {userData.languages.join(", ")}
             </Text>
           </View>
 
@@ -102,7 +117,7 @@ const Profile = () => {
               <MaterialIcons name="favorite" size={20} color="#6a11cb" /> Interests
             </Text>
             <Text style={styles.cardContent}>
-              {user.interests.join(", ")}
+              {userData.interests.join(", ")}
             </Text>
           </View>
 
@@ -112,7 +127,7 @@ const Profile = () => {
               <FontAwesome name="bullseye" size={20} color="#6a11cb" /> Goals
             </Text>
             <Text style={styles.cardContent}>
-              {user.goals.join(", ")}
+              {userData.goals.join(", ")}
             </Text>
           </View>
 
@@ -122,13 +137,13 @@ const Profile = () => {
               <MaterialIcons name="flight" size={20} color="#6a11cb" /> Travel History
             </Text>
             <Text style={styles.cardContent}>
-              {user.travelHistory.join(", ")}
+              {userData.travelHistory.join(", ")}
             </Text>
           </View>
 
           {/* Member Since */}
           <Text style={styles.createdAtText}>
-            Member since: {new Date(user.createdAt?.toDate()).toLocaleDateString()}
+            Member since: {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
           </Text>
         </Animated.View>
       </ScrollView>

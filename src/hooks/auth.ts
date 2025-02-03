@@ -9,76 +9,103 @@ import {
   User,
   AuthError,
 } from "firebase/auth";
-import { auth } from "../../firebaseConfig";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../../firebaseConfig";
 
+interface UserData {
+  age: number;
+  bio: string;
+  createdAt: Date;
+  email: string;
+  goals: string[];
+  interests: string[];
+  isAnonymous: boolean;
+  languages: string[];
+  moodStatus: string;
+  name: string;
+  profilePicture: string;
+  travelHistory: string[];
+  updatedAt: Date;
+  userId: string;
+}
 
 const useAuth = () => {
-  const [user, setUser] = useState<User | null>(null); // Track the authenticated user
-  const [loading, setLoading] = useState<boolean>(true); // Track loading state
-  const [error, setError] = useState<string | null>(null); // Track errors
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Listen for authentication state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setUser(user); // Set the user if authenticated
+        setUser(user);
       } else {
-        setUser(null); // Clear the user if not authenticated
+        setUser(null);
       }
-      setLoading(false); // Set loading to false once the check is complete
+      setLoading(false);
     });
-
-    return () => unsubscribe(); // Cleanup the listener on unmount
+    return () => unsubscribe();
   }, []);
 
-  // Login with email and password
   const login = async (email: string, password: string) => {
     setLoading(true);
     setError(null);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      setUser(userCredential.user); // Set the user after successful login
+      setUser(userCredential.user);
     } catch (error) {
       const authError = error as AuthError;
-      setError(authError.message); // Set the error message
+      setError(authError.message);
     } finally {
-      setLoading(false); // Set loading to false
+      setLoading(false);
     }
   };
 
-  // Signup with email and password
-  const signup = async (email: string, password: string) => {
+  const signup = async (
+    email: string,
+    password: string,
+    userData: Omit<UserData, "userId" | "createdAt" | "updatedAt">
+  ) => {
     setLoading(true);
     setError(null);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      setUser(userCredential.user); // Set the user after successful signup
+      const userId = userCredential.user.uid;
+
+      const userDocRef = doc(db, "users", userId);
+      await setDoc(userDocRef, {
+        ...userData,
+        userId,
+        email: userCredential.user.email,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setUser(userCredential.user);
     } catch (error) {
       const authError = error as AuthError;
-      setError(authError.message); // Set the error message
+      setError(authError.message);
     } finally {
-      setLoading(false); // Set loading to false
+      setLoading(false);
     }
   };
 
-  // Logout the current user
   const logout = async () => {
     setLoading(true);
     setError(null);
     try {
       await signOut(auth);
-      setUser(null); // Clear the user after logout
+      setUser(null);
     } catch (error) {
       const authError = error as AuthError;
-      setError(authError.message); // Set the error message
+      setError(authError.message);
     } finally {
-      setLoading(false); // Set loading to false
+      setLoading(false);
     }
   };
 
-  // Return the auth state and methods
   return {
     user,
+    userId: user?.uid || null, // Added userId to return object
     loading,
     error,
     login,
