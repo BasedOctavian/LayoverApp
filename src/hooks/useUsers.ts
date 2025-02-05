@@ -1,10 +1,9 @@
-// hooks/useFirestore.ts
+// hooks/useUsers.ts
 import { useEffect, useState } from "react";
 import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
-
-const useFirestore = () => {
+const useUsers = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,6 +17,26 @@ const useFirestore = () => {
       return users;
     } catch (error) {
       setError("Failed to fetch users.");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get a specific user by UID
+  const getUser = async (uid: string) => {
+    setLoading(true);
+    try {
+      const userDoc = doc(db, "users", uid);
+      const snapshot = await getDoc(userDoc);
+      if (snapshot.exists()) {
+        return { id: snapshot.id, ...snapshot.data() }; // Return the user document with the ID
+      } else {
+        setError("User not found.");
+        return null;
+      }
+    } catch (error) {
+      setError("Failed to fetch user.");
       console.error(error);
     } finally {
       setLoading(false);
@@ -67,7 +86,7 @@ const useFirestore = () => {
     }
   };
 
-  return { getUsers, addUser, updateUser, deleteUser, loading, error };
+  return { getUsers, getUser, addUser, updateUser, deleteUser, loading, error };
 };
 
-export default useFirestore;
+export default useUsers;

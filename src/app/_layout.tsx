@@ -10,7 +10,7 @@ export default function RootLayout() {
       <Stack.Screen
         name="index"
         options={{
-          headerShown: true,
+          headerShown: false,
           headerStyle: {
             backgroundColor: "black", // Background color of the top bar
           },
@@ -31,7 +31,28 @@ export default function RootLayout() {
       <Stack.Screen
         name="home"
         options={{
-          headerShown: true,
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "black",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="white" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "black" }}>
+              <AntDesign name="home" size={30} color="white" /> {/* Calendar icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
+      {/* Search Screen */}
+      <Stack.Screen
+        name="search"
+        options={{
+          headerShown: false,
           headerStyle: {
             backgroundColor: "black",
           },
@@ -52,7 +73,7 @@ export default function RootLayout() {
       <Stack.Screen
         name="eventCreation"
         options={{
-          headerShown: true,
+          headerShown: false,
           headerStyle: {
             backgroundColor: "black",
           },
@@ -73,7 +94,7 @@ export default function RootLayout() {
       <Stack.Screen
         name="eventCreationContinued"
         options={{
-          headerShown: true,
+          headerShown: false,
           headerStyle: {
             backgroundColor: "black",
           },
@@ -90,9 +111,9 @@ export default function RootLayout() {
         }}
       />
 
-      {/* Login Screen */}
+      {/* Profile Screen */}
       <Stack.Screen
-        name="profile"
+        name="profile/[id]"
         options={{
           headerShown: false,
           headerStyle: {
@@ -113,6 +134,26 @@ export default function RootLayout() {
       {/* User Onboarding */}
       <Stack.Screen
         name="userOnboarding"
+        options={{
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      {/* Swipe */}
+      <Stack.Screen
+        name="swipe"
         options={{
           headerShown: false,
           headerStyle: {

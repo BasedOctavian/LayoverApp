@@ -1,74 +1,141 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { View, Text, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function Search() {
   const [text, setText] = useState('');
 
-  // Function to dismiss the keyboard when tapping outside the TextInput
   const dismissKeyboard = () => {
     Keyboard.dismiss();
   };
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-black" // Use NativeWind class for container
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} // Adjust behavior for iOS and Android
-    >
-      {/* TouchableWithoutFeedback to dismiss the keyboard if tapped outside */}
-      <TouchableWithoutFeedback onPress={dismissKeyboard}>
-        <View className="flex-1 p-5 justify-evenly">
-          {/* Top Half: Categories */}
-          <Text className="text-white text-2xl font-bold text-center">Select a Category</Text>
+    <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={dismissKeyboard}>
+          <View style={styles.content}>
+            <Text style={styles.headerText}>Select a Category</Text>
 
-          <View className="flex-row justify-evenly flex-wrap my-4">
-            {/* Category 1: Relaxation and Wellness */}
-            <View className="items-center mb-4">
-              <MaterialCommunityIcons name="meditation" size={40} color="white" />
-              <Text className="text-white mt-2 text-sm">Wellness</Text>
+            <View style={styles.categoryContainer}>
+              {/* Wellness */}
+              <TouchableWithoutFeedback>
+                <View style={styles.categoryCard}>
+                  <MaterialCommunityIcons name="meditation" size={40} color="white" />
+                  <Text style={styles.categoryText}>Wellness</Text>
+                </View>
+              </TouchableWithoutFeedback>
+
+              {/* Food & Drink */}
+              <TouchableWithoutFeedback>
+                <View style={styles.categoryCard}>
+                  <MaterialCommunityIcons name="food" size={40} color="white" />
+                  <Text style={styles.categoryText}>Food & Drink</Text>
+                </View>
+              </TouchableWithoutFeedback>
+
+              {/* Entertainment */}
+              <TouchableWithoutFeedback>
+                <View style={styles.categoryCard}>
+                  <MaterialCommunityIcons name="microphone-variant" size={40} color="white" />
+                  <Text style={styles.categoryText}>Entertainment</Text>
+                </View>
+              </TouchableWithoutFeedback>
+
+              {/* Travel Tips */}
+              <TouchableWithoutFeedback>
+                <View style={styles.categoryCard}>
+                  <MaterialCommunityIcons name="map" size={40} color="white" />
+                  <Text style={styles.categoryText}>Travel Tips</Text>
+                </View>
+              </TouchableWithoutFeedback>
+
+              {/* Activity */}
+              <TouchableWithoutFeedback>
+                <View style={styles.categoryCard}>
+                  <MaterialCommunityIcons name="account-group" size={40} color="white" />
+                  <Text style={styles.categoryText}>Activity</Text>
+                </View>
+              </TouchableWithoutFeedback>
             </View>
 
-            {/* Category 2: Food & Beverage Experience */}
-            <View className="items-center mb-4">
-              <MaterialCommunityIcons name="food" size={40} color="white" />
-              <Text className="text-white mt-2 text-sm">Food & Drink</Text>
-            </View>
-
-            {/* Category 3: Entertainment & Fun */}
-            <View className="items-center mb-4">
-              <MaterialCommunityIcons name="microphone-variant" size={40} color="white" />
-              <Text className="text-white mt-2 text-sm">Entertainment</Text>
+            <View style={styles.searchContainer}>
+              <MaterialCommunityIcons name="magnify" size={24} color="rgba(255,255,255,0.5)" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search..."
+                value={text}
+                onChangeText={setText}
+                autoFocus={true}
+                placeholderTextColor="rgba(255,255,255,0.5)"
+                keyboardAppearance="dark"
+              />
             </View>
           </View>
-
-          <View className="flex-row justify-evenly flex-wrap">
-            {/* Category 4: Travel Education */}
-            <View className="items-center mb-4">
-              <MaterialCommunityIcons name="map" size={40} color="white" />
-              <Text className="text-white mt-2 text-sm">Travel Tips</Text>
-            </View>
-
-            {/* Category 5: Fitness & Activity */}
-            <View className="items-center mb-4">
-              <MaterialCommunityIcons name="account-group" size={40} color="white" />
-              <Text className="text-white mt-2 text-sm">Activity</Text>
-            </View>
-          </View>
-        </View>
-      </TouchableWithoutFeedback>
-
-      {/* Bottom Half: Keyboard */}
-      <View className="p-8">
-        <TextInput
-          className="border-white border p-3 rounded-lg text-white mb-20"
-          placeholder="Search..."
-          value={text}
-          onChangeText={(newText) => setText(newText)}
-          autoFocus={true}  // Automatically focuses the TextInput and shows the keyboard
-          placeholderTextColor="#aaa"  // Light color for placeholder text
-          keyboardAppearance="dark"
-        />
-      </View>
-    </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
+
+const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'space-between',
+  },
+  headerText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: 'white',
+    textAlign: 'center',
+    marginBottom: 32,
+    marginTop: 40,
+  },
+  categoryContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  categoryCard: {
+    width: '48%',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 15,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  categoryText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 12,
+  },
+  searchContainer: {
+    position: 'relative',
+    marginTop: 40,
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 15,
+    top: 18,
+    zIndex: 1,
+  },
+  searchInput: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingLeft: 50,
+    color: 'white',
+    fontSize: 16,
+  },
+});

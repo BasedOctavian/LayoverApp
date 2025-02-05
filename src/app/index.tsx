@@ -44,10 +44,19 @@ export default function MainScreen() {
         {/* Profile Button */}
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push("/profile")}
+          onPress={() => router.push("/profile/" + user.uid)}
         >
           <FontAwesome name="user" size={24} color="white" />
           <Text style={styles.buttonText}>Profile</Text>
+        </TouchableOpacity>
+
+        {/* Swipe Button */}
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.push("/swipe")}
+        >
+          <FontAwesome name="user" size={24} color="white" />
+          <Text style={styles.buttonText}>User Swipe</Text>
         </TouchableOpacity>
 
         {/* Create User Button */}
