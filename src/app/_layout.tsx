@@ -171,6 +171,86 @@ export default function RootLayout() {
           ),
         }}
       />
+      {/* Event Screen */}
+      <Stack.Screen
+        name="event/[id]"
+        options={{
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      {/* Chat explore Screen */}
+      <Stack.Screen
+        name="chat/chatExplore"
+        options={{
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      {/* Chat Inbox Screen */}
+      <Stack.Screen
+        name="chat/chatInbox"
+        options={{
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      {/* Chat Screen */}
+      <Stack.Screen
+        name="chat/[id]"
+        options={{
+          headerShown: true,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
     </Stack>
   );
 }

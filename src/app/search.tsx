@@ -60,6 +60,15 @@ export default function Search() {
                   <Text style={styles.categoryText}>Activity</Text>
                 </View>
               </TouchableWithoutFeedback>
+           
+
+            {/* Miscellaneous */}
+            <TouchableWithoutFeedback>
+                <View style={styles.categoryCard}>
+                  <MaterialCommunityIcons name="shape" size={40} color="white" />
+                  <Text style={styles.categoryText}>Miscellaneous</Text>
+                </View>
+              </TouchableWithoutFeedback>
             </View>
 
             <View style={styles.searchContainer}>
@@ -137,5 +146,6 @@ const styles = StyleSheet.create({
     paddingLeft: 50,
     color: 'white',
     fontSize: 16,
+    marginBottom: 24,
   },
 });

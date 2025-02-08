@@ -12,7 +12,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-
 import useEvents from '../hooks/useEvents';
 import useAuth from '../hooks/auth';
 
@@ -23,7 +22,10 @@ interface EventData {
   longitude?: string;
   eventImage?: string;
   startTime?: string;
+  category?: string;
 }
+
+const categories = ['Wellness', 'Food & Drink', 'Entertainment', 'Travel Tips', 'Activity', 'Misc'];
 
 const EventCreation: React.FC = () => {
   const [step, setStep] = useState<number>(1);
@@ -36,6 +38,7 @@ const EventCreation: React.FC = () => {
   const steps = [
     { key: 'name', label: 'Event Name', placeholder: 'Enter event name' },
     { key: 'description', label: 'Description', placeholder: 'Describe your event' },
+    { key: 'category', label: 'Category', placeholder: 'Select category' },
     { key: 'latitude', label: 'Latitude', placeholder: 'Enter latitude', keyboardType: 'numeric' },
     { key: 'longitude', label: 'Longitude', placeholder: 'Enter longitude', keyboardType: 'numeric' },
     { key: 'eventImage', label: 'Event Image URL', placeholder: 'Enter image URL' },
@@ -62,7 +65,7 @@ const EventCreation: React.FC = () => {
         startTime: new Date(eventData.startTime || ''),
         createdAt: new Date(),
         organizer: user?.uid || '',
-        organizerName: user?.displayName || 'Unknown Organizer',
+        category: eventData.category || 'Misc',
       };
 
       await addEvent(newEvent);
@@ -111,6 +114,21 @@ const EventCreation: React.FC = () => {
               />
             )}
           </>
+        ) : currentStep.key === 'category' ? (
+          <View style={styles.categoryContainer}>
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category}
+                style={[
+                  styles.categoryButton,
+                  eventData.category === category && styles.selectedCategory
+                ]}
+                onPress={() => handleInputChange('category', category)}
+              >
+                <Text style={styles.categoryText}>{category}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         ) : (
           <TextInput
             style={styles.input}
@@ -182,6 +200,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
     justifyContent: 'center',
+  },
+  categoryContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 20,
+  },
+  categoryButton: {
+    width: '48%',
+    padding: 15,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 10,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  selectedCategory: {
+    backgroundColor: '#fff',
+    color: '#6a11cb',
+  },
+  categoryText: {
+    color: '#fff',
+    fontWeight: '500',
   },
   buttonContainer: {
     flexDirection: 'row',

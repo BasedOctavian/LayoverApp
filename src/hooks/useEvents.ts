@@ -38,6 +38,28 @@ const useEvents = () => {
     }
   };
 
+  // Fetch a single event by ID
+  const getEvent = async (id: string) => {
+    setLoading(true);
+    try {
+      const eventRef = doc(db, "events", id);
+      const docSnap = await getDoc(eventRef);
+      if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() };
+      } else {
+        setError("Event not found.");
+        return null;
+      }
+    } catch (error) {
+      setError("Failed to fetch event.");
+      console.error(error);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   // Update an event
   const updateEvent = async (eventId: string, updatedData: any) => {
     setLoading(true);
@@ -66,7 +88,7 @@ const useEvents = () => {
     }
   };
 
-  return { getEvents, addEvent, updateEvent, deleteEvent, loading, error };
+  return { getEvents, getEvent, addEvent, updateEvent, deleteEvent, loading, error };
 };
 
 export default useEvents;

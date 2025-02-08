@@ -32,7 +32,7 @@ const Profile = () => {
       if (userId) {
         setLoading(true);
         try {
-          const userDocRef = doc(db, "users", userId); // Reference the user's document
+          const userDocRef = doc(db, "users", id); // Reference the user's document
           const userDoc = await getDoc(userDocRef);
 
           if (userDoc.exists()) {

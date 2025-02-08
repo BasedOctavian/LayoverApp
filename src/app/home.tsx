@@ -33,6 +33,7 @@ export default function EventCreation() {
         const eventsWithOrganizerNames = await Promise.all(
           fetchedEvents.map(async (event: any) => {
             const organizer = await getUser(event.organizer); // Fetch organizer details
+            console.log(organizer.name);
             return {
               id: event.id,
               name: event.name,
@@ -54,7 +55,7 @@ export default function EventCreation() {
   }, []);
 
   const renderItem = ({ item }: { item: typeof events[0] }) => (
-    <TouchableOpacity style={styles.eventCard}>
+    <TouchableOpacity style={styles.eventCard} onPress={() => router.push("/event/" + item.id)}>
       <Image source={{ uri: item.eventImage }} style={styles.eventImage} />
       <View style={styles.eventDetails}>
         <Text style={styles.eventTitle}>{item.name}</Text>
@@ -124,7 +125,6 @@ export default function EventCreation() {
         </MapView>
 
         <Text style={styles.headerText}>Nearby Events</Text>
-
         <FlatList
           data={events}
           renderItem={renderItem}

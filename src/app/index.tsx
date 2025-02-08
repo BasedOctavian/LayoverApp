@@ -59,6 +59,15 @@ export default function MainScreen() {
           <Text style={styles.buttonText}>User Swipe</Text>
         </TouchableOpacity>
 
+        {/* Chat Button */}
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.push("chat/chatInbox")}
+        >
+          <FontAwesome name="user" size={24} color="white" />
+          <Text style={styles.buttonText}>Chat</Text>
+        </TouchableOpacity>
+
         {/* Create User Button */}
         <TouchableOpacity
           style={styles.button}
