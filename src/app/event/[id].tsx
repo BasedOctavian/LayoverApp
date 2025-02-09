@@ -24,7 +24,7 @@ export default function Event() {
           const organizerID = eventData.organizer;
           if (organizerID) {
             const organizerData = await getUser(organizerID);
-            setOrganizer(organizerData?.name || "Unknown");
+            setOrganizer(organizerData?.name || "Auto Generated");
           } else {
             setOrganizer("Unknown");
           }

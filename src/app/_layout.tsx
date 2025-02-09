@@ -251,6 +251,26 @@ export default function RootLayout() {
           ),
         }}
       />
+      {/* Dashboard Screen */}
+      <Stack.Screen
+        name="home/dashboard"
+        options={{
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
     </Stack>
   );
 }

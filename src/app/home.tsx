@@ -28,12 +28,12 @@ export default function EventCreation() {
 
   useEffect(() => {
     const fetchEvents = async () => {
+      console.log("Fetching events...");
       const fetchedEvents = await getEvents();
       if (fetchedEvents) {
         const eventsWithOrganizerNames = await Promise.all(
           fetchedEvents.map(async (event: any) => {
             const organizer = await getUser(event.organizer); // Fetch organizer details
-            console.log(organizer.name);
             return {
               id: event.id,
               name: event.name,
@@ -44,7 +44,7 @@ export default function EventCreation() {
               createdAt: new Date(event.createdAt),
               startTime: new Date(event.startTime),
               organizer: event.organizer,
-              organizerName: organizer?.name || "Unknown Organizer", // Add organizerName
+              organizerName: organizer?.name || "Auto Generated", // Add organizerName
             };
           })
         );

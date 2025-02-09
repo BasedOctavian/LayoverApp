@@ -64,7 +64,7 @@ export default function MainScreen() {
           style={styles.button}
           onPress={() => router.push("chat/chatInbox")}
         >
-          <FontAwesome name="user" size={24} color="white" />
+          <FontAwesome name="comments" size={24} color="white" />
           <Text style={styles.buttonText}>Chat</Text>
         </TouchableOpacity>
 
@@ -75,6 +75,15 @@ export default function MainScreen() {
         >
           <MaterialIcons name="person-add" size={24} color="white" />
           <Text style={styles.buttonText}>Create User</Text>
+        </TouchableOpacity>
+
+        {/* Dashboard Button */}
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.push("home/dashboard")}
+        >
+          <MaterialIcons name="home" size={24} color="white" />
+          <Text style={styles.buttonText}>Dashboard</Text>
         </TouchableOpacity>
 
         {/* Display authenticated user's email */}
@@ -108,6 +117,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+    marginTop: 40,
   },
   title: {
     fontSize: 28,
