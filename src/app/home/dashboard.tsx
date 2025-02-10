@@ -5,6 +5,8 @@ import { Ionicons, FontAwesome5, MaterialIcons, Feather } from '@expo/vector-ico
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
+import * as Location from "expo-location";
+import { useNearestAirport, Airport } from "../../hooks/useNearestAirport";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -22,39 +24,53 @@ export default function Dashboard() {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(-100))[0];
 
-  const sampleResults = {
-    airports: [
-      { name: "Buffalo Niagara International", icon: "airport" },
-      { name: "Terminal Map", icon: "map" },
-      { name: "Parking Information", icon: "parking" },
-      { name: "Airport Lounges", icon: "star" },
-      { name: "Security Wait Times", icon: "clock" }
-    ],
-    events: [
-      { name: "Music Festival", icon: "music" },
-      { name: "Business Conference", icon: "briefcase" },
-      { name: "Food Tasting", icon: "coffee" },
-      { name: "Networking Mixer", icon: "users" },
-      { name: "Art Exhibition", icon: "palette" }
-    ]
-  };
+  // State for user location
+  const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
 
-  const toggleSearch = (show: boolean) => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: show ? 1 : 0,
-        duration: 300,
-        useNativeDriver: true
-      }),
-      Animated.timing(slideAnim, {
-        toValue: show ? 0 : -100,
-        duration: 400,
-        useNativeDriver: true
-      })
-    ]).start();
-    setShowSearch(show);
-    if (!show) setSearchQuery("");
-  };
+  // Selected airport state – this controls the map region and default search bar text.
+  const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
+
+  // Request location permissions and get the current location.
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        console.log("Permission to access location was denied");
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({});
+      console.log("User location:", location);
+      setUserLocation({
+        lat: location.coords.latitude,
+        long: location.coords.longitude,
+      });
+    })();
+  }, []);
+
+  // Get the nearest airports using our custom hook.
+  // We pass dummy coordinates (0,0) until userLocation is available.
+  const { closest, tenClosest } = useNearestAirport(
+    userLocation ? userLocation.lat : 0,
+    userLocation ? userLocation.long : 0
+  );
+
+  // Once the hook returns a closest airport, initialize selectedAirport if not set.
+  useEffect(() => {
+    if (closest && (!selectedAirport || selectedAirport.name !== closest.name)) {
+      setSelectedAirport(closest);
+      console.log("Selected airport updated:", closest);
+    }
+  }, [closest]);
+
+  // The map region is controlled by the selected airport.
+  const mapRegion = selectedAirport
+    ? {
+        latitude: selectedAirport.lat,
+        longitude: selectedAirport.long,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      }
+    : null;
 
   useEffect(() => {
     if (user) {
@@ -108,9 +124,45 @@ export default function Dashboard() {
     },
   ];
 
-  const filteredResults = sampleResults[searchType].filter(result =>
-    result.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Dummy sample results for events (kept for searchType "events")
+  const sampleResults = {
+    events: [
+      { name: "Music Festival", icon: "music" },
+      { name: "Business Conference", icon: "briefcase" },
+      { name: "Food Tasting", icon: "coffee" },
+      { name: "Networking Mixer", icon: "users" },
+      { name: "Art Exhibition", icon: "palette" }
+    ]
+  };
+
+  // Toggle the search view with animation.
+  const toggleSearch = (show: boolean) => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: show ? 1 : 0,
+        duration: 300,
+        useNativeDriver: true
+      }),
+      Animated.timing(slideAnim, {
+        toValue: show ? 0 : -100,
+        duration: 400,
+        useNativeDriver: true
+      })
+    ]).start();
+    setShowSearch(show);
+    if (!show) setSearchQuery("");
+  };
+
+  // For search results:
+  // When searchType is 'airports', filter the tenClosest list;
+  // Otherwise, use the sample results for events.
+  const filteredResults = searchType === 'airports'
+    ? tenClosest.filter((airport) =>
+        airport.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : sampleResults.events.filter((item) =>
+        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
 
   return (
     <View style={styles.container}>
@@ -196,7 +248,7 @@ export default function Dashboard() {
           >
             <Feather name="search" size={18} color="#64748B" />
             <Text style={styles.searchPlaceholder}>
-              Buffalo Niagara International Airport
+              {selectedAirport ? selectedAirport.name : "Buffalo Niagara International Airport"}
             </Text>
             <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
           </LinearGradient>
@@ -207,12 +259,8 @@ export default function Dashboard() {
       <View style={styles.mapContainer}>
         <MapView
           style={styles.map}
-          initialRegion={{
-            latitude: 42.9405,
-            longitude: -78.7322,
-            latitudeDelta: 0.0922,
-            longitudeDelta: 0.0421,
-          }}
+          // Controlled region using the selected airport
+          region={mapRegion}
         />
       </View>
 
@@ -228,13 +276,23 @@ export default function Dashboard() {
               key={index} 
               style={styles.resultItem}
               activeOpacity={0.9}
+              onPress={() => {
+                if (searchType === "airports") {
+                  // When an airport is selected from search, update the selectedAirport and close search.
+                  setSelectedAirport(result);
+                  toggleSearch(false);
+                } else {
+                  // For events, you might want to route or perform another action.
+                  router.push("eventDetails");
+                }
+              }}
             >
               <LinearGradient
                 colors={['#FFFFFF', '#F8FAFC']}
                 style={styles.resultGradient}
               >
                 <Feather 
-                  name={result.icon} 
+                  name={searchType === "airports" ? "airplay" : result.icon} 
                   size={20} 
                   color="#2F80ED" 
                   style={styles.resultIcon}
@@ -549,3 +607,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
   },
 });
+
+export { Dashboard };
