@@ -8,6 +8,7 @@ import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import * as Location from "expo-location";
 import useAirports, { Airport } from "../../hooks/useAirports";
+import useEvents from "../../hooks/useEvents";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -40,6 +41,8 @@ export default function Dashboard() {
   const [searchType, setSearchType] = useState<'airports' | 'events'>('airports');
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(-100))[0];
+  const { getEvents, loading: eventsLoading, error: eventsError } = useEvents();
+  const [events, setEvents] = useState<any[]>([]);
 
   // State for the user's current location.
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
@@ -47,9 +50,21 @@ export default function Dashboard() {
   // The airport that is currently selected (used to control the map region).
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
 
-  // -------------------------
-  // 1. Get the user's location
-  // -------------------------
+  // Fetch events when searchType changes to 'events'
+  useEffect(() => {
+    const loadEvents = async () => {
+      if (searchType === 'events') {
+        const eventsData = await getEvents();
+        if (eventsData) {
+          setEvents(eventsData);
+        }
+      }
+    };
+    loadEvents();
+  }, [searchType]);
+
+  
+
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -204,14 +219,13 @@ export default function Dashboard() {
     if (!show) setSearchQuery("");
   };
 
-  // Filter results based on search query.
-  // If searching airports, filter among the 10 closest; otherwise, use the sample events.
+  // Update filteredResults to use real events
   const filteredResults = searchType === 'airports'
     ? nearestAirports.tenClosest.filter((airport) =>
         airport.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : sampleResults.events.filter((item) =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+    : events.filter((event) =>
+        event.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
   return (
@@ -322,36 +336,34 @@ export default function Dashboard() {
           style={{ opacity: fadeAnim }}
         >
           {filteredResults.map((result, index) => (
-            <TouchableOpacity 
-              key={index} 
-              style={styles.resultItem}
-              activeOpacity={0.9}
-              onPress={() => {
-                if (searchType === "airports") {
-                  // Update the selected airport from search results and close the search.
-                  setSelectedAirport(result);
-                  toggleSearch(false);
-                } else {
-                  // For events, you might route to an event details screen.
-                  router.push("eventDetails");
-                }
-              }}
+          <TouchableOpacity 
+            key={index} 
+            style={styles.resultItem}
+            activeOpacity={0.9}
+            onPress={() => {
+              if (searchType === "airports") {
+                setSelectedAirport(result);
+                toggleSearch(false);
+              } else {
+                router.push({ pathname: "eventDetails", params: { eventId: result.id } });
+              }
+            }}
+          >
+            <LinearGradient
+              colors={['#FFFFFF', '#F8FAFC']}
+              style={styles.resultGradient}
             >
-              <LinearGradient
-                colors={['#FFFFFF', '#F8FAFC']}
-                style={styles.resultGradient}
-              >
-                <Feather 
-                  name={searchType === "airports" ? "airplay" : result.icon} 
-                  size={20} 
-                  color="#2F80ED" 
-                  style={styles.resultIcon}
-                />
-                <Text style={styles.resultText}>{result.name}</Text>
-                <Feather name="chevron-right" size={18} color="#CBD5E1" />
-              </LinearGradient>
-            </TouchableOpacity>
-          ))}
+              <Feather 
+                name={searchType === "airports" ? "airplay" : result.icon || "calendar"} 
+                size={20} 
+                color="#2F80ED" 
+                style={styles.resultIcon}
+              />
+              <Text style={styles.resultText}>{result.name}</Text>
+              <Feather name="chevron-right" size={18} color="#CBD5E1" />
+            </LinearGradient>
+          </TouchableOpacity>
+        ))}
         </Animated.ScrollView>
       ) : (
         <ScrollView 
