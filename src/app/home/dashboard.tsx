@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// Dashboard.tsx
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Animated } from "react-native";
 import MapView from "react-native-maps";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from '@expo/vector-icons';
@@ -6,7 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import * as Location from "expo-location";
-import { useNearestAirport, Airport } from "../../hooks/useNearestAirport";
+import useAirports, { Airport } from "../../hooks/useAirports";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -14,6 +15,22 @@ type FeatureButton = {
   screen: string;
   size?: 'half' | 'full';
 };
+
+/**
+ * Haversine formula calculates the distance (in kilometers) between two geographic points.
+ */
+function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = toRad(lat2 - lat1);
+  const dLong = toRad(long2 - long1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLong / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -24,13 +41,15 @@ export default function Dashboard() {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(-100))[0];
 
-  // State for user location
+  // State for the user's current location.
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
 
-  // Selected airport state – this controls the map region and default search bar text.
+  // The airport that is currently selected (used to control the map region).
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
 
-  // Request location permissions and get the current location.
+  // -------------------------
+  // 1. Get the user's location
+  // -------------------------
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -47,31 +66,62 @@ export default function Dashboard() {
     })();
   }, []);
 
-  // Get the nearest airports using our custom hook.
-  // We pass dummy coordinates (0,0) until userLocation is available.
-  const { closest, tenClosest } = useNearestAirport(
-    userLocation ? userLocation.lat : 0,
-    userLocation ? userLocation.long : 0
-  );
+  // ----------------------------------------------------
+  // 2. Load all airports from Firestore using useAirports
+  // ----------------------------------------------------
+  const { getAirports, loading: airportsLoading, error: airportsError } = useAirports();
+  const [allAirports, setAllAirports] = useState<Airport[]>([]);
 
-  // Once the hook returns a closest airport, initialize selectedAirport if not set.
   useEffect(() => {
-    if (closest && (!selectedAirport || selectedAirport.name !== closest.name)) {
-      setSelectedAirport(closest);
-      console.log("Selected airport updated:", closest);
-    }
-  }, [closest]);
+    const fetchAirports = async () => {
+      const fetchedAirports = await getAirports();
+      if (fetchedAirports) {
+        setAllAirports(fetchedAirports);
+      }
+    };
+    fetchAirports();
+  }, [getAirports]);
 
-  // The map region is controlled by the selected airport.
+  // ---------------------------------------------------------------------
+  // 3. Compute the nearest airport and the 10 closest airports to the user
+  // ---------------------------------------------------------------------
+  const [nearestAirports, setNearestAirports] = useState<{ closest: Airport | null, tenClosest: Airport[] }>({ closest: null, tenClosest: [] });
+
+  useEffect(() => {
+    if (!userLocation || allAirports.length === 0) return;
+    const computeNearestAirports = () => {
+      const airportsWithDistance = allAirports.map((airport) => ({
+        ...airport,
+        distance: haversineDistance(userLocation.lat, userLocation.long, airport.lat, airport.long),
+      }));
+      airportsWithDistance.sort((a, b) => (a.distance! - b.distance!));
+      setNearestAirports({
+        closest: airportsWithDistance[0] || null,
+        tenClosest: airportsWithDistance.slice(0, 10),
+      });
+    };
+    computeNearestAirports();
+  }, [userLocation, allAirports]);
+
+  // Set the default selected airport only if none is already selected.
+  useEffect(() => {
+    if (!selectedAirport && nearestAirports.closest) {
+      setSelectedAirport(nearestAirports.closest);
+      console.log("Default selected airport set:", nearestAirports.closest);
+    }
+  }, [nearestAirports.closest, selectedAirport]);
+
+  // Define the map region based on the selected airport.
   const mapRegion = selectedAirport
     ? {
         latitude: selectedAirport.lat,
         longitude: selectedAirport.long,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
+        latitudeDelta: 0.0522,
+        longitudeDelta: 0.0321,
       }
     : null;
 
+  // Set the user ID if available.
   useEffect(() => {
     if (user) {
       setUserId(user.uid);
@@ -79,6 +129,7 @@ export default function Dashboard() {
     }
   }, [user]);
 
+  // Dashboard feature buttons.
   const features: FeatureButton[] = [
     { 
       icon: <FontAwesome5 name="user-friends" size={24} color="#FFFFFF" />, 
@@ -124,7 +175,7 @@ export default function Dashboard() {
     },
   ];
 
-  // Dummy sample results for events (kept for searchType "events")
+  // Dummy sample results for events (used when searchType === 'events')
   const sampleResults = {
     events: [
       { name: "Music Festival", icon: "music" },
@@ -135,17 +186,17 @@ export default function Dashboard() {
     ]
   };
 
-  // Toggle the search view with animation.
+  // Toggle the search view with fade and slide animations.
   const toggleSearch = (show: boolean) => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: show ? 1 : 0,
-        duration: 300,
+        duration: 200,
         useNativeDriver: true
       }),
       Animated.timing(slideAnim, {
         toValue: show ? 0 : -100,
-        duration: 400,
+        duration: 300,
         useNativeDriver: true
       })
     ]).start();
@@ -153,11 +204,10 @@ export default function Dashboard() {
     if (!show) setSearchQuery("");
   };
 
-  // For search results:
-  // When searchType is 'airports', filter the tenClosest list;
-  // Otherwise, use the sample results for events.
+  // Filter results based on search query.
+  // If searching airports, filter among the 10 closest; otherwise, use the sample events.
   const filteredResults = searchType === 'airports'
-    ? tenClosest.filter((airport) =>
+    ? nearestAirports.tenClosest.filter((airport) =>
         airport.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : sampleResults.events.filter((item) =>
@@ -248,7 +298,7 @@ export default function Dashboard() {
           >
             <Feather name="search" size={18} color="#64748B" />
             <Text style={styles.searchPlaceholder}>
-              {selectedAirport ? selectedAirport.name : "Buffalo Niagara International Airport"}
+              {selectedAirport ? selectedAirport.name : "Select an airport"}
             </Text>
             <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
           </LinearGradient>
@@ -259,8 +309,8 @@ export default function Dashboard() {
       <View style={styles.mapContainer}>
         <MapView
           style={styles.map}
-          // Controlled region using the selected airport
-          region={mapRegion}
+          // If no airport is selected, a default region is provided.
+          region={mapRegion || { latitude: 37.78825, longitude: -122.4324, latitudeDelta: 0.0922, longitudeDelta: 0.0421 }}
         />
       </View>
 
@@ -278,11 +328,11 @@ export default function Dashboard() {
               activeOpacity={0.9}
               onPress={() => {
                 if (searchType === "airports") {
-                  // When an airport is selected from search, update the selectedAirport and close search.
+                  // Update the selected airport from search results and close the search.
                   setSelectedAirport(result);
                   toggleSearch(false);
                 } else {
-                  // For events, you might want to route or perform another action.
+                  // For events, you might route to an event details screen.
                   router.push("eventDetails");
                 }
               }}
@@ -409,11 +459,12 @@ export default function Dashboard() {
       )}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    //backgroundColor: '#F8FAFC',
     backgroundColor: '#F8FAFC',
   },
   searchHeader: {
