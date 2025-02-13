@@ -3,7 +3,7 @@ import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity } from "rea
 import useEvents from "../../hooks/useEvents";
 import { useEffect, useState } from "react";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Feather, MaterialIcons } from "@expo/vector-icons";
 import MapView, { Marker } from "react-native-maps";
 import useUsers from "../../hooks/useUsers";
 
@@ -14,6 +14,11 @@ export default function Event() {
   const [event, setEvent] = useState<any>(null);
   const [organizer, setOrganizer] = useState<string | null>(null);
   const [fullScreenMap, setFullScreenMap] = useState(false);
+
+  const handleAttend = () => {
+    console.log("Attending event:", event.name);
+    // Add your actual attendance logic here
+  };
 
   useEffect(() => {
     if (id) {
@@ -45,36 +50,74 @@ export default function Event() {
 
   return (
     <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Event Image */}
-        <Image source={{ uri: event.eventImage }} style={styles.eventImage} />
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: event.eventImage }} style={styles.eventImage} />
+          <View style={styles.imageOverlay} />
+        </View>
 
-        {/* Event Details */}
         <View style={styles.detailsContainer}>
           <Text style={styles.eventTitle}>{event.name}</Text>
-          <Text style={styles.eventCategory}>{event.category}</Text>
+          
+          <View style={styles.categoryChip}>
+            <Text style={styles.eventCategory}>{event.category}</Text>
+          </View>
+
           <Text style={styles.eventDescription}>{event.description}</Text>
+
+          {/* Details Grid */}
+          <View style={styles.detailsGrid}>
+            <View style={styles.detailItem}>
+              <Feather name="calendar" size={20} color="#fff" />
+              <Text style={styles.detailText}>
+                {new Date(event.startTime.seconds * 1000).toLocaleDateString()}
+              </Text>
+            </View>
+            
+            <View style={styles.detailItem}>
+              <Feather name="clock" size={20} color="#fff" />
+              <Text style={styles.detailText}>
+                {new Date(event.startTime.seconds * 1000).toLocaleTimeString()}
+              </Text>
+            </View>
+            
+            <View style={styles.detailItem}>
+              <Feather name="users" size={20} color="#fff" />
+              <Text style={styles.detailText}>
+                {event.attendees?.length || 0} attendees
+              </Text>
+            </View>
+          </View>
 
           {/* Organizer Info */}
           <View style={styles.organizerContainer}>
-            <MaterialIcons name="person" size={20} color="#fff" />
-            <Text style={styles.organizerText}>
-              Organized by: {organizer || "Unknown"}
-            </Text>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
+              style={styles.organizerBadge}
+            >
+              <MaterialIcons name="person" size={20} color="#fff" />
+              <Text style={styles.organizerText}>
+                Organized by {organizer || "Unknown"}
+              </Text>
+            </LinearGradient>
           </View>
 
-          {/* Event Time */}
-          <View style={styles.timeContainer}>
-            <MaterialIcons name="access-time" size={20} color="#fff" />
-            <Text style={styles.timeText}>
-              Starts: {new Date(event.startTime.seconds * 1000).toLocaleString()}
-            </Text>
-          </View>
+         
 
           {/* Event Location Map */}
           <View style={styles.mapContainer}>
-            <Text style={styles.sectionHeader}>Location</Text>
-            <TouchableOpacity onPress={() => setFullScreenMap(true)}>
+            <View style={styles.sectionHeader}>
+              <Feather name="map-pin" size={20} color="#fff" />
+              <Text style={styles.sectionHeaderText}>Event Location</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={() => setFullScreenMap(true)}
+              style={styles.mapButton}
+            >
               <MapView
                 style={styles.map}
                 initialRegion={{
@@ -92,13 +135,30 @@ export default function Event() {
                   title={event.name}
                   description={event.description}
                 >
-                  <MaterialIcons name="place" size={24} color="#6a11cb" />
+                  <View style={styles.marker}>
+                    <Feather name="map-pin" size={28} color="#6a11cb" />
+                  </View>
                 </Marker>
               </MapView>
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
+
+      {/* Attend Button */}
+      <TouchableOpacity 
+        style={styles.attendButton}
+        onPress={handleAttend}
+        activeOpacity={0.9}
+      >
+        <LinearGradient
+          colors={['#ff6b6b', '#ff4757']}
+          style={styles.buttonGradient}
+        >
+          <Feather name="check-circle" size={24} color="#fff" />
+          <Text style={styles.buttonText}>Attend Event</Text>
+        </LinearGradient>
+      </TouchableOpacity>
 
       {/* Fullscreen Map Overlay */}
       {fullScreenMap && (
@@ -136,98 +196,211 @@ export default function Event() {
 }
 
 const styles = StyleSheet.create({
-    gradient: {
-      flex: 1,
-    },
-    container: {
-      flexGrow: 1,
-      paddingBottom: 20,
-    },
-    loadingText: {
-      color: "#fff",
-      fontSize: 18,
-      textAlign: "center",
-    },
-    eventImage: {
-      width: "100%",
-      height: 250,
-      resizeMode: "cover",
-      marginTop: 45,
-    },
-    detailsContainer: {
-      padding: 16,
-    },
-    eventTitle: {
-      fontSize: 28,
-      fontWeight: "bold",
-      color: "#fff",
-      marginBottom: 8,
-    },
-    eventCategory: {
-      fontSize: 16,
-      color: "rgba(255,255,255,0.8)",
-      marginBottom: 16,
-      textTransform: "capitalize",
-    },
-    eventDescription: {
-      fontSize: 16,
-      color: "rgba(255,255,255,0.9)",
-      lineHeight: 24,
-      marginBottom: 20,
-    },
-    organizerContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 16,
-    },
-    organizerText: {
-      fontSize: 14,
-      color: "rgba(255,255,255,0.8)",
-      marginLeft: 8,
-    },
-    timeContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 24,
-    },
-    timeText: {
-      fontSize: 14,
-      color: "rgba(255,255,255,0.8)",
-      marginLeft: 8,
-    },
-    mapContainer: {
-      marginBottom: 20,
-    },
-    sectionHeader: {
-      fontSize: 20,
-      fontWeight: "bold",
-      color: "#fff",
-      marginBottom: 12,
-    },
-    map: {
-      width: "100%",
-      height: 200,
-      borderRadius: 12,
-    },
-    fullScreenMapContainer: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.9)',
-        zIndex: 1000,
-      },
-      fullScreenMap: {
-        width: '100%',
-        height: '100%',
-      },
-      closeButton: {
-        position: 'absolute',
-        top: 50,
-        right: 20,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        borderRadius: 20,
-        padding: 10,
-      },
-  });
+  // Full-screen gradient background
+  gradient: {
+    flex: 1,
+  },
+
+  // Main container for the ScrollView
+  container: {
+    flexGrow: 1,
+    paddingBottom: 100, // Extra space for the floating button
+  },
+
+  // Event image container
+  imageContainer: {
+    position: 'relative',
+    marginTop: 0,
+  },
+  eventImage: {
+    width: "100%",
+    height: 300,
+    resizeMode: "cover",
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+
+  // Event details container
+  detailsContainer: {
+    padding: 24,
+    marginTop: -40,
+  },
+  eventTitle: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: "#fff",
+    marginBottom: 12,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 4,
+  },
+
+  // Category chip styling
+  categoryChip: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+    marginBottom: 20,
+  },
+  eventCategory: {
+    fontSize: 14,
+    color: "#fff",
+    fontWeight: '600',
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+
+  // Event description
+  eventDescription: {
+    fontSize: 16,
+    color: "rgba(255,255,255,0.9)",
+    lineHeight: 24,
+    marginBottom: 25,
+    fontWeight: '500',
+  },
+
+  // Time container and text
+  timeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 24,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  timeText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+    fontWeight: '500',
+  },
+
+  // Details grid (time, date, attendees)
+  detailsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 25,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    gap: 8,
+  },
+  detailText: {
+    fontSize: 14,
+    color: "#fff",
+    fontWeight: '500',
+  },
+
+  // Organizer section
+  organizerContainer: {
+    marginBottom: 30,
+  },
+  organizerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  organizerText: {
+    fontSize: 15,
+    color: "#fff",
+    fontWeight: '600',
+  },
+
+  // Map section
+  mapContainer: {
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 18,
+  },
+  sectionHeaderText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  mapButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  map: {
+    width: "100%",
+    height: 220,
+  },
+  marker: {
+    backgroundColor: '#fff',
+    padding: 6,
+    borderRadius: 20,
+    elevation: 6,
+  },
+
+  // Floating "Attend" button
+  attendButton: {
+    position: 'absolute',
+    bottom: 30,
+    left: 20,
+    right: 20,
+    zIndex: 100,
+  },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 18,
+    borderRadius: 16,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  buttonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // Fullscreen map overlay
+  fullScreenMapContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    zIndex: 1000,
+  },
+  fullScreenMap: {
+    width: '100%',
+    height: '100%',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 20,
+    padding: 10,
+  },
+});

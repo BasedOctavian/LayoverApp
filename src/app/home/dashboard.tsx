@@ -50,6 +50,7 @@ export default function Dashboard() {
 
   // The airport that is currently selected (used to control the map region).
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
+  const [allAirports, setAllAirports] = useState<Airport[]>([]);
 
   // Fetch events on component mount
   useEffect(() => {
@@ -65,11 +66,11 @@ export default function Dashboard() {
 
   // Calculate airports near BUF when selected
   useEffect(() => {
-    if (selectedAirport?.code === 'BUF') {
+    if (selectedAirport?.airportCode === 'BUF') {
       const bufLat = selectedAirport.lat;
       const bufLong = selectedAirport.long;
       const nearby = allAirports.filter(airport => {
-        if (airport.code === 'BUF') return false; // Exclude BUF itself
+        if (airport.airportCode === 'BUF') return false; // Exclude BUF itself
         const distance = haversineDistance(bufLat, bufLong, airport.lat, airport.long);
         return distance <= 10; // 10 km radius
       });
@@ -99,7 +100,7 @@ export default function Dashboard() {
   // 2. Load all airports from Firestore using useAirports
   // ----------------------------------------------------
   const { getAirports, loading: airportsLoading, error: airportsError } = useAirports();
-  const [allAirports, setAllAirports] = useState<Airport[]>([]);
+
 
   useEffect(() => {
     const fetchAirports = async () => {
@@ -331,25 +332,25 @@ export default function Dashboard() {
           {/* Marker for selected airport */}
           {selectedAirport && (
             <Marker
-              coordinate={{
-                latitude: selectedAirport.lat,
-                longitude: selectedAirport.long,
-              }}
-              title={selectedAirport.name}
-              description={selectedAirport.code}
-            />
+            coordinate={{
+              latitude: selectedAirport.lat,
+              longitude: selectedAirport.long,
+            }}
+            title={selectedAirport.name}
+            description={selectedAirport.airportCode}   // use the correct property
+          />
           )}
           {/* Markers for airports near BUF */}
           {airportsNearBUF.map((airport, index) => (
             <Marker
-              key={`nearby-${index}`}
-              coordinate={{
-                latitude: airport.lat,
-                longitude: airport.long,
-              }}
-              title={airport.name}
-              description={airport.code}
-            />
+            key={`nearby-${index}`}
+            coordinate={{
+              latitude: airport.lat,
+              longitude: airport.long,
+            }}
+            title={airport.name}
+            description={airport.airportCode}   // updated here as well
+          />
           ))}
           {/* Markers for events */}
           {events.map((event, index) => (
@@ -392,7 +393,11 @@ export default function Dashboard() {
               style={styles.resultGradient}
             >
               <Feather 
-                name={searchType === "airports" ? "airplay" : result.icon || "calendar"} 
+                name={
+                  searchType === "airports" 
+                    ? "airplay" 
+                    : (typeof result.icon === 'string' ? result.icon : "calendar")
+                } 
                 size={20} 
                 color="#2F80ED" 
                 style={styles.resultIcon}
