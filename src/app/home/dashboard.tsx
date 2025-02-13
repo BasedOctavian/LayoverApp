@@ -1,7 +1,7 @@
 // Dashboard.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Animated } from "react-native";
-import MapView from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -43,6 +43,7 @@ export default function Dashboard() {
   const slideAnim = useState(new Animated.Value(-100))[0];
   const { getEvents, loading: eventsLoading, error: eventsError } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
+  const [airportsNearBUF, setAirportsNearBUF] = useState<Airport[]>([]); // New state for BUF airports
 
   // State for the user's current location.
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
@@ -50,20 +51,33 @@ export default function Dashboard() {
   // The airport that is currently selected (used to control the map region).
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
 
-  // Fetch events when searchType changes to 'events'
+  // Fetch events on component mount
   useEffect(() => {
     const loadEvents = async () => {
-      if (searchType === 'events') {
-        const eventsData = await getEvents();
-        if (eventsData) {
-          setEvents(eventsData);
-        }
+      const eventsData = await getEvents();
+      if (eventsData) {
+        console.log(eventsData);
+        setEvents(eventsData);
       }
     };
     loadEvents();
-  }, [searchType]);
+  }, []); // Empty dependency array to run once on mount
 
-  
+  // Calculate airports near BUF when selected
+  useEffect(() => {
+    if (selectedAirport?.code === 'BUF') {
+      const bufLat = selectedAirport.lat;
+      const bufLong = selectedAirport.long;
+      const nearby = allAirports.filter(airport => {
+        if (airport.code === 'BUF') return false; // Exclude BUF itself
+        const distance = haversineDistance(bufLat, bufLong, airport.lat, airport.long);
+        return distance <= 10; // 10 km radius
+      });
+      setAirportsNearBUF(nearby);
+    } else {
+      setAirportsNearBUF([]);
+    }
+  }, [selectedAirport, allAirports]);
 
   useEffect(() => {
     (async () => {
@@ -190,17 +204,6 @@ export default function Dashboard() {
     },
   ];
 
-  // Dummy sample results for events (used when searchType === 'events')
-  const sampleResults = {
-    events: [
-      { name: "Music Festival", icon: "music" },
-      { name: "Business Conference", icon: "briefcase" },
-      { name: "Food Tasting", icon: "coffee" },
-      { name: "Networking Mixer", icon: "users" },
-      { name: "Art Exhibition", icon: "palette" }
-    ]
-  };
-
   // Toggle the search view with fade and slide animations.
   const toggleSearch = (show: boolean) => {
     Animated.parallel([
@@ -323,9 +326,44 @@ export default function Dashboard() {
       <View style={styles.mapContainer}>
         <MapView
           style={styles.map}
-          // If no airport is selected, a default region is provided.
           region={mapRegion || { latitude: 37.78825, longitude: -122.4324, latitudeDelta: 0.0922, longitudeDelta: 0.0421 }}
-        />
+        >
+          {/* Marker for selected airport */}
+          {selectedAirport && (
+            <Marker
+              coordinate={{
+                latitude: selectedAirport.lat,
+                longitude: selectedAirport.long,
+              }}
+              title={selectedAirport.name}
+              description={selectedAirport.code}
+            />
+          )}
+          {/* Markers for airports near BUF */}
+          {airportsNearBUF.map((airport, index) => (
+            <Marker
+              key={`nearby-${index}`}
+              coordinate={{
+                latitude: airport.lat,
+                longitude: airport.long,
+              }}
+              title={airport.name}
+              description={airport.code}
+            />
+          ))}
+          {/* Markers for events */}
+          {events.map((event, index) => (
+            <Marker
+              key={`event-${index}`}
+              coordinate={{
+                latitude: parseFloat(event.latitude),
+                longitude: parseFloat(event.longitude),
+              }}
+              title={event.name}
+              description={event.description}
+            />
+          ))}
+        </MapView>
       </View>
 
       {/* Search Results or Dashboard Features */}
@@ -345,7 +383,7 @@ export default function Dashboard() {
                 setSelectedAirport(result);
                 toggleSearch(false);
               } else {
-                router.push({ pathname: "eventDetails", params: { eventId: result.id } });
+                router.push("/event/" + result.id);
               }
             }}
           >
@@ -476,7 +514,6 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    //backgroundColor: '#F8FAFC',
     backgroundColor: '#F8FAFC',
   },
   searchHeader: {
