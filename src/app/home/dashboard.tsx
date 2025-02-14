@@ -101,7 +101,6 @@ export default function Dashboard() {
   // ----------------------------------------------------
   const { getAirports, loading: airportsLoading, error: airportsError } = useAirports();
 
-
   useEffect(() => {
     const fetchAirports = async () => {
       const fetchedAirports = await getAirports();
@@ -332,25 +331,25 @@ export default function Dashboard() {
           {/* Marker for selected airport */}
           {selectedAirport && (
             <Marker
-            coordinate={{
-              latitude: selectedAirport.lat,
-              longitude: selectedAirport.long,
-            }}
-            title={selectedAirport.name}
-            description={selectedAirport.airportCode}   // use the correct property
-          />
+              coordinate={{
+                latitude: selectedAirport.lat,
+                longitude: selectedAirport.long,
+              }}
+              title={selectedAirport.name}
+              description={selectedAirport.airportCode}
+            />
           )}
           {/* Markers for airports near BUF */}
           {airportsNearBUF.map((airport, index) => (
             <Marker
-            key={`nearby-${index}`}
-            coordinate={{
-              latitude: airport.lat,
-              longitude: airport.long,
-            }}
-            title={airport.name}
-            description={airport.airportCode}   // updated here as well
-          />
+              key={`nearby-${index}`}
+              coordinate={{
+                latitude: airport.lat,
+                longitude: airport.long,
+              }}
+              title={airport.name}
+              description={airport.airportCode}
+            />
           ))}
           {/* Markers for events */}
           {events.map((event, index) => (
@@ -375,38 +374,38 @@ export default function Dashboard() {
           style={{ opacity: fadeAnim }}
         >
           {filteredResults.map((result, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.resultItem}
-            activeOpacity={0.9}
-            onPress={() => {
-              if (searchType === "airports") {
-                setSelectedAirport(result);
-                toggleSearch(false);
-              } else {
-                router.push("/event/" + result.id);
-              }
-            }}
-          >
-            <LinearGradient
-              colors={['#FFFFFF', '#F8FAFC']}
-              style={styles.resultGradient}
+            <TouchableOpacity 
+              key={index} 
+              style={styles.resultItem}
+              activeOpacity={0.9}
+              onPress={() => {
+                if (searchType === "airports") {
+                  setSelectedAirport(result);
+                  toggleSearch(false);
+                } else {
+                  router.push("/event/" + result.id);
+                }
+              }}
             >
-              <Feather 
-                name={
-                  searchType === "airports" 
-                    ? "airplay" 
-                    : (typeof result.icon === 'string' ? result.icon : "calendar")
-                } 
-                size={20} 
-                color="#2F80ED" 
-                style={styles.resultIcon}
-              />
-              <Text style={styles.resultText}>{result.name}</Text>
-              <Feather name="chevron-right" size={18} color="#CBD5E1" />
-            </LinearGradient>
-          </TouchableOpacity>
-        ))}
+              <LinearGradient
+                colors={['#FFFFFF', '#F8FAFC']}
+                style={styles.resultGradient}
+              >
+                <Feather 
+                  name={
+                    searchType === "airports" 
+                      ? "airplay" 
+                      : (typeof result.icon === 'string' ? result.icon : "calendar")
+                  } 
+                  size={20} 
+                  color="#2F80ED" 
+                  style={styles.resultIcon}
+                />
+                <Text style={styles.resultText}>{result.name}</Text>
+                <Feather name="chevron-right" size={18} color="#CBD5E1" />
+              </LinearGradient>
+            </TouchableOpacity>
+          ))}
         </Animated.ScrollView>
       ) : (
         <ScrollView 
@@ -656,6 +655,8 @@ const styles = StyleSheet.create({
   },
   buttonInner: {
     flex: 1,
+    width: '100%',  // Added to increase the touchable area
+    height: '100%', // Added to increase the touchable area
     justifyContent: 'center',
     alignItems: 'center',
   },

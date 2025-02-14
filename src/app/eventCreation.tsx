@@ -54,6 +54,8 @@ const EventCreation: React.FC = () => {
     createdAt: new Date(),
   });
 
+  const searchType = 'events'; // Define searchType for gradient logic
+
   useEffect(() => {
     const loadAirports = async () => {
       const airports = await getAirports();
@@ -67,6 +69,11 @@ const EventCreation: React.FC = () => {
   );
 
   const handleMapPress = (e: any) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    setEventCoords({ lat: latitude, lng: longitude });
+  };
+
+  const handleMarkerDragEnd = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setEventCoords({ lat: latitude, lng: longitude });
   };
@@ -120,141 +127,165 @@ const EventCreation: React.FC = () => {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <ScrollView contentContainerStyle={styles.contentContainer}>
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Select Airport</Text>
-            <TouchableOpacity 
-              style={styles.searchContainer}
-              onPress={() => setShowSearch(true)}
-            >
-              <Text style={styles.searchPlaceholder}>
-                {selectedAirport?.name || 'Search airports...'}
-              </Text>
-              <Feather name="search" size={20} color="#64748B" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Event Location</Text>
-            <View style={styles.mapContainer}>
-              <MapView
-                style={styles.map}
-                region={region}
-                onLongPress={handleMapPress}
+          {/* Gradient Background for Sections */}
+          <LinearGradient
+            colors={['#F8FAFC', '#FFFFFF']}
+            style={styles.backgroundGradient}
+          >
+            {/* Airport Selection */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Select Airport</Text>
+              <TouchableOpacity 
+                style={styles.searchContainer}
+                onPress={() => setShowSearch(true)}
               >
-                {selectedAirport && (
-                  <Marker
-                    coordinate={{
-                      latitude: selectedAirport.lat,
-                      longitude: selectedAirport.long,
-                    }}
-                    title="Selected Airport"
-                    pinColor="#2F80ED"
-                  />
-                )}
-                {eventCoords && (
-                  <Marker
-                    coordinate={{
-                      latitude: eventCoords.lat,
-                      longitude: eventCoords.lng,
-                    }}
-                    title="Event Location"
-                    pinColor="#ff6b6b"
-                  />
-                )}
-              </MapView>
-            </View>
-          </View>
-
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Event Details</Text>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Event Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter event name"
-                placeholderTextColor="#64748B"
-                value={eventData.name}
-                onChangeText={(text) => setEventData({ ...eventData, name: text })}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Description</Text>
-              <TextInput
-                style={[styles.input, styles.multilineInput]}
-                placeholder="Describe your event"
-                placeholderTextColor="#64748B"
-                multiline
-                value={eventData.description}
-                onChangeText={(text) => setEventData({ ...eventData, description: text })}
-              />
-            </View>
-          </View>
-
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Category</Text>
-            <View style={styles.categoryContainer}>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={category}
-                  style={[
-                    styles.categoryButton,
-                    eventData.category === category && styles.selectedCategory
-                  ]}
-                  onPress={() => setEventData({ ...eventData, category })}
+                <LinearGradient
+                  colors={['#FFFFFF', '#F1F5F9']}
+                  style={styles.searchInputGradient}
                 >
-                  <Text style={styles.categoryText}>{category}</Text>
-                </TouchableOpacity>
-              ))}
+                  <Text style={styles.searchPlaceholder}>
+                    {selectedAirport?.name || 'Search airports...'}
+                  </Text>
+                  <Feather name="search" size={20} color="#64748B" />
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-          </View>
 
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Event Time</Text>
-            <TouchableOpacity 
-              style={styles.input} 
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={styles.dateText}>
-                {eventData.startTime.toLocaleString()}
-              </Text>
-              <Feather name="clock" size={18} color="#64748B" />
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={eventData.startTime}
-                mode="datetime"
-                display="default"
-                onChange={handleDateChange}
-              />
-            )}
-          </View>
-
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Privacy</Text>
-            <View style={styles.privacyContainer}>
-              <View style={styles.switchContainer}>
-                <MaterialIcons 
-                  name={eventData.private ? 'lock' : 'public'} 
-                  size={24} 
-                  color="#2F80ED" 
-                />
-                <Text style={styles.privacyText}>
-                  {eventData.private ? 'Private Event' : 'Public Event'}
-                </Text>
+            {/* Event Location */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Event Location</Text>
+              <View style={styles.mapContainer}>
+                <MapView
+                  style={styles.map}
+                  region={region}
+                  onLongPress={handleMapPress}
+                >
+                  {selectedAirport && (
+                    <Marker
+                      coordinate={{
+                        latitude: selectedAirport.lat,
+                        longitude: selectedAirport.long,
+                      }}
+                      title="Selected Airport"
+                      pinColor="#2F80ED"
+                    />
+                  )}
+                  {eventCoords && (
+                    <Marker
+                      coordinate={{
+                        latitude: eventCoords.lat,
+                        longitude: eventCoords.lng,
+                      }}
+                      title="Event Location"
+                      pinColor="#ff6b6b"
+                      draggable
+                      onDragEnd={handleMarkerDragEnd}
+                    />
+                  )}
+                </MapView>
+                <Text style={styles.mapHelperText}>Hold on the map to place a pin</Text>
               </View>
-              <Switch
-                value={eventData.private}
-                onValueChange={(value) => setEventData({ ...eventData, private: value })}
-                trackColor={{ false: '#CBD5E1', true: '#2F80ED' }}
-                thumbColor="#FFFFFF"
-              />
             </View>
-          </View>
+
+            {/* Event Details */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Event Details</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Event Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter event name"
+                  placeholderTextColor="#64748B"
+                  value={eventData.name}
+                  onChangeText={(text) => setEventData({ ...eventData, name: text })}
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={[styles.input, styles.multilineInput]}
+                  placeholder="Describe your event"
+                  placeholderTextColor="#64748B"
+                  multiline
+                  value={eventData.description}
+                  onChangeText={(text) => setEventData({ ...eventData, description: text })}
+                />
+              </View>
+            </View>
+
+            {/* Category Selection */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Category</Text>
+              <View style={styles.categoryContainer}>
+                {categories.map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryButton,
+                      eventData.category === category && styles.selectedCategory
+                    ]}
+                    onPress={() => setEventData({ ...eventData, category })}
+                  >
+                    <Text style={styles.categoryText}>{category}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Event Time */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Event Time</Text>
+              <TouchableOpacity 
+                style={styles.input} 
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={styles.dateText}>
+                  {eventData.startTime.toLocaleString()}
+                </Text>
+                <Feather name="clock" size={18} color="#64748B" />
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={eventData.startTime}
+                  mode="datetime"
+                  display="default"
+                  onChange={handleDateChange}
+                />
+              )}
+            </View>
+
+            {/* Privacy Settings */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Privacy</Text>
+              <View style={styles.privacyContainer}>
+                <View style={styles.switchContainer}>
+                  <MaterialIcons 
+                    name={eventData.private ? 'lock' : 'public'} 
+                    size={24} 
+                    color="#2F80ED" 
+                  />
+                  <Text style={styles.privacyText}>
+                    {eventData.private ? 'Private Event' : 'Public Event'}
+                  </Text>
+                </View>
+                <Switch
+                  value={eventData.private}
+                  onValueChange={(value) => setEventData({ ...eventData, private: value })}
+                  trackColor={{ false: '#CBD5E1', true: '#2F80ED' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            </View>
+          </LinearGradient>
         </ScrollView>
       </TouchableWithoutFeedback>
 
+      {/* Search Modal */}
       {showSearch && (
-        <View style={styles.searchModal}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.98)', 'rgba(241,245,249,0.98)']}
+          style={styles.searchModal}
+        >
           <View style={styles.searchHeader}>
             <TextInput
               style={styles.searchInput}
@@ -283,9 +314,10 @@ const EventCreation: React.FC = () => {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
+        </LinearGradient>
       )}
 
+      {/* Create Event Button */}
       <LinearGradient
         colors={['#2F80ED', '#1A5FB4']}
         style={styles.createButton}
@@ -311,12 +343,22 @@ const EventCreation: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'transparent',
+    marginTop: 15
+  },
+  backgroundGradient: {
+    borderRadius: 24,
+    padding: 16,
+    marginHorizontal: 0,
+    marginTop: 20,
+    shadowColor: '#2F80ED',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
   },
   contentContainer: {
-    padding: 16,
+    padding: 0,
     paddingBottom: 100,
-    marginTop: 40,
   },
   sectionContainer: {
     backgroundColor: '#FFFFFF',
@@ -336,7 +378,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   searchContainer: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  searchInputGradient: {
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
@@ -355,6 +401,18 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  mapHelperText: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    right: 10,
+    textAlign: 'center',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    padding: 4,
+    borderRadius: 8,
+    fontSize: 12,
+    color: '#1E293B',
   },
   inputGroup: {
     marginBottom: 16,
