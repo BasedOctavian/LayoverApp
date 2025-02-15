@@ -6,19 +6,44 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import MapView, { Marker } from "react-native-maps";
 import useUsers from "../../hooks/useUsers";
+import useAuth from "../../hooks/auth";
 
 export default function Event() {
   const { id } = useLocalSearchParams();
-  const { getEvent } = useEvents();
+  const { getEvent, updateEvent } = useEvents();
   const { getUser } = useUsers();
   const [event, setEvent] = useState<any>(null);
   const [organizer, setOrganizer] = useState<string | null>(null);
   const [fullScreenMap, setFullScreenMap] = useState(false);
+  const [isAttending, setIsAttending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
 
-  const handleAttend = () => {
-    console.log("Attending event:", event.name);
-    // Add your actual attendance logic here
+  useEffect(() => {
+    if (event && user) {
+      setIsAttending(event.attendees?.includes(user.uid));
+    }
+  }, [event, user]);
+
+  const handleAttend = async () => {
+    if (!user?.uid || !event) return;
+    
+    setLoading(true);
+    try {
+      const currentAttendees = event.attendees || [];
+      const newAttendees = isAttending 
+        ? currentAttendees.filter((uid: string) => uid !== user.uid)
+        : [...currentAttendees, user.uid];
+
+      await updateEvent(event.id, { attendees: newAttendees });
+      setEvent(prev => ({ ...prev, attendees: newAttendees }));
+    } catch (error) {
+      console.error("Error updating attendance:", error);
+    } finally {
+      setLoading(false);
+    }
   };
+
 
   useEffect(() => {
     if (id) {
@@ -37,6 +62,35 @@ export default function Event() {
       })();
     }
   }, [id]);
+
+  const formatDateTime = (timestamp: any) => {
+    try {
+      // Handle both Firestore timestamps and ISO strings
+      const date = timestamp?.seconds 
+        ? new Date(timestamp.seconds * 1000)
+        : new Date(timestamp);
+        
+      // For UTC-5 display (Eastern Time), add:
+      const options = { 
+        timeZone: 'America/New_York', // UTC-5
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      };
+      
+      return new Intl.DateTimeFormat('en-US', options).format(date)
+        .replace(/,/g, '') // Remove commas
+        .replace(/(\d+)\/(\d+)\/(\d+) (\d+:\d+)( [AP]M)/, '$1/$2/$3 $4$5');
+    } catch (error) {
+      console.error("Invalid date:", error);
+      return "Invalid Date";
+    }
+  };
+       
+  
 
   if (!event) {
     return (
@@ -71,19 +125,22 @@ export default function Event() {
 
           {/* Details Grid */}
           <View style={styles.detailsGrid}>
+            {/* Created At */}
             <View style={styles.detailItem}>
-              <Feather name="calendar" size={20} color="#fff" />
+              <Feather name="plus-circle" size={20} color="#fff" />
               <Text style={styles.detailText}>
-                {new Date(event.startTime.seconds * 1000).toLocaleDateString()}
+              Created {formatDateTime(event.createdAt)}
               </Text>
             </View>
-            
+
+            {/* Start Time */}
             <View style={styles.detailItem}>
               <Feather name="clock" size={20} color="#fff" />
               <Text style={styles.detailText}>
-                {new Date(event.startTime.seconds * 1000).toLocaleTimeString()}
+              Starts {formatDateTime(event.startTime)}
               </Text>
             </View>
+
             
             <View style={styles.detailItem}>
               <Feather name="users" size={20} color="#fff" />
@@ -150,13 +207,21 @@ export default function Event() {
         style={styles.attendButton}
         onPress={handleAttend}
         activeOpacity={0.9}
+        disabled={loading}
       >
         <LinearGradient
-          colors={['#ff6b6b', '#ff4757']}
+          colors={isAttending ? ['#FF416C', '#FF4B2B'] : ['#ff6b6b', '#ff4757']}
           style={styles.buttonGradient}
         >
-          <Feather name="check-circle" size={24} color="#fff" />
-          <Text style={styles.buttonText}>Attend Event</Text>
+          <Feather 
+            name={isAttending ? "x-circle" : "check-circle"} 
+            size={24} 
+            color="#fff" 
+          />
+          <Text style={styles.buttonText}>
+            {loading ? 'Processing...' : 
+            isAttending ? 'Remove Participation' : 'Attend Event'}
+          </Text>
         </LinearGradient>
       </TouchableOpacity>
 

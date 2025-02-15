@@ -21,8 +21,23 @@ import { Feather, MaterialIcons } from '@expo/vector-icons';
 import useEvents from '../hooks/useEvents';
 import useAuth from '../hooks/auth';
 import useAirports, { Airport } from '../hooks/useAirports';
+import * as Location from 'expo-location';
+
 
 const categories = ['Wellness', 'Food & Drink', 'Entertainment', 'Travel Tips', 'Activity', 'Misc'];
+
+function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLong = toRad(long2 - long1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLong / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 const EventCreation: React.FC = () => {
   const { user } = useAuth();
@@ -40,6 +55,7 @@ const EventCreation: React.FC = () => {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
+  const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
 
   const [eventData, setEventData] = useState({
     name: '',
@@ -67,6 +83,46 @@ const EventCreation: React.FC = () => {
   const filteredAirports = allAirports.filter(airport =>
     airport.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Replace region state with computed value
+  const mapRegion = selectedAirport ? {
+    latitude: selectedAirport.lat,
+    longitude: selectedAirport.long,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  } : null;
+
+  // Add location permission request
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") return;
+      
+      const location = await Location.getCurrentPositionAsync({});
+      setUserLocation({
+        lat: location.coords.latitude,
+        long: location.coords.longitude,
+      });
+    })();
+  }, []);
+
+  // Add nearest airport calculation
+  useEffect(() => {
+    if (userLocation && allAirports.length > 0 && !selectedAirport) {
+      const airportsWithDistance = allAirports.map(airport => ({
+        ...airport,
+        distance: haversineDistance(
+          userLocation.lat,
+          userLocation.long,
+          airport.lat,
+          airport.long
+        ),
+      }));
+      
+      airportsWithDistance.sort((a, b) => a.distance - b.distance);
+      setSelectedAirport(airportsWithDistance[0]);
+    }
+  }, [userLocation, allAirports, selectedAirport]);
 
   const handleMapPress = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
@@ -155,9 +211,14 @@ const EventCreation: React.FC = () => {
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Event Location</Text>
               <View style={styles.mapContainer}>
-                <MapView
+              <MapView
                   style={styles.map}
-                  region={region}
+                  region={mapRegion || {
+                    latitude: 40.6895,
+                    longitude: -74.1745,
+                    latitudeDelta: 0.0922,
+                    longitudeDelta: 0.0421,
+                  }}
                   onLongPress={handleMapPress}
                 >
                   {selectedAirport && (
