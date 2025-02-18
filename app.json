@@ -17,7 +17,8 @@
       "supportsTablet": true,
       "newArchEnabled": false,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location for nearby features."
+        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location for nearby features.",
+        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos to select a profile picture."
       }
     },
     "android": {
@@ -28,7 +29,9 @@
       "newArchEnabled": false,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -40,6 +43,13 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to select a profile picture.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use your camera to take a profile photo."
         }
       ]
     ]

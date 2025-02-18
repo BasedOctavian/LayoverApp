@@ -22,7 +22,7 @@ export default function EventCreation() {
       createdAt: Date;
       startTime: Date;
       organizer: string;
-      organizerName?: string; // Add organizerName to the event object
+      organizerName?: string;
     }[]
   >([]);
 
@@ -33,7 +33,7 @@ export default function EventCreation() {
       if (fetchedEvents) {
         const eventsWithOrganizerNames = await Promise.all(
           fetchedEvents.map(async (event: any) => {
-            const organizer = await getUser(event.organizer); // Fetch organizer details
+            const organizer = await getUser(event.organizer);
             return {
               id: event.id,
               name: event.name,
@@ -44,7 +44,7 @@ export default function EventCreation() {
               createdAt: new Date(event.createdAt),
               startTime: new Date(event.startTime),
               organizer: event.organizer,
-              organizerName: organizer?.name || "Auto Generated", // Add organizerName
+              organizerName: organizer?.name || "Auto Generated",
             };
           })
         );
@@ -61,7 +61,7 @@ export default function EventCreation() {
         <Text style={styles.eventTitle}>{item.name}</Text>
         <Text style={styles.eventDescription}>{item.description}</Text>
         <Text style={styles.organizerText}>
-          Organized by: {item.organizerName} {/* Use organizerName */}
+          Organized by: {item.organizerName}
         </Text>
         <View style={styles.eventMeta}>
           <View style={styles.metaItem}>
@@ -86,8 +86,8 @@ export default function EventCreation() {
   };
 
   return (
-    <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-      <View style={styles.container}>
+    <View style={styles.container}>
+      <View style={styles.mapContainer}>
         <MapView
           mapType="hybrid"
           style={styles.map}
@@ -118,65 +118,83 @@ export default function EventCreation() {
                 title={event.name}
                 description={event.description}
               >
-                <MaterialIcons name="event" size={24} color="#6a11cb" />
+                <MaterialIcons name="event" size={24} color="#fff" />
               </Marker>
             </React.Fragment>
           ))}
         </MapView>
+      </View>
 
-        <Text style={styles.headerText}>Nearby Events</Text>
-        <FlatList
-          data={events}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-        />
+      <Text style={styles.headerText}>Nearby Events</Text>
+      <FlatList
+        data={events}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+      />
 
-        <TouchableOpacity 
+      <TouchableOpacity 
+        style={styles.searchButtonContainer}
+        onPress={handleSearchPress}
+      >
+        <LinearGradient
+          colors={['#2F80ED', '#1A5FB4']}
           style={styles.searchButton}
-          onPress={handleSearchPress}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
           <AntDesign name="search1" size={20} color="white" />
           <Text style={styles.searchText}>Search Events</Text>
-        </TouchableOpacity>
-      </View>
-    </LinearGradient>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
     padding: 16,
   },
-  map: {
-    width: "100%",
+  mapContainer: {
     height: 300,
-    borderRadius: 15,
+    borderRadius: 24,
     overflow: 'hidden',
-    marginBottom: 20,
     marginTop: 60,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  map: {
+    flex: 1,
   },
   headerText: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "white",
+    color: "#1E293B",
     marginBottom: 15,
     paddingHorizontal: 16,
+    fontFamily: 'Inter-SemiBold',
   },
   listContent: {
     paddingBottom: 80,
   },
   eventCard: {
     flexDirection: "row",
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    alignItems: 'center',
+    alignItems: "center",
+    shadowColor: "#2F80ED",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   eventImage: {
     width: 80,
@@ -190,48 +208,57 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "white",
+    color: "#1E293B",
     marginBottom: 6,
+    fontFamily: 'Inter-SemiBold',
   },
   eventDescription: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.8)",
+    color: "#64748B",
     marginBottom: 6,
+    fontFamily: 'Inter-Medium',
   },
   organizerText: {
     fontSize: 12,
-    color: "rgba(255, 255, 255, 0.8)",
+    color: "#64748B",
     marginBottom: 8,
+    fontFamily: 'Inter-Medium',
   },
   eventMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   metaText: {
     fontSize: 12,
-    color: "white",
+    color: "#1E293B",
     marginLeft: 6,
     opacity: 0.8,
+    fontFamily: 'Inter-SemiBold',
+  },
+  searchButtonContainer: {
+    position: "absolute",
+    bottom: 30,
+    alignSelf: "center",
+    width: "90%",
   },
   searchButton: {
-    position: 'absolute',
-    bottom: 30,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
-    paddingHorizontal: 24,
     borderRadius: 25,
   },
   searchText: {
     fontSize: 16,
-    color: "white",
+    color: "#FFFFFF",
     marginLeft: 10,
-    fontWeight: '500',
+    fontWeight: "500",
+    fontFamily: 'Inter-SemiBold',
   },
 });
+
+export { EventCreation };

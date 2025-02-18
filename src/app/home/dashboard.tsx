@@ -9,6 +9,7 @@ import useAuth from "../../hooks/auth";
 import * as Location from "expo-location";
 import useAirports, { Airport } from "../../hooks/useAirports";
 import useEvents from "../../hooks/useEvents";
+import useSportEvents from "../../hooks/useSportEvents";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -51,6 +52,22 @@ export default function Dashboard() {
   // The airport that is currently selected (used to control the map region).
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
+
+  const { events : sportEvents, loading, error } = useSportEvents({ date: "2025-02-16" });
+
+  useEffect(() => {
+    if (sportEvents.length > 0) {
+      const filteredEvents = sportEvents.map((event: any) => ({
+        eventName: event.strEvent || "N/A",
+        venue: event.strVenue || "Venue not available",
+        location:
+          (event.strCity ? event.strCity + ", " : "") +
+          (event.strCountry ? event.strCountry : "Location not available"),
+        time: event.strTime || event.dateEvent || "Time not available",
+      }));
+      console.log(filteredEvents);
+    }
+  }, [sportEvents]);
 
   // Fetch events on component mount
   useEffect(() => {
