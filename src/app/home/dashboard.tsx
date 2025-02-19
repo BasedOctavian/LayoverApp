@@ -1,6 +1,15 @@
 // Dashboard.tsx
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Animated } from "react-native";
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  StyleSheet, 
+  ScrollView, 
+  TextInput, 
+  Animated, 
+  Modal 
+} from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from "expo-linear-gradient";
@@ -42,18 +51,22 @@ export default function Dashboard() {
   const [searchType, setSearchType] = useState<'airports' | 'events'>('airports');
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(-100))[0];
-  const { getEvents, loading: eventsLoading, error: eventsError } = useEvents();
+  const { getEvents } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
-  const [airportsNearBUF, setAirportsNearBUF] = useState<Airport[]>([]); // New state for BUF airports
+  const [airportsNearBUF, setAirportsNearBUF] = useState<Airport[]>([]);
 
-  // State for the user's current location.
+  // User location state
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
-
-  // The airport that is currently selected (used to control the map region).
+  // Selected airport state
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
 
-  const { events : sportEvents, loading, error } = useSportEvents({ date: "2025-02-16" });
+  const { events: sportEvents } = useSportEvents({ date: "2025-02-16" });
+
+  // Status modal state
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [customStatus, setCustomStatus] = useState("");
+  const presetStatuses = ["Down to Chat", "Food & Drinks?", "Work Mode", "Exploring the Airport"];
 
   useEffect(() => {
     if (sportEvents.length > 0) {
@@ -69,7 +82,7 @@ export default function Dashboard() {
     }
   }, [sportEvents]);
 
-  // Fetch events on component mount
+  // Fetch events on mount
   useEffect(() => {
     const loadEvents = async () => {
       const eventsData = await getEvents();
@@ -79,17 +92,17 @@ export default function Dashboard() {
       }
     };
     loadEvents();
-  }, []); // Empty dependency array to run once on mount
+  }, []);
 
-  // Calculate airports near BUF when selected
+  // Calculate nearby airports when BUF is selected
   useEffect(() => {
     if (selectedAirport?.airportCode === 'BUF') {
       const bufLat = selectedAirport.lat;
       const bufLong = selectedAirport.long;
       const nearby = allAirports.filter(airport => {
-        if (airport.airportCode === 'BUF') return false; // Exclude BUF itself
+        if (airport.airportCode === 'BUF') return false;
         const distance = haversineDistance(bufLat, bufLong, airport.lat, airport.long);
-        return distance <= 10; // 10 km radius
+        return distance <= 10;
       });
       setAirportsNearBUF(nearby);
     } else {
@@ -113,11 +126,8 @@ export default function Dashboard() {
     })();
   }, []);
 
-  // ----------------------------------------------------
-  // 2. Load all airports from Firestore using useAirports
-  // ----------------------------------------------------
-  const { getAirports, loading: airportsLoading, error: airportsError } = useAirports();
-
+  // Load all airports
+  const { getAirports } = useAirports();
   useEffect(() => {
     const fetchAirports = async () => {
       const fetchedAirports = await getAirports();
@@ -128,28 +138,22 @@ export default function Dashboard() {
     fetchAirports();
   }, [getAirports]);
 
-  // ---------------------------------------------------------------------
-  // 3. Compute the nearest airport and the 10 closest airports to the user
-  // ---------------------------------------------------------------------
+  // Compute nearest airport and ten closest airports to the user
   const [nearestAirports, setNearestAirports] = useState<{ closest: Airport | null, tenClosest: Airport[] }>({ closest: null, tenClosest: [] });
-
   useEffect(() => {
     if (!userLocation || allAirports.length === 0) return;
-    const computeNearestAirports = () => {
-      const airportsWithDistance = allAirports.map((airport) => ({
-        ...airport,
-        distance: haversineDistance(userLocation.lat, userLocation.long, airport.lat, airport.long),
-      }));
-      airportsWithDistance.sort((a, b) => (a.distance! - b.distance!));
-      setNearestAirports({
-        closest: airportsWithDistance[0] || null,
-        tenClosest: airportsWithDistance.slice(0, 10),
-      });
-    };
-    computeNearestAirports();
+    const airportsWithDistance = allAirports.map((airport) => ({
+      ...airport,
+      distance: haversineDistance(userLocation.lat, userLocation.long, airport.lat, airport.long),
+    }));
+    airportsWithDistance.sort((a, b) => a.distance! - b.distance!);
+    setNearestAirports({
+      closest: airportsWithDistance[0] || null,
+      tenClosest: airportsWithDistance.slice(0, 10),
+    });
   }, [userLocation, allAirports]);
 
-  // Set the default selected airport only if none is already selected.
+  // Set default selected airport
   useEffect(() => {
     if (!selectedAirport && nearestAirports.closest) {
       setSelectedAirport(nearestAirports.closest);
@@ -157,7 +161,7 @@ export default function Dashboard() {
     }
   }, [nearestAirports.closest, selectedAirport]);
 
-  // Define the map region based on the selected airport.
+  // Map region based on selected airport
   const mapRegion = selectedAirport
     ? {
         latitude: selectedAirport.lat,
@@ -167,7 +171,7 @@ export default function Dashboard() {
       }
     : null;
 
-  // Set the user ID if available.
+  // Set user ID if available
   useEffect(() => {
     if (user) {
       setUserId(user.uid);
@@ -175,7 +179,7 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  // Dashboard feature buttons.
+  // Dashboard feature buttons
   const features: FeatureButton[] = [
     { 
       icon: <FontAwesome5 name="user-friends" size={24} color="#FFFFFF" />, 
@@ -221,7 +225,7 @@ export default function Dashboard() {
     },
   ];
 
-  // Toggle the search view with fade and slide animations.
+  // Toggle the search view with animations
   const toggleSearch = (show: boolean) => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -239,7 +243,7 @@ export default function Dashboard() {
     if (!show) setSearchQuery("");
   };
 
-  // Update filteredResults to use real events
+  // Update filteredResults based on searchType
   const filteredResults = searchType === 'airports'
     ? nearestAirports.tenClosest.filter((airport) =>
         airport.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -271,7 +275,6 @@ export default function Dashboard() {
             <Feather name="x" size={24} color="#2F80ED" />
           </TouchableOpacity>
         </View>
-        
         <View style={styles.filterContainer}>
           <TouchableOpacity 
             style={styles.filterButton}
@@ -294,7 +297,6 @@ export default function Dashboard() {
               </Text>
             </LinearGradient>
           </TouchableOpacity>
-          
           <TouchableOpacity 
             style={styles.filterButton}
             onPress={() => setSearchType('events')}
@@ -345,7 +347,6 @@ export default function Dashboard() {
           style={styles.map}
           region={mapRegion || { latitude: 37.78825, longitude: -122.4324, latitudeDelta: 0.0922, longitudeDelta: 0.0421 }}
         >
-          {/* Marker for selected airport */}
           {selectedAirport && (
             <Marker
               coordinate={{
@@ -356,7 +357,6 @@ export default function Dashboard() {
               description={selectedAirport.airportCode}
             />
           )}
-          {/* Markers for airports near BUF */}
           {airportsNearBUF.map((airport, index) => (
             <Marker
               key={`nearby-${index}`}
@@ -368,7 +368,6 @@ export default function Dashboard() {
               description={airport.airportCode}
             />
           ))}
-          {/* Markers for events */}
           {events.map((event, index) => (
             <Marker
               key={`event-${index}`}
@@ -409,11 +408,7 @@ export default function Dashboard() {
                 style={styles.resultGradient}
               >
                 <Feather 
-                  name={
-                    searchType === "airports" 
-                      ? "airplay" 
-                      : (typeof result.icon === 'string' ? result.icon : "calendar")
-                  } 
+                  name={searchType === "airports" ? "airplay" : "calendar"} 
                   size={20} 
                   color="#2F80ED" 
                   style={styles.resultIcon}
@@ -430,7 +425,6 @@ export default function Dashboard() {
           showsVerticalScrollIndicator={false}
           scrollEnabled={false}
         >
-          {/* Dashboard Features Grid */}
           <View style={styles.gridRow}>
             {features.slice(0, 2).map((feature, index) => (
               <LinearGradient
@@ -455,7 +449,6 @@ export default function Dashboard() {
               </LinearGradient>
             ))}
           </View>
-
           <View style={styles.gridRow}>
             {features.slice(2, 4).map((feature, index) => (
               <LinearGradient
@@ -480,7 +473,6 @@ export default function Dashboard() {
               </LinearGradient>
             ))}
           </View>
-
           <View style={styles.gridRow}>
             <View style={styles.halfButtonContainer}>
               {features.slice(4, 6).map((feature, index) => (
@@ -493,7 +485,13 @@ export default function Dashboard() {
                 >
                   <TouchableOpacity
                     style={styles.buttonInner}
-                    onPress={() => router.push(feature.screen)}
+                    onPress={() => {
+                      if (feature.title === "Status") {
+                        setShowStatusModal(true);
+                      } else {
+                        router.push(feature.screen);
+                      }
+                    }}
                   >
                     <LinearGradient
                       colors={['rgba(255, 255, 255, 0.3)', 'rgba(255, 255, 255, 0.1)']}
@@ -528,6 +526,55 @@ export default function Dashboard() {
           </View>
         </ScrollView>
       )}
+
+      {/* Status Modal */}
+      <Modal visible={showStatusModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalHeader}>Update Your Status</Text>
+            <View style={styles.modalSeparator} />
+            <View style={styles.statusOptions}>
+              {presetStatuses.map((status, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.statusOptionButton}
+                  onPress={() => {
+                    console.log("Selected preset status:", status);
+                    setShowStatusModal(false);
+                  }}
+                >
+                  <Text style={styles.statusOptionText}>{status}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.customStatusLabel}>Or enter a custom status</Text>
+            <TextInput
+              style={styles.customStatusInput}
+              value={customStatus}
+              onChangeText={setCustomStatus}
+              placeholder="Type your status here..."
+              placeholderTextColor="#999"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalActionButton}
+                onPress={() => {
+                  console.log("Selected custom status:", customStatus);
+                  setShowStatusModal(false);
+                }}
+              >
+                <Text style={styles.modalActionButtonText}>Submit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalActionButton, styles.modalCancelButton]}
+                onPress={() => setShowStatusModal(false)}
+              >
+                <Text style={[styles.modalActionButtonText, styles.modalCancelButtonText]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -672,8 +719,8 @@ const styles = StyleSheet.create({
   },
   buttonInner: {
     flex: 1,
-    width: '100%',  // Added to increase the touchable area
-    height: '100%', // Added to increase the touchable area
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -728,6 +775,97 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1E293B',
     fontFamily: 'Inter-SemiBold',
+  },
+  // Modal Styles (Professional & Sleek)
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalHeader: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalSeparator: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    width: '100%',
+    marginBottom: 15,
+  },
+  statusOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  statusOptionButton: {
+    flex: 1,
+    backgroundColor: '#2F80ED',
+    marginHorizontal: 4,
+    paddingVertical: 10,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusOptionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  customStatusLabel: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  customStatusInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 15,
+    fontSize: 14,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalActionButton: {
+    flex: 1,
+    backgroundColor: '#2F80ED',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalActionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  modalCancelButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#2F80ED',
+  },
+  modalCancelButtonText: {
+    color: '#2F80ED',
   },
 });
 
