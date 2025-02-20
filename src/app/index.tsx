@@ -1,13 +1,24 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
 import useAuth from "../hooks/auth"; // Import your auth hook
+import { useGetProfilePicUrl } from "../hooks/useSupabase";
 
 export default function MainScreen() {
   const router = useRouter();
   const { user, logout } = useAuth(); // Get the authenticated user and logout function
+  const { getProfilePicUrl } = useGetProfilePicUrl();
+
+  useEffect(() => {
+
+    console.log("User:", user);
+    if (user) {
+      const imageUrl = getProfilePicUrl(user.uid);
+      console.log(imageUrl);
+    }
+  }, [user]);
 
   return (
     <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>

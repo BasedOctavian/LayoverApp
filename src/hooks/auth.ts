@@ -70,7 +70,7 @@ const useAuth = () => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const userId = userCredential.user.uid;
-
+  
       const userDocRef = doc(db, "users", userId);
       await setDoc(userDocRef, {
         ...userData,
@@ -79,11 +79,13 @@ const useAuth = () => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-
+  
       setUser(userCredential.user);
+      return userId; // Return user ID for profile picture upload
     } catch (error) {
       const authError = error as AuthError;
       setError(authError.message);
+      throw authError; // Propagate error to component
     } finally {
       setLoading(false);
     }

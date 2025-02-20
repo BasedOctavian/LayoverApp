@@ -51,7 +51,8 @@
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to select a profile picture.",
           "cameraPermission": "Allow $(PRODUCT_NAME) to use your camera to take a profile photo."
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

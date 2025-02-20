@@ -18,6 +18,21 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from '@expo/vector-icons';
 import useAuth from "../hooks/auth";
 import * as ImagePicker from 'expo-image-picker';
+import { supabase } from "../../supabaseClient";
+import { useUploadProfilePic } from '../hooks/useSupabase';
+import { db } from "../../firebaseConfig";
+import { doc, updateDoc } from "@firebase/firestore";
+
+type IconName = "filter" | "mail" | "lock" | "user" | "calendar" | "edit-3" | "globe" | "heart" | "target" | "map-pin" | "smile" | "camera" | "type" | "key" | "map" | "search" | "repeat" | "anchor" | "upload"; // Add more as needed
+
+interface Step {
+  key: string;
+  label: string;
+  placeholder: string;
+  icon: IconName;
+  secure?: boolean;
+  keyboardType?: string;
+}
 
 const UserOnboarding = () => {
   const [step, setStep] = useState<number>(1);
@@ -25,8 +40,13 @@ const UserOnboarding = () => {
   const { signup, loading, error } = useAuth();
   const fadeAnim = useState(new Animated.Value(1))[0];
   const progressWidth = useState(new Animated.Value(0))[0];
+  const [bucketExists, setBucketExists] = useState<boolean | null>(null);
+  const [loadingBucket, setLoading] = useState<boolean>(true);
+  const { uploadProfilePic, uploading: uploadingImage, error: uploadError } = useUploadProfilePic();
+  const { user, logout } = useAuth();
+ 
 
-  const steps = [
+  const steps: Step[] = [
     { key: "email", label: "Email Address", placeholder: "Enter your email", icon: "mail", keyboardType: "email-address" },
     { key: "password", label: "Password", placeholder: "Create a password", icon: "lock", secure: true },
     { key: "name", label: "Full Name", placeholder: "Enter your name", icon: "user" },
@@ -69,6 +89,31 @@ const UserOnboarding = () => {
     setUserData({ ...userData, [key]: value });
   };
 
+  const handleSelectPhoto = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission required', 'We need access to your photos to set a profile picture');
+        return;
+      }
+  
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+  
+      if (!result.canceled) {
+        const selectedUri = result.assets[0].uri;
+        console.log('Selected image:', selectedUri);
+        handleInputChange("profilePicture", selectedUri);
+      }
+    } catch (err) {
+      console.log('Image picker error:', err);
+    }
+  };
+
   const handleNext = async () => {
     if (step < steps.length) {
       animateStepChange('next');
@@ -84,45 +129,51 @@ const UserOnboarding = () => {
           travelHistory: userData.travelHistory?.split(/,\s*/) || [],
           isAnonymous: false,
         };
-
-        await signup(userData.email, userData.password, userProfile);
+  
+        // 1. Create Firebase user first
+        const result = await signup(userData.email, userData.password, userProfile);
+        
+        // Handle signup errors
+        if (result.error) {
+          throw new Error(result.error.message || 'Account creation failed');
+        }
+        if (!result.user?.uid) {
+          throw new Error('User authentication failed - no UID received');
+        }
+  
+        // 2. Upload profile picture if selected
+        let profilePicUrl: string | null = null;
+        if (userData.profilePicture) {
+          try {
+            profilePicUrl = await uploadProfilePic(
+              result.user.uid, // Use the UID from fresh signup
+              userData.profilePicture
+            );
+          } catch (uploadError) {
+            console.error('Profile picture upload failed:', uploadError);
+            Alert.alert('Warning', 'Profile picture upload failed, but account was created successfully');
+          }
+        }
+  
+        // 3. Update user document with profile URL
+        try {
+          await updateDoc(doc(db, 'users', result.user.uid), {
+            ...userProfile,
+            profilePicture: profilePicUrl || null,
+            uid: result.user.uid // Ensure UID is stored in document
+          });
+        } catch (firestoreError) {
+          console.error('Firestore update failed:', firestoreError);
+          Alert.alert('Warning', 'Profile information update failed, but account was created successfully');
+        }
+  
         Alert.alert("Success", "Account created successfully!");
-      } catch (err) {
-        Alert.alert("Error", error || "Failed to create account");
+      } catch (err: any) {
+        Alert.alert("Error", err.message || "Failed to create account");
+        console.error('Registration error:', err);
       }
     }
   };
-
-  const handleSelectPhoto = async () => {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (!permissionResult.granted) {
-        Alert.alert('Permission required', 'We need access to your photos to set a profile picture');
-        return;
-      }
-  
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-  
-      if (!result.canceled) {
-        // Just print the selected image info
-        console.log('Selected image:', {
-          uri: result.assets[0].uri,
-          width: result.assets[0].width,
-          height: result.assets[0].height,
-          type: result.assets[0].type,
-        });
-      }
-    } catch (error) {
-      console.log('Image picker error:', error);
-    }
-  };
-  
 
   const handleBack = () => {
     if (step > 1) {
@@ -144,7 +195,6 @@ const UserOnboarding = () => {
             colors={['#F8FAFC', '#FFFFFF']}
             style={styles.backgroundGradient}
           >
-            {/* Progress Header */}
             <View style={styles.progressContainer}>
               <Text style={styles.stepCount}>Step {step} of {steps.length}</Text>
               <View style={styles.progressBar}>
@@ -157,7 +207,6 @@ const UserOnboarding = () => {
               </View>
             </View>
 
-            {/* Animated Content */}
             <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
               <View style={styles.stepContainer}>
                 <Feather name={currentStep.icon} size={32} color="#2F80ED" style={styles.stepIcon} />
@@ -189,7 +238,6 @@ const UserOnboarding = () => {
                 </LinearGradient>
               </View>
 
-              {/* Navigation Controls */}
               <View style={styles.buttonGroup}>
                 {step > 1 && (
                   <TouchableOpacity 
@@ -214,7 +262,7 @@ const UserOnboarding = () => {
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                   >
-                    {loading ? (
+                    {loading || uploadingImage ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
                       <Text style={styles.primaryButtonText}>
@@ -233,127 +281,27 @@ const UserOnboarding = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  fullScreen: {
-    flex: 1,
-  },
-  backgroundGradient: {
-    flex: 1,
-    padding: 24,
-  },
-  progressContainer: {
-    marginBottom: 32,
-    marginTop: 40,
-  },
-  stepCount: {
-    color: '#64748B',
-    fontSize: 14,
-    marginBottom: 8,
-    fontFamily: 'Inter-Medium',
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#2F80ED',
-  },
-  contentContainer: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  stepContainer: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  sectionTitle: {
-    color: '#1E293B',
-    fontSize: 28,
-    fontFamily: 'Inter-SemiBold',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  stepIcon: {
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  inputGradient: {
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  input: {
-    color: '#1E293B',
-    fontSize: 16,
-    minHeight: 48,
-    fontFamily: 'Inter-Regular',
-  },
-  buttonGroup: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
-    marginTop: 12,
-    marginBottom: 54,
-  },
-  secondaryButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 18,
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  secondaryButtonText: {
-    color: '#2F80ED',
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-  },
-  primaryButton: {
-    flex: 2,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#2F80ED',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  primaryButtonGradient: {
-    padding: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-  },
-  photoButton: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: 48,
-  },
-  photoButtonText: {
-    color: '#2F80ED',
-    fontSize: 16,
-    marginTop: 8,
-    fontFamily: 'Inter-SemiBold',
-  },
+  container: { flex: 1, backgroundColor: 'transparent' },
+  fullScreen: { flex: 1 },
+  backgroundGradient: { flex: 1, padding: 24 },
+  progressContainer: { marginBottom: 32, marginTop: 40 },
+  stepCount: { color: '#64748B', fontSize: 14, marginBottom: 8, fontFamily: 'Inter-Medium' },
+  progressBar: { height: 6, backgroundColor: '#F1F5F9', borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#2F80ED' },
+  contentContainer: { flex: 1, justifyContent: 'space-between' },
+  stepContainer: { flex: 1, justifyContent: 'center' },
+  sectionTitle: { color: '#1E293B', fontSize: 28, fontFamily: 'Inter-SemiBold', marginBottom: 24, textAlign: 'center' },
+  stepIcon: { alignSelf: 'center', marginBottom: 16 },
+  inputGradient: { borderRadius: 16, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3 },
+  input: { color: '#1E293B', fontSize: 16, minHeight: 48, fontFamily: 'Inter-Regular' },
+  buttonGroup: { flexDirection: 'row', justifyContent: 'space-between', gap: 16, marginTop: 12, marginBottom: 54 },
+  secondaryButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 18, borderRadius: 16, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
+  secondaryButtonText: { color: '#2F80ED', fontSize: 16, fontFamily: 'Inter-SemiBold' },
+  primaryButton: { flex: 2, borderRadius: 16, overflow: 'hidden', shadowColor: '#2F80ED', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+  primaryButtonGradient: { padding: 18, alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontFamily: 'Inter-SemiBold' },
+  photoButton: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 48 },
+  photoButtonText: { color: '#2F80ED', fontSize: 16, marginTop: 8, fontFamily: 'Inter-SemiBold' },
 });
 
 export default UserOnboarding;
