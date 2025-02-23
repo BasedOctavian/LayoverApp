@@ -10,7 +10,8 @@ import {
   AuthError,
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "../../firebaseConfig";
+import { auth, db, storage } from "../../firebaseConfig";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 interface UserData {
   age: number;
@@ -23,10 +24,9 @@ interface UserData {
   languages: string[];
   moodStatus: string;
   name: string;
-  profilePicture: string;
+  profilePicture: string; // This should be the local URI for the selected image
   travelHistory: string[];
   updatedAt: Date;
-  userId: string;
 }
 
 const useAuth = () => {
@@ -36,11 +36,7 @@ const useAuth = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUser(user);
-      } else {
-        setUser(null);
-      }
+      setUser(user || null);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -68,24 +64,38 @@ const useAuth = () => {
     setLoading(true);
     setError(null);
     try {
+      // Create the user using Firebase Auth.
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const userId = userCredential.user.uid;
-  
+
+      // If a profile picture URI is provided, upload the image using the UID as the filename.
+      let profilePicUrl: string | null = null;
+      if (userData.profilePicture) {
+        const response = await fetch(userData.profilePicture);
+        const blob = await response.blob();
+        // Use UID instead of a timestamp
+        const storageRef = ref(storage, `profilePictures/${userId}`);
+        await uploadBytes(storageRef, blob);
+        profilePicUrl = await getDownloadURL(storageRef);
+      }
+
+      // Create a Firestore user document with the UID and profile picture URL.
       const userDocRef = doc(db, "users", userId);
       await setDoc(userDocRef, {
         ...userData,
+        profilePicture: profilePicUrl,
         userId,
         email: userCredential.user.email,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-  
+
       setUser(userCredential.user);
-      return userId; // Return user ID for profile picture upload
+      return userCredential;
     } catch (error) {
       const authError = error as AuthError;
       setError(authError.message);
-      throw authError; // Propagate error to component
+      throw authError;
     } finally {
       setLoading(false);
     }
@@ -107,7 +117,7 @@ const useAuth = () => {
 
   return {
     user,
-    userId: user?.uid || null, // Added userId to return object
+    userId: user?.uid || null,
     loading,
     error,
     login,
