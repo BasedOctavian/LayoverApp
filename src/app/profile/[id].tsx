@@ -7,13 +7,14 @@ import {
   Image,
   ScrollView,
   Animated,
+  TouchableOpacity,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
+import { useLocalSearchParams, useRouter } from "expo-router";
 // Adjust the path to your firebase config file
 
 
@@ -24,7 +25,7 @@ const Profile = () => {
   const fadeAnim = useState(new Animated.Value(0))[0]; // For fade-in animation
   const { user, userId } = useAuth(); // Get the authenticated user and userId
   const { id } = useLocalSearchParams();
-  console.log(id);
+  const router = useRouter();
 
   // Fetch the authenticated user's data from Firestore
   useEffect(() => {
@@ -83,6 +84,12 @@ const Profile = () => {
 
   return (
     <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+      <TouchableOpacity
+        style={styles.settingsIcon}
+        onPress={() => router.push("profile/editProfile")}
+      >
+        <MaterialIcons name="settings" size={24} color="#fff" />
+      </TouchableOpacity>
       <ScrollView style={styles.scrollContainer}>
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* Profile Header */}
@@ -219,6 +226,13 @@ const styles = StyleSheet.create({
     color: "red",
     fontSize: 16,
     textAlign: "center",
+  },
+  settingsIcon: {
+    position: "absolute",
+    top: 40, // Adjust this value based on your status bar height
+    right: 20,
+    zIndex: 100,
+    padding: 10,
   },
   container: {
     flex: 1,
