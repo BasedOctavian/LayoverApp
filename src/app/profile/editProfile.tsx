@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
-import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
 import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
@@ -20,10 +20,26 @@ import { db, storage } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
 
+// Define an interface for our form data
+interface FormData {
+  name: string;
+  age: string;
+  moodStatus: string;
+  bio: string;
+  languages: string[];
+  interests: string[];
+  goals: string[];
+  travelHistory: string[];
+  profilePicture: string;
+}
+
+// Define a union type for the keys that hold array data
+type ProfileArrayField = "languages" | "interests" | "goals" | "travelHistory";
+
 const EditProfile = () => {
   const { userId } = useAuth();
   const { updateUser } = useUsers();
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     name: "",
     age: "",
     moodStatus: "",
@@ -78,7 +94,10 @@ const EditProfile = () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert("Permission required", "We need access to your photos to set a profile picture");
+        Alert.alert(
+          "Permission required",
+          "We need access to your photos to set a profile picture"
+        );
         return;
       }
 
@@ -90,8 +109,9 @@ const EditProfile = () => {
       });
 
       if (!result.canceled) {
-        const selectedUri = result.assets[0].uri;
-        setFormData(prev => ({ ...prev, profilePicture: selectedUri }));
+        // Ensure that the URI is not null
+        const selectedUri = result.assets[0].uri ?? "";
+        setFormData((prev) => ({ ...prev, profilePicture: selectedUri }));
       }
     } catch (err) {
       console.log("Image picker error:", err);
@@ -100,12 +120,16 @@ const EditProfile = () => {
   };
 
   const handleUpdateProfile = async () => {
+    if (!userId) {
+      Alert.alert("Error", "User not logged in");
+      return;
+    }
     setUpdating(true);
     try {
       let profilePicUrl = formData.profilePicture;
 
       // Upload new image if it's a local URI
-      if (profilePicUrl && !profilePicUrl.startsWith('http')) {
+      if (profilePicUrl && !profilePicUrl.startsWith("http")) {
         const response = await fetch(profilePicUrl);
         const blob = await response.blob();
         const storageRef = ref(storage, `profilePictures/${userId}`);
@@ -117,10 +141,10 @@ const EditProfile = () => {
         ...formData,
         profilePicture: profilePicUrl,
         age: parseInt(formData.age, 10),
-        languages: formData.languages.filter(l => l.trim() !== ""),
-        interests: formData.interests.filter(i => i.trim() !== ""),
-        goals: formData.goals.filter(g => g.trim() !== ""),
-        travelHistory: formData.travelHistory.filter(t => t.trim() !== ""),
+        languages: formData.languages.filter((l) => l.trim() !== ""),
+        interests: formData.interests.filter((i) => i.trim() !== ""),
+        goals: formData.goals.filter((g) => g.trim() !== ""),
+        travelHistory: formData.travelHistory.filter((t) => t.trim() !== ""),
         updatedAt: serverTimestamp(),
       };
 
@@ -134,26 +158,30 @@ const EditProfile = () => {
     }
   };
 
-  const handleAddField = (field: string) => {
-    setFormData(prev => ({
+  const handleAddField = (field: ProfileArrayField) => {
+    setFormData((prev) => ({
       ...prev,
-      [field]: [...prev[field], ""]
+      [field]: [...prev[field], ""],
     }));
   };
 
-  const handleRemoveField = (field: string, index: number) => {
-    setFormData(prev => ({
+  const handleRemoveField = (field: ProfileArrayField, index: number) => {
+    setFormData((prev) => ({
       ...prev,
-      [field]: prev[field].filter((_, i) => i !== index)
+      [field]: prev[field].filter((value: string, i: number) => i !== index),
     }));
   };
 
-  const handleFieldChange = (field: string, index: number, text: string) => {
+  const handleFieldChange = (
+    field: ProfileArrayField,
+    index: number,
+    text: string
+  ) => {
     const updatedFields = [...formData[field]];
     updatedFields[index] = text;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: updatedFields
+      [field]: updatedFields,
     }));
   };
 
@@ -173,7 +201,11 @@ const EditProfile = () => {
           <View style={styles.profileHeader}>
             <TouchableOpacity onPress={handleSelectPhoto}>
               <Image
-                source={{ uri: formData.profilePicture || "https://via.placeholder.com/150" }}
+                source={{
+                  uri:
+                    formData.profilePicture ||
+                    "https://via.placeholder.com/150",
+                }}
                 style={styles.profileImage}
               />
               <Text style={styles.changePhotoText}>Change Photo</Text>
@@ -187,63 +219,84 @@ const EditProfile = () => {
               style={styles.input}
               placeholder="Name"
               value={formData.name}
-              onChangeText={text => setFormData({ ...formData, name: text })}
+              onChangeText={(text) =>
+                setFormData({ ...formData, name: text })
+              }
             />
             <TextInput
               style={styles.input}
               placeholder="Age"
               value={formData.age}
-              onChangeText={text => setFormData({ ...formData, age: text })}
+              onChangeText={(text) =>
+                setFormData({ ...formData, age: text })
+              }
               keyboardType="numeric"
             />
             <TextInput
               style={styles.input}
               placeholder="Mood Status"
               value={formData.moodStatus}
-              onChangeText={text => setFormData({ ...formData, moodStatus: text })}
+              onChangeText={(text) =>
+                setFormData({ ...formData, moodStatus: text })
+              }
             />
             <TextInput
               style={[styles.input, { height: 80 }]}
               placeholder="Bio"
               value={formData.bio}
-              onChangeText={text => setFormData({ ...formData, bio: text })}
+              onChangeText={(text) =>
+                setFormData({ ...formData, bio: text })
+              }
               multiline
             />
           </View>
 
           {/* Dynamic Fields Section */}
-          {["languages", "interests", "goals", "travelHistory"].map((field) => (
-            <View key={field} style={styles.card}>
-              <Text style={styles.cardTitle}>
-                {field.charAt(0).toUpperCase() + field.slice(1)}
-              </Text>
-              {formData[field].map((value, index) => (
-                <View key={index} style={styles.fieldRow}>
-                  <TextInput
-                    style={[styles.input, { flex: 1 }]}
-                    value={value}
-                    onChangeText={text => handleFieldChange(field, index, text)}
-                    placeholder={`Enter ${field.slice(0, -1)}`}
-                    placeholderTextColor="#999"
-                  />
-                  <TouchableOpacity
-                    onPress={() => handleRemoveField(field, index)}
-                    style={styles.removeButton}
-                  >
-                    <MaterialIcons name="remove-circle" size={24} color="#ff4444" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => handleAddField(field)}
-              >
-                <Text style={styles.addButtonText}>
-                  <MaterialIcons name="add-circle" size={18} color="#6a11cb" /> Add {field.slice(0, -1)}
+          {(["languages", "interests", "goals", "travelHistory"] as ProfileArrayField[]).map(
+            (field) => (
+              <View key={field} style={styles.card}>
+                <Text style={styles.cardTitle}>
+                  {field.charAt(0).toUpperCase() + field.slice(1)}
                 </Text>
-              </TouchableOpacity>
-            </View>
-          ))}
+                {formData[field].map((value, index) => (
+                  <View key={index} style={styles.fieldRow}>
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      value={value}
+                      onChangeText={(text) =>
+                        handleFieldChange(field, index, text)
+                      }
+                      placeholder={`Enter ${field.slice(0, -1)}`}
+                      placeholderTextColor="#999"
+                    />
+                    <TouchableOpacity
+                      onPress={() => handleRemoveField(field, index)}
+                      style={styles.removeButton}
+                    >
+                      <MaterialIcons
+                        name="remove-circle"
+                        size={24}
+                        color="#ff4444"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={() => handleAddField(field)}
+                >
+                  <Text style={styles.addButtonText}>
+                    <MaterialIcons
+                      name="add-circle"
+                      size={18}
+                      color="#6a11cb"
+                    />{" "}
+                    Add {field.slice(0, -1)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )
+          )}
 
           {/* Save Button */}
           <TouchableOpacity

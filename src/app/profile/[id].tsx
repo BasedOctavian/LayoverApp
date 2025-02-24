@@ -15,8 +15,6 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
-// Adjust the path to your firebase config file
-
 
 const Profile = () => {
   const [userData, setUserData] = useState<any>(null); // Store the authenticated user's data
@@ -24,16 +22,21 @@ const Profile = () => {
   const [error, setError] = useState<string | null>(null); // Track errors
   const fadeAnim = useState(new Animated.Value(0))[0]; // For fade-in animation
   const { user, userId } = useAuth(); // Get the authenticated user and userId
-  const { id } = useLocalSearchParams();
+
+  // Extract id from the local search params.
+  // Since it can be either a string or an array, ensure it's a string.
+  const params = useLocalSearchParams();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  
   const router = useRouter();
 
   // Fetch the authenticated user's data from Firestore
   useEffect(() => {
     const fetchUserData = async () => {
-      if (userId) {
+      if (userId && id) {
         setLoading(true);
         try {
-          const userDocRef = doc(db, "users", id); // Reference the user's document
+          const userDocRef = doc(db, "users", id); // Now id is guaranteed to be a string
           const userDoc = await getDoc(userDocRef);
 
           if (userDoc.exists()) {
@@ -56,7 +59,7 @@ const Profile = () => {
       duration: 1000,
       useNativeDriver: true,
     }).start();
-  }, [userId]);
+  }, [userId, id, fadeAnim]);
 
   if (loading) {
     return (
@@ -95,14 +98,18 @@ const Profile = () => {
           {/* Profile Header */}
           <View style={styles.profileHeader}>
             <Image
-              source={{ uri: userData.profilePicture || "https://via.placeholder.com/150" }}
+              source={{
+                uri:
+                  userData.profilePicture || "https://via.placeholder.com/150",
+              }}
               style={styles.profileImage}
             />
             <Text style={styles.nameText}>
               {userData.name}, {userData.age}
             </Text>
             <Text style={styles.moodText}>
-              <MaterialIcons name="mood" size={16} color="#fff" /> {userData.moodStatus}
+              <MaterialIcons name="mood" size={16} color="#fff" />{" "}
+              {userData.moodStatus}
             </Text>
           </View>
 
@@ -154,7 +161,8 @@ const Profile = () => {
 
           {/* Member Since */}
           <Text style={styles.createdAtText}>
-            Member since: {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
+            Member since:{" "}
+            {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
           </Text>
         </Animated.View>
       </ScrollView>
