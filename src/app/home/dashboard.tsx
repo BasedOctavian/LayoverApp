@@ -1,5 +1,5 @@
 // Dashboard.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   View, 
   Text, 
@@ -8,7 +8,7 @@ import {
   ScrollView, 
   TextInput, 
   Animated, 
-  Modal 
+  Modal
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from '@expo/vector-icons';
@@ -19,6 +19,9 @@ import * as Location from "expo-location";
 import useAirports, { Airport } from "../../hooks/useAirports";
 import useEvents from "../../hooks/useEvents";
 import useSportEvents from "../../hooks/useSportEvents";
+// Import your update function and timestamp (adjust the path as needed)
+import useUsers from "../../hooks/useUsers";
+import { serverTimestamp } from 'firebase/firestore';
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -54,6 +57,7 @@ export default function Dashboard() {
   const { getEvents } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
   const [airportsNearBUF, setAirportsNearBUF] = useState<Airport[]>([]);
+  const { updateUser } = useUsers();
 
   // User location state
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
@@ -66,7 +70,52 @@ export default function Dashboard() {
   // Status modal state
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [customStatus, setCustomStatus] = useState("");
-  const presetStatuses = ["Down to Chat", "Food & Drinks?", "Work Mode", "Exploring the Airport"];
+  const presetStatuses = [
+    { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#FFFFFF" /> },
+    { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#FFFFFF" /> },
+    { label: "Work Mode", icon: <Feather name="briefcase" size={18} color="#FFFFFF" /> },
+    { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#FFFFFF" /> },
+  ];
+
+  // State to track mood update process
+  const [updatingMood, setUpdatingMood] = useState(false);
+
+  // State for styled popup notifications
+  const [popupData, setPopupData] = useState<{ visible: boolean; title: string; message: string; type: "success" | "error" }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "success",
+  });
+
+  const showPopup = (title: string, message: string, type: "success" | "error") => {
+    setPopupData({ visible: true, title, message, type });
+    setTimeout(() => {
+      setPopupData(prev => ({ ...prev, visible: false }));
+    }, 3000);
+  };
+
+  // Function to update moodStatus (similar to your handleUpdateProfile hook)
+  const handleUpdateMoodStatus = async (status: string) => {
+    if (!userId) {
+      showPopup("Error", "User not logged in", "error");
+      return;
+    }
+    setUpdatingMood(true);
+    try {
+      const updatedData = {
+        moodStatus: status,
+        updatedAt: serverTimestamp(),
+      };
+      await updateUser(userId, updatedData);
+      showPopup("Success", "Mood status updated successfully", "success");
+    } catch (error) {
+      showPopup("Error", "Failed to update mood status", "error");
+      console.error(error);
+    } finally {
+      setUpdatingMood(false);
+    }
+  };
 
   useEffect(() => {
     if (sportEvents.length > 0) {
@@ -539,11 +588,15 @@ export default function Dashboard() {
                   key={index}
                   style={styles.statusOptionButton}
                   onPress={() => {
-                    console.log("Selected preset status:", status);
+                    // Update moodStatus with the selected preset
+                    handleUpdateMoodStatus(status.label);
                     setShowStatusModal(false);
                   }}
                 >
-                  <Text style={styles.statusOptionText}>{status}</Text>
+                  <View style={styles.statusOptionContent}>
+                    {status.icon}
+                    <Text style={styles.statusOptionText}>{status.label}</Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -559,22 +612,37 @@ export default function Dashboard() {
               <TouchableOpacity
                 style={styles.modalActionButton}
                 onPress={() => {
-                  console.log("Selected custom status:", customStatus);
+                  // Update moodStatus with the custom input
+                  handleUpdateMoodStatus(customStatus);
                   setShowStatusModal(false);
                 }}
               >
+                <Feather name="check" size={18} color="#FFFFFF" style={styles.modalActionIcon} />
                 <Text style={styles.modalActionButtonText}>Submit</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalActionButton, styles.modalCancelButton]}
                 onPress={() => setShowStatusModal(false)}
               >
+                <Feather name="x" size={18} color="#2F80ED" style={styles.modalActionIcon} />
                 <Text style={[styles.modalActionButtonText, styles.modalCancelButtonText]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+      {/* Styled Popup Notification */}
+      {popupData.visible && (
+        <Modal transparent animationType="fade">
+          <View style={styles.popupOverlay}>
+            <View style={[styles.popupContainer, popupData.type === "error" ? styles.popupError : styles.popupSuccess]}>
+              <Text style={styles.popupTitle}>{popupData.title}</Text>
+              <Text style={styles.popupMessage}>{popupData.message}</Text>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -776,7 +844,7 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     fontFamily: 'Inter-SemiBold',
   },
-  // Modal Styles (Professional & Sleek)
+  // Modal Styles (for Status Update)
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -799,6 +867,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 12,
     textAlign: 'center',
+    color: '#1E293B',
   },
   modalSeparator: {
     height: 1,
@@ -808,38 +877,46 @@ const styles = StyleSheet.create({
   },
   statusOptions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 15,
   },
   statusOptionButton: {
-    flex: 1,
+    width: '48%', // Two buttons per row
     backgroundColor: '#2F80ED',
-    marginHorizontal: 4,
-    paddingVertical: 10,
+    marginVertical: 4,
+    paddingVertical: 12,
     borderRadius: 8,
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusOptionContent: {
     alignItems: 'center',
   },
   statusOptionText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '500',
+    marginTop: 5,
+    textAlign: 'center',
   },
   customStatusLabel: {
     fontSize: 14,
     color: '#333',
     marginBottom: 8,
+    marginTop: 15,
     textAlign: 'center',
   },
   customStatusInput: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#2F80ED',
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginBottom: 15,
     fontSize: 14,
+    color: '#1E293B',
   },
   modalActions: {
     flexDirection: 'row',
@@ -851,8 +928,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     marginHorizontal: 4,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalActionIcon: {
+    marginRight: 8,
   },
   modalActionButtonText: {
     color: '#fff',
@@ -866,6 +947,42 @@ const styles = StyleSheet.create({
   },
   modalCancelButtonText: {
     color: '#2F80ED',
+  },
+  // Popup Notification Styles
+  popupOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  popupContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    minWidth: "70%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+    marginBottom: 650,
+  },
+  popupTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  popupMessage: {
+    fontSize: 16,
+    textAlign: "center",
+  },
+  popupSuccess: {
+    borderLeftWidth: 6,
+    borderLeftColor: "#2F80ED",
+  },
+  popupError: {
+    borderLeftWidth: 6,
+    borderLeftColor: "#FF5A5F",
   },
 });
 
