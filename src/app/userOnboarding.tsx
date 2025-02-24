@@ -22,7 +22,7 @@ import useAuth from "../hooks/auth";
 
 const { width } = Dimensions.get("window");
 
-type StepKey = "email" | "password" | "profile" | "social";
+type StepKey = "email" | "profile" | "travel" | "social";
 
 interface Step {
   key: StepKey;
@@ -94,6 +94,13 @@ const UserOnboarding = () => {
           placeholder: "Alex Wanderlust",
         },
         {
+          key: "age",
+          label: "Age",
+          icon: "edit-3",
+          placeholder: "Enter your age",
+          keyboardType: "numeric",
+        },
+        {
           key: "bio",
           label: "Short Bio",
           icon: "edit-3",
@@ -105,6 +112,27 @@ const UserOnboarding = () => {
           icon: "camera",
           type: "image",
           placeholder: "",
+        },
+      ],
+    },
+    {
+      key: "travel",
+      title: "Share Your Travel Experience ✈️",
+      icon: "map-pin",
+      fields: [
+        {
+          key: "travelHistory",
+          label: "Travel History",
+          icon: "map-pin",
+          placeholder: "Countries visited, adventures experienced...",
+          type: "tags",
+        },
+        {
+          key: "goals",
+          label: "Travel Goals",
+          icon: "heart",
+          placeholder: "Your dream destinations, bucket-list goals...",
+          type: "tags",
         },
       ],
     },
@@ -185,8 +213,11 @@ const UserOnboarding = () => {
     try {
       const userProfile = {
         ...userData,
+        age: parseInt(userData.age, 10) || null,
         interests: userData.interests?.split(/,\s*/) || [],
         languages: userData.languages?.split(/,\s*/) || [],
+        travelHistory: userData.travelHistory?.split(/,\s*/) || [],
+        goals: userData.goals?.split(/,\s*/) || [],
         isAnonymous: false,
       };
 
@@ -285,8 +316,6 @@ const UserOnboarding = () => {
               { transform: [{ translateX: slideAnim }] },
             ]}
           >
-            
-
             <Text style={styles.title}>{steps[stepIndex].title}</Text>
 
             {steps[stepIndex].fields.map((field) => (
@@ -341,22 +370,21 @@ const UserOnboarding = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { 
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   gradient: {
     flex: 1,
-    paddingTop: 150,
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
     paddingHorizontal: 24,
   },
   contentContainer: {
-    flex: 1,
-  },
-  illustrationPlaceholder: {
-    height: 200,
-    justifyContent: "center",
+    width: "100%",
     alignItems: "center",
-    backgroundColor: "#E0E7FF",
-    borderRadius: 16,
-    marginBottom: 24,
   },
   title: {
     fontSize: 28,
@@ -365,7 +393,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 40,
   },
-  fieldContainer: { marginBottom: 24 },
+  fieldContainer: { marginBottom: 24, width: "100%" },
   fieldLabel: {
     color: "#64748B",
     fontFamily: "Inter-Medium",
@@ -452,7 +480,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 40,
     paddingBottom: 20,
   },
@@ -468,16 +497,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
-    marginTop: 50,
   },
   nextButton: {
-    flex: 1,
     borderRadius: 12,
     overflow: "hidden",
-    marginTop: 50,
   },
   buttonGradient: {
     paddingVertical: 18,
+    paddingHorizontal: 24,
     alignItems: "center",
   },
   buttonText: {
