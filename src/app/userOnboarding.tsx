@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  Text,
   View,
-  ActivityIndicator,
+  Text,
+  Image,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -10,89 +10,134 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  Alert,
   Animated,
-  Easing
+  Dimensions,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
-import useAuth from "../hooks/auth";
 import * as ImagePicker from "expo-image-picker";
+import useAuth from "../hooks/auth";
+
+const { width } = Dimensions.get("window");
+
+type StepKey = "email" | "password" | "profile" | "social";
+
+interface Step {
+  key: StepKey;
+  title: string;
+  icon: IconName;
+  fields: Field[];
+}
+
+interface Field {
+  key: string;
+  label: string;
+  icon: IconName;
+  placeholder: string;
+  type?: "text" | "password" | "image" | "tags";
+  keyboardType?: string;
+  secure?: boolean;
+}
 
 type IconName =
-  | "filter"
   | "mail"
   | "lock"
   | "user"
-  | "calendar"
   | "edit-3"
-  | "globe"
-  | "heart"
-  | "target"
-  | "map-pin"
-  | "smile"
   | "camera"
-  | "type"
-  | "key"
-  | "map"
-  | "search"
-  | "repeat"
-  | "anchor"
-  | "upload";
-
-interface Step {
-  key: string;
-  label: string;
-  placeholder: string;
-  icon: IconName;
-  secure?: boolean;
-  keyboardType?: string;
-}
+  | "heart"
+  | "globe"
+  | "send"
+  | "map-pin"
+  | "briefcase";
 
 const UserOnboarding = () => {
-  const [step, setStep] = useState<number>(1);
+  const [stepIndex, setStepIndex] = useState(0);
   const [userData, setUserData] = useState<any>({});
   const { signup, loading } = useAuth();
-  const fadeAnim = useState(new Animated.Value(1))[0];
-  const progressWidth = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(0))[0];
 
   const steps: Step[] = [
-    { key: "email", label: "Email Address", placeholder: "Enter your email", icon: "mail", keyboardType: "email-address" },
-    { key: "password", label: "Password", placeholder: "Create a password", icon: "lock", secure: true },
-    { key: "name", label: "Full Name", placeholder: "Enter your name", icon: "user" },
-    { key: "age", label: "Age", placeholder: "Enter your age", icon: "calendar", keyboardType: "numeric" },
-    { key: "bio", label: "Bio", placeholder: "Tell us about yourself", icon: "edit-3" },
-    { key: "languages", label: "Languages", placeholder: "English, Spanish", icon: "globe" },
-    { key: "interests", label: "Interests", placeholder: "Hiking, Photography", icon: "heart" },
-    { key: "goals", label: "Goals", placeholder: "Travel, Learn", icon: "target" },
-    { key: "travelHistory", label: "Travel History", placeholder: "Italy, Japan", icon: "map-pin" },
-    { key: "moodStatus", label: "Current Mood", placeholder: "Excited, Relaxed", icon: "smile" },
-    { key: "profilePicture", label: "Profile Photo", placeholder: "Image URL", icon: "camera" },
+    {
+      key: "email",
+      title: "Let's Get You Boarded! ✈️",
+      icon: "send",
+      fields: [
+        {
+          key: "email",
+          label: "Email",
+          icon: "mail",
+          placeholder: "flyer@skyconnect.com",
+          keyboardType: "email-address",
+        },
+        {
+          key: "password",
+          label: "Password",
+          icon: "lock",
+          placeholder: "••••••••",
+          type: "password",
+          secure: true,
+        },
+      ],
+    },
+    {
+      key: "profile",
+      title: "Your Travel Persona 🌍",
+      icon: "user",
+      fields: [
+        {
+          key: "name",
+          label: "Full Name",
+          icon: "user",
+          placeholder: "Alex Wanderlust",
+        },
+        {
+          key: "bio",
+          label: "Short Bio",
+          icon: "edit-3",
+          placeholder: "Digital nomad & coffee enthusiast...",
+        },
+        {
+          key: "profilePicture",
+          label: "Profile Photo",
+          icon: "camera",
+          type: "image",
+          placeholder: "",
+        },
+      ],
+    },
+    {
+      key: "social",
+      title: "Connect Your Interests 🧳",
+      icon: "briefcase",
+      fields: [
+        {
+          key: "interests",
+          label: "Travel Interests",
+          icon: "heart",
+          placeholder: "Hiking, Local cuisine...",
+          type: "tags",
+        },
+        {
+          key: "languages",
+          label: "Languages",
+          icon: "globe",
+          placeholder: "English, Spanish...",
+          type: "tags",
+        },
+      ],
+    },
   ];
 
-  useEffect(() => {
-    Animated.timing(progressWidth, {
-      toValue: (step / steps.length) * 100,
-      duration: 500,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false
+  const animateStep = (direction: "next" | "prev") => {
+    slideAnim.setValue(direction === "next" ? 50 : -50);
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      speed: 20,
+      useNativeDriver: true,
     }).start();
-  }, [step]);
-
-  const animateStepChange = (direction: "next" | "back") => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        delay: 200,
-        useNativeDriver: true
-      })
-    ]).start();
   };
 
   const handleInputChange = (key: string, value: string) => {
@@ -101,9 +146,13 @@ const UserOnboarding = () => {
 
   const handleSelectPhoto = async () => {
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert("Permission required", "We need access to your photos to set a profile picture");
+        Alert.alert(
+          "Permission required",
+          "We need access to your photos to set a profile picture"
+        );
         return;
       }
 
@@ -116,9 +165,7 @@ const UserOnboarding = () => {
 
       if (!result.canceled) {
         const selectedUri = result.assets[0].uri;
-        // Simply save the local URI in state; the auth hook will handle the upload
         handleInputChange("profilePicture", selectedUri);
-        console.log("Selected image URI:", selectedUri);
       }
     } catch (err) {
       console.log("Image picker error:", err);
@@ -126,173 +173,318 @@ const UserOnboarding = () => {
   };
 
   const handleNext = async () => {
-    if (step < steps.length) {
-      animateStepChange("next");
-      setStep(step + 1);
+    if (stepIndex < steps.length - 1) {
+      animateStep("next");
+      setStepIndex((prev) => prev + 1);
     } else {
-      try {
-        const userProfile = {
-          ...userData,
-          age: Number(userData.age),
-          languages: userData.languages?.split(/,\s*/) || [],
-          interests: userData.interests?.split(/,\s*/) || [],
-          goals: userData.goals?.split(/,\s*/) || [],
-          travelHistory: userData.travelHistory?.split(/,\s*/) || [],
-          isAnonymous: false,
-        };
+      await handleSubmit();
+    }
+  };
 
-        // Create Firebase user (the signup function will also handle the profile picture upload)
-        const result = await signup(userData.email, userData.password, userProfile);
+  const handleSubmit = async () => {
+    try {
+      const userProfile = {
+        ...userData,
+        interests: userData.interests?.split(/,\s*/) || [],
+        languages: userData.languages?.split(/,\s*/) || [],
+        isAnonymous: false,
+      };
 
-        if (!result.user?.uid) {
-          throw new Error("User authentication failed - no UID received");
-        }
+      const result = await signup(
+        userData.email,
+        userData.password,
+        userProfile
+      );
 
-        Alert.alert("Success", "Account created successfully!");
-      } catch (err: any) {
-        Alert.alert("Error", err.message || "Failed to create account");
-        console.error("Registration error:", err);
+      if (!result.user?.uid) {
+        throw new Error("User authentication failed - no UID received");
       }
+
+      Alert.alert("Success", "Account created successfully!");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to create account");
+      console.error("Registration error:", err);
     }
   };
 
-  const handleBack = () => {
-    if (step > 1) {
-      animateStepChange("back");
-      setStep(step - 1);
+  const renderField = (field: Field) => {
+    switch (field.type) {
+      case "image":
+        return (
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={handleSelectPhoto}
+          >
+            {userData.profilePicture ? (
+              <Image
+                source={{ uri: userData.profilePicture }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Feather name="user" size={32} color="#4F46E5" />
+              </View>
+            )}
+            <View style={styles.cameraBadge}>
+              <Feather name="camera" size={16} color="white" />
+            </View>
+          </TouchableOpacity>
+        );
+      case "tags":
+        return (
+          <View style={styles.tagsContainer}>
+            <TextInput
+              style={styles.tagsInput}
+              placeholder={field.placeholder}
+              placeholderTextColor="#94A3B8"
+              onChangeText={(text) => handleInputChange(field.key, text)}
+              value={userData[field.key]}
+            />
+            <View style={styles.tagsPreview}>
+              {userData[field.key]
+                ?.split(",")
+                .map((tag: string, index: number) => (
+                  <View key={index} style={styles.tag}>
+                    <Text style={styles.tagText}>{tag.trim()}</Text>
+                  </View>
+                ))}
+            </View>
+          </View>
+        );
+      default:
+        return (
+          <View style={styles.inputContainer}>
+            <Feather name={field.icon} size={20} color="#64748B" />
+            <TextInput
+              style={styles.input}
+              placeholder={field.placeholder}
+              placeholderTextColor="#94A3B8"
+              secureTextEntry={field.secure}
+              keyboardType={field.keyboardType}
+              onChangeText={(text) => handleInputChange(field.key, text)}
+              value={userData[field.key]}
+            />
+          </View>
+        );
     }
   };
-
-  const currentStep = steps[step - 1];
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.fullScreen}>
-          <LinearGradient colors={["#F8FAFC", "#FFFFFF"]} style={styles.backgroundGradient}>
-            <View style={styles.progressContainer}>
-              <Text style={styles.stepCount}>
-                Step {step} of {steps.length}
-              </Text>
-              <View style={styles.progressBar}>
-                <Animated.View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: progressWidth.interpolate({
-                        inputRange: [0, 100],
-                        outputRange: ["0%", "100%"]
-                      })
-                    }
-                  ]}
-                />
-              </View>
-            </View>
+        <LinearGradient
+          colors={["#F8FAFF", "#EFF2FF"]}
+          style={styles.gradient}
+        >
+          <Animated.View
+            style={[
+              styles.contentContainer,
+              { transform: [{ translateX: slideAnim }] },
+            ]}
+          >
+            
 
-            <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
-              <View style={styles.stepContainer}>
-                <Feather name={currentStep.icon} size={32} color="#2F80ED" style={styles.stepIcon} />
-                <Text style={styles.sectionTitle}>{currentStep.label}</Text>
-                <LinearGradient colors={["#FFFFFF", "#F1F5F9"]} style={styles.inputGradient}>
-                  {currentStep.key === "profilePicture" ? (
-                    <TouchableOpacity style={styles.photoButton} onPress={handleSelectPhoto}>
-                      <Feather name="upload" size={24} color="#2F80ED" />
-                      <Text style={styles.photoButtonText}>
-                        {userData.profilePicture ? "Photo Selected" : "Select from Gallery"}
-                      </Text>
-                    </TouchableOpacity>
+            <Text style={styles.title}>{steps[stepIndex].title}</Text>
+
+            {steps[stepIndex].fields.map((field) => (
+              <View key={field.key} style={styles.fieldContainer}>
+                <Text style={styles.fieldLabel}>{field.label}</Text>
+                {renderField(field)}
+              </View>
+            ))}
+
+            <View style={styles.footer}>
+              {stepIndex > 0 && (
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={() => {
+                    animateStep("prev");
+                    setStepIndex((prev) => prev - 1);
+                  }}
+                >
+                  <Feather name="chevron-left" size={24} color="#4F46E5" />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.nextButton,
+                  stepIndex > 0 && { marginLeft: 16 },
+                ]}
+                onPress={handleNext}
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={["#6366F1", "#4F46E5"]}
+                  style={styles.buttonGradient}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
                   ) : (
-                    <TextInput
-                      style={styles.input}
-                      placeholder={currentStep.placeholder}
-                      placeholderTextColor="#94A3B8"
-                      value={userData[currentStep.key] || ""}
-                      onChangeText={(text) => handleInputChange(currentStep.key, text)}
-                      secureTextEntry={currentStep.secure}
-                      autoCapitalize="none"
-                      multiline={currentStep.key === "bio"}
-                    />
+                    <Text style={styles.buttonText}>
+                      {stepIndex === steps.length - 1
+                        ? "Start Exploring! ✈️"
+                        : "Continue Journey →"}
+                    </Text>
                   )}
                 </LinearGradient>
-              </View>
-
-              <View style={styles.buttonGroup}>
-                {step > 1 && (
-                  <TouchableOpacity style={styles.secondaryButton} onPress={handleBack} activeOpacity={0.9}>
-                    <Feather name="arrow-left" size={20} color="#2F80ED" />
-                    <Text style={styles.secondaryButtonText}>Back</Text>
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity onPress={handleNext} disabled={loading} activeOpacity={0.9} style={styles.primaryButton}>
-                  <LinearGradient
-                    colors={["#2F80ED", "#1A5FB4"]}
-                    style={styles.primaryButtonGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>
-                        {step === steps.length ? "Create Account" : "Continue"}
-                      </Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
-          </LinearGradient>
-        </View>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </LinearGradient>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "transparent" },
-  fullScreen: { flex: 1 },
-  backgroundGradient: { flex: 1, padding: 24 },
-  progressContainer: { marginBottom: 32, marginTop: 40 },
-  stepCount: { color: "#64748B", fontSize: 14, marginBottom: 8, fontFamily: "Inter-Medium" },
-  progressBar: { height: 6, backgroundColor: "#F1F5F9", borderRadius: 3, overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: "#2F80ED" },
-  contentContainer: { flex: 1, justifyContent: "space-between" },
-  stepContainer: { flex: 1, justifyContent: "center" },
-  sectionTitle: { color: "#1E293B", fontSize: 28, fontFamily: "Inter-SemiBold", marginBottom: 24, textAlign: "center" },
-  stepIcon: { alignSelf: "center", marginBottom: 16 },
-  inputGradient: {
+  container: { flex: 1 },
+  gradient: {
+    flex: 1,
+    paddingTop: 150,
+    paddingHorizontal: 24,
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  illustrationPlaceholder: {
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#E0E7FF",
     borderRadius: 16,
-    padding: 20,
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontFamily: "Inter-Bold",
+    color: "#1E293B",
+    textAlign: "center",
+    marginBottom: 40,
+  },
+  fieldContainer: { marginBottom: 24 },
+  fieldLabel: {
+    color: "#64748B",
+    fontFamily: "Inter-Medium",
+    marginBottom: 8,
+    fontSize: 14,
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3
+    shadowRadius: 4,
+    elevation: 2,
   },
-  input: { color: "#1E293B", fontSize: 16, minHeight: 48, fontFamily: "Inter-Regular" },
-  buttonGroup: { flexDirection: "row", justifyContent: "space-between", gap: 16, marginTop: 12, marginBottom: 54 },
-  secondaryButton: {
+  input: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    padding: 18,
-    borderRadius: 16,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0"
+    marginLeft: 12,
+    fontSize: 16,
+    color: "#1E293B",
+    fontFamily: "Inter-Regular",
   },
-  secondaryButtonText: { color: "#2F80ED", fontSize: 16, fontFamily: "Inter-SemiBold" },
-  primaryButton: { flex: 2, borderRadius: 16, overflow: "hidden", shadowColor: "#2F80ED", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
-  primaryButtonGradient: { padding: 18, alignItems: "center", justifyContent: "center" },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontFamily: "Inter-SemiBold" },
-  photoButton: { flex: 1, justifyContent: "center", alignItems: "center", minHeight: 48 },
-  photoButtonText: { color: "#2F80ED", fontSize: 16, marginTop: 8, fontFamily: "Inter-SemiBold" }
+  avatarContainer: {
+    alignSelf: "center",
+    marginBottom: 24,
+  },
+  avatarPlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#E0E7FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatar: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#4F46E5",
+    padding: 8,
+    borderRadius: 20,
+  },
+  tagsContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tagsInput: {
+    fontSize: 16,
+    color: "#1E293B",
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  tagsPreview: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
+  tag: {
+    backgroundColor: "#E0E7FF",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  tagText: {
+    color: "#4F46E5",
+    fontFamily: "Inter-Medium",
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 40,
+    paddingBottom: 20,
+  },
+  backButton: {
+    width: 50,
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    marginTop: 50,
+  },
+  nextButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: 50,
+  },
+  buttonGradient: {
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  buttonText: {
+    color: "#fff",
+    fontFamily: "Inter-Bold",
+    fontSize: 16,
+  },
 });
 
 export default UserOnboarding;
