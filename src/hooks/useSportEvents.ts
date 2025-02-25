@@ -5,25 +5,18 @@ import axios from "axios";
 export interface UseSportEventsParams {
   /** Date in YYYY-MM-DD format */
   date: string;
-  /** Optional sport filter (e.g. "Soccer") */
-  sport?: string;
-  /** Optional league filter (e.g. "4356" or "Australian_A-League") */
-  league?: string;
 }
 
 export interface Event {
-  idEvent: string;
-  strEvent: string;
-  strSport?: string;
-  strLeague?: string;
-  dateEvent?: string;
-  strTime?: string;
-  // add any additional properties as needed
+  // Define additional properties as needed based on the API response
+  id: string;
+  // For example: scheduled time, teams, etc.
 }
 
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
+const API_KEY = "IVi41AreCEkfN6XI042YsBF6P5FlKquysnMeRpIc";
+const BASE_URL = "https://api.sportradar.com/nba/trial/v8/en";
 
-const useSportEvents = ({ date, sport, league }: UseSportEventsParams) => {
+const useSportEvents = ({ date }: UseSportEventsParams) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,24 +24,15 @@ const useSportEvents = ({ date, sport, league }: UseSportEventsParams) => {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const utcDate = new Date(date).toISOString().split("T")[0]; // Ensure correct UTC format
-        console.log("Fetching events for date:", utcDate);
-  
-        // Build query parameters based on input
-        const params = new URLSearchParams();
-        params.append("d", utcDate);
-        if (sport) {
-          params.append("s", sport);
-        }
-        if (league) {
-          params.append("l", league);
-        }
-        const url = `${BASE_URL}/eventsday.php?${params.toString()}`;
-         console.log("API Request URL:", url);
-  
+        // Parse the provided date (YYYY-MM-DD) into year, month, and day
+        const [year, month, day] = date.split("-");
+        const url = `${BASE_URL}/games/${year}/${month}/${day}/schedule.json?api_key=${API_KEY}`;
+        console.log("Fetching events for date:", date);
+        console.log("API Request URL:", url);
+
         const response = await axios.get(url);
-        const eventsData = response.data.events ? response.data.events : [];
-  
+        const eventsData = response.data.games || [];
+        console.log("Fetched events:", eventsData);
         setEvents(eventsData);
       } catch (err: any) {
         if (err.response) {
@@ -56,14 +40,14 @@ const useSportEvents = ({ date, sport, league }: UseSportEventsParams) => {
         } else {
           setError("An error occurred while fetching events.");
         }
-        console.error("Error fetching sports events:", err);
+        console.error("Error fetching events:", err);
       } finally {
         setLoading(false);
       }
     };
-  
+
     fetchEvents();
-  }, [date, sport, league]);
+  }, [date]);
 
   return { events, loading, error };
 };

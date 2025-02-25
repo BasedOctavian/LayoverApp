@@ -68,7 +68,7 @@ export default function Dashboard() {
 
 
 
-  const { events: sportEvents } = useSportEvents({ date: "2025-02-24" });
+  const { events: sportEvents } = useSportEvents({ date: "2025-02-28" });
 
   // Status modal state
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -122,49 +122,53 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (sportEvents.length > 0 && selectedAirport) {
-      const filteredEvents = sportEvents.map((event: any) => ({
-        eventName: event.strEvent || "N/A",
-        venue: event.strVenue || "Venue not available",
-        location:
-          (event.strCity ? event.strCity + ", " : "") +
-          (event.strCountry ? event.strCountry : "Location not available"),
-        time: event.strTime || event.dateEvent || "Time not available",
-      }));
-  
-      //console.log(filteredEvents);
-  
       // Extract city and state from the airport location
       const airportLocationParts = selectedAirport.location
         .split(",")
-        .map(part => part.trim().toLowerCase());
-  
+        .map((part) => part.trim().toLowerCase());
       const airportCity = airportLocationParts[0] || "";
       const airportState = airportLocationParts[1] || "";
   
-      // Find matching events based on exact location or city/state in eventName
-      const matchingEvents = filteredEvents.filter(event => {
-        const eventLocation = event.location.trim().toLowerCase();
-        const eventName = event.eventName.toLowerCase();
+      // Find matching events based on exact location or if event name contains the city or state
+      const matchingEvents = sportEvents.filter((event: any) => {
+        const eventLocation = event.venue
+          ? `${event.venue.city}, ${event.venue.state}`
+          : "Location not available";
+        const eventName = event.name ? event.name.toLowerCase() : "";
   
         // Check if the event location exactly matches the airport location
-        const isExactLocationMatch = eventLocation === selectedAirport.location.trim().toLowerCase();
+        const isExactLocationMatch =
+          eventLocation.trim().toLowerCase() === selectedAirport.location.trim().toLowerCase();
   
-        // Check if the eventName contains city or state
+        // Check if the event name contains the city or state
         const isCityOrStateInEventName =
-          airportCity && eventName.includes(airportCity) ||
-          airportState && eventName.includes(airportState);
+          (airportCity && eventName.includes(airportCity)) ||
+          (airportState && eventName.includes(airportState));
   
         return isExactLocationMatch || isCityOrStateInEventName;
       });
   
       if (matchingEvents.length > 0) {
-        console.log("Sport events matching current airport location or name:", matchingEvents);
+        matchingEvents.forEach((event) => {
+          const homeTeam = event.home ? event.home.name : "Home team not available";
+          const awayTeam = event.away ? event.away.name : "Away team not available";
+          const scheduledTimeUTC = event.scheduled || "Time not available";
+  
+          // Convert UTC time to user's local time
+          const localTime = scheduledTimeUTC
+            ? new Date(scheduledTimeUTC).toLocaleString()
+            : "Time not available";
+  
+          console.log(`Game: ${awayTeam} vs. ${homeTeam}, Local Time: ${localTime}`);
+        });
       } else {
         console.log("No sport events found for the current airport location.");
       }
     }
   }, [sportEvents, selectedAirport]);
-  // Added selectedAirport to dependencies
+  
+  
+  
 
   // Fetch events on mount
   useEffect(() => {
