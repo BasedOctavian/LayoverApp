@@ -159,13 +159,20 @@ export default function Dashboard() {
             ? new Date(scheduledTimeUTC).toLocaleString()
             : "Time not available";
   
-          console.log(`Game: ${awayTeam} vs. ${homeTeam}, Local Time: ${localTime}`);
+          // Get UID and venue details
+          const eventUID = event.id || "UID not available";
+          const venueName = event.venue ? event.venue.name : "Venue not available";
+  
+          console.log(
+            `Game: ${awayTeam} vs. ${homeTeam}, Local Time: ${localTime}, UID: ${eventUID}, Venue: ${venueName}`
+          );
         });
       } else {
         console.log("No sport events found for the current airport location.");
       }
     }
   }, [sportEvents, selectedAirport]);
+  
   
   
   

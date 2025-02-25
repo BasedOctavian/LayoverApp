@@ -32,7 +32,6 @@ const useSportEvents = ({ date }: UseSportEventsParams) => {
 
         const response = await axios.get(url);
         const eventsData = response.data.games || [];
-        console.log("Fetched events:", eventsData);
         setEvents(eventsData);
       } catch (err: any) {
         if (err.response) {
