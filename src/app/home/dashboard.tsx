@@ -118,18 +118,23 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (sportEvents.length > 0) {
-      const filteredEvents = sportEvents.map((event: any) => ({
-        eventName: event.strEvent || "N/A",
-        venue: event.strVenue || "Venue not available",
-        location:
-          (event.strCity ? event.strCity + ", " : "") +
-          (event.strCountry ? event.strCountry : "Location not available"),
-        time: event.strTime || event.dateEvent || "Time not available",
-      }));
-      console.log(filteredEvents);
-    }
-  }, [sportEvents]);
+    console.log(selectedAirport);
+
+    sportEvents.forEach(event => {
+      const eventLocation = 
+        (event.strCity ? `${event.strCity}, ` : '') + 
+        (event.strCountry || 'Location not available');
+  
+      if (eventLocation === "Tianjin, China") {
+        console.log({
+          eventName: event.strEvent || "N/A",
+          venue: event.strVenue || "Venue not available",
+          location: eventLocation,
+          time: event.strTime || event.dateEvent || "Time not available",
+        });
+      }
+    });
+  }, [sportEvents, selectedAirport]);
 
   // Fetch events on mount
   useEffect(() => {
