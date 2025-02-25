@@ -21,6 +21,7 @@ export type Airport = {
   long: number;
   // Optionally, you could include a calculated field like distance.
   distance?: number;
+  location?: string;
 };
 
 /**

@@ -65,7 +65,10 @@ export default function Dashboard() {
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
 
-  const { events: sportEvents } = useSportEvents({ date: "2025-02-16" });
+
+
+
+  const { events: sportEvents } = useSportEvents({ date: "2025-02-24" });
 
   // Status modal state
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -118,30 +121,56 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    console.log(selectedAirport);
-
-    sportEvents.forEach(event => {
-      const eventLocation = 
-        (event.strCity ? `${event.strCity}, ` : '') + 
-        (event.strCountry || 'Location not available');
+    if (sportEvents.length > 0 && selectedAirport) {
+      const filteredEvents = sportEvents.map((event: any) => ({
+        eventName: event.strEvent || "N/A",
+        venue: event.strVenue || "Venue not available",
+        location:
+          (event.strCity ? event.strCity + ", " : "") +
+          (event.strCountry ? event.strCountry : "Location not available"),
+        time: event.strTime || event.dateEvent || "Time not available",
+      }));
   
-      if (eventLocation === "Tianjin, China") {
-        console.log({
-          eventName: event.strEvent || "N/A",
-          venue: event.strVenue || "Venue not available",
-          location: eventLocation,
-          time: event.strTime || event.dateEvent || "Time not available",
-        });
+      //console.log(filteredEvents);
+  
+      // Extract city and state from the airport location
+      const airportLocationParts = selectedAirport.location
+        .split(",")
+        .map(part => part.trim().toLowerCase());
+  
+      const airportCity = airportLocationParts[0] || "";
+      const airportState = airportLocationParts[1] || "";
+  
+      // Find matching events based on exact location or city/state in eventName
+      const matchingEvents = filteredEvents.filter(event => {
+        const eventLocation = event.location.trim().toLowerCase();
+        const eventName = event.eventName.toLowerCase();
+  
+        // Check if the event location exactly matches the airport location
+        const isExactLocationMatch = eventLocation === selectedAirport.location.trim().toLowerCase();
+  
+        // Check if the eventName contains city or state
+        const isCityOrStateInEventName =
+          airportCity && eventName.includes(airportCity) ||
+          airportState && eventName.includes(airportState);
+  
+        return isExactLocationMatch || isCityOrStateInEventName;
+      });
+  
+      if (matchingEvents.length > 0) {
+        console.log("Sport events matching current airport location or name:", matchingEvents);
+      } else {
+        console.log("No sport events found for the current airport location.");
       }
-    });
+    }
   }, [sportEvents, selectedAirport]);
+  // Added selectedAirport to dependencies
 
   // Fetch events on mount
   useEffect(() => {
     const loadEvents = async () => {
       const eventsData = await getEvents();
       if (eventsData) {
-        console.log(eventsData);
         setEvents(eventsData);
       }
     };

@@ -31,9 +31,12 @@ const useSportEvents = ({ date, sport, league }: UseSportEventsParams) => {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
+        const utcDate = new Date(date).toISOString().split("T")[0]; // Ensure correct UTC format
+        console.log("Fetching events for date:", utcDate);
+  
         // Build query parameters based on input
         const params = new URLSearchParams();
-        params.append("d", date);
+        params.append("d", utcDate);
         if (sport) {
           params.append("s", sport);
         }
@@ -41,9 +44,11 @@ const useSportEvents = ({ date, sport, league }: UseSportEventsParams) => {
           params.append("l", league);
         }
         const url = `${BASE_URL}/eventsday.php?${params.toString()}`;
+         console.log("API Request URL:", url);
+  
         const response = await axios.get(url);
-        // TheSportsDB returns { events: null } if no events are found
         const eventsData = response.data.events ? response.data.events : [];
+  
         setEvents(eventsData);
       } catch (err: any) {
         if (err.response) {
@@ -56,7 +61,7 @@ const useSportEvents = ({ date, sport, league }: UseSportEventsParams) => {
         setLoading(false);
       }
     };
-
+  
     fetchEvents();
   }, [date, sport, league]);
 
