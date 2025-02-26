@@ -19,7 +19,6 @@ import * as Location from "expo-location";
 import useAirports, { Airport } from "../../hooks/useAirports";
 import useEvents from "../../hooks/useEvents";
 import useSportEvents from "../../hooks/useSportEvents";
-// Import your update function and timestamp (adjust the path as needed)
 import useUsers from "../../hooks/useUsers";
 import { serverTimestamp } from 'firebase/firestore';
 
@@ -30,9 +29,6 @@ type FeatureButton = {
   size?: 'half' | 'full';
 };
 
-/**
- * Haversine formula calculates the distance (in kilometers) between two geographic points.
- */
 function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
   const toRad = (value: number) => (value * Math.PI) / 180;
   const R = 6371; // Earth's radius in kilometers
@@ -59,18 +55,14 @@ export default function Dashboard() {
   const [airportsNearBUF, setAirportsNearBUF] = useState<Airport[]>([]);
   const { updateUser } = useUsers();
 
-  // User location state
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
-  // Selected airport state
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
 
+  const { getSportEvents } = useSportEvents();
+  const [allSportEvents, setAllSportEvents] = useState<any[]>([]);
+  const [matchingEvents, setMatchingEvents] = useState<any[]>([]);
 
-
-
-  const { events: sportEvents } = useSportEvents({ date: "2025-02-28" });
-
-  // Status modal state
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [customStatus, setCustomStatus] = useState("");
   const presetStatuses = [
@@ -80,10 +72,8 @@ export default function Dashboard() {
     { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#FFFFFF" /> },
   ];
 
-  // State to track mood update process
   const [updatingMood, setUpdatingMood] = useState(false);
 
-  // State for styled popup notifications
   const [popupData, setPopupData] = useState<{ visible: boolean; title: string; message: string; type: "success" | "error" }>({
     visible: false,
     title: "",
@@ -98,7 +88,6 @@ export default function Dashboard() {
     }, 3000);
   };
 
-  // Function to update moodStatus (similar to your handleUpdateProfile hook)
   const handleUpdateMoodStatus = async (status: string) => {
     if (!userId) {
       showPopup("Error", "User not logged in", "error");
@@ -121,63 +110,11 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (sportEvents.length > 0 && selectedAirport) {
-      // Extract city and state from the airport location
-      const airportLocationParts = selectedAirport.location
-        .split(",")
-        .map((part) => part.trim().toLowerCase());
-      const airportCity = airportLocationParts[0] || "";
-      const airportState = airportLocationParts[1] || "";
-  
-      // Find matching events based on exact location or if event name contains the city or state
-      const matchingEvents = sportEvents.filter((event: any) => {
-        const eventLocation = event.venue
-          ? `${event.venue.city}, ${event.venue.state}`
-          : "Location not available";
-        const eventName = event.name ? event.name.toLowerCase() : "";
-  
-        // Check if the event location exactly matches the airport location
-        const isExactLocationMatch =
-          eventLocation.trim().toLowerCase() === selectedAirport.location.trim().toLowerCase();
-  
-        // Check if the event name contains the city or state
-        const isCityOrStateInEventName =
-          (airportCity && eventName.includes(airportCity)) ||
-          (airportState && eventName.includes(airportState));
-  
-        return isExactLocationMatch || isCityOrStateInEventName;
-      });
-  
-      if (matchingEvents.length > 0) {
-        matchingEvents.forEach((event) => {
-          const homeTeam = event.home ? event.home.name : "Home team not available";
-          const awayTeam = event.away ? event.away.name : "Away team not available";
-          const scheduledTimeUTC = event.scheduled || "Time not available";
-  
-          // Convert UTC time to user's local time
-          const localTime = scheduledTimeUTC
-            ? new Date(scheduledTimeUTC).toLocaleString()
-            : "Time not available";
-  
-          // Get UID and venue details
-          const eventUID = event.id || "UID not available";
-          const venueName = event.venue ? event.venue.name : "Venue not available";
-  
-          console.log(
-            `Game: ${awayTeam} vs. ${homeTeam}, Local Time: ${localTime}, UID: ${eventUID}, Venue: ${venueName}`
-          );
-        });
-      } else {
-        console.log("No sport events found for the current airport location.");
-      }
+    if (selectedAirport) {
+      console.log("Selected airport:", selectedAirport);
     }
-  }, [sportEvents, selectedAirport]);
-  
-  
-  
-  
+  }, [selectedAirport]);
 
-  // Fetch events on mount
   useEffect(() => {
     const loadEvents = async () => {
       const eventsData = await getEvents();
@@ -188,7 +125,42 @@ export default function Dashboard() {
     loadEvents();
   }, []);
 
-  // Calculate nearby airports when BUF is selected
+  useEffect(() => {
+    const loadSportEvents = async () => {
+      const eventsData = await getSportEvents();
+      if (eventsData) {
+        setAllSportEvents(eventsData);
+      }
+    };
+    loadSportEvents();
+  }, [getSportEvents]);
+
+  useEffect(() => {
+    if (allSportEvents.length > 0 && selectedAirport) {
+      const airportLocationParts = selectedAirport.location
+        .split(",")
+        .map((part) => part.trim().toLowerCase());
+      const airportCity = airportLocationParts[0] || "";
+
+      const filteredSportEvents = allSportEvents.filter((event) => {
+        const awayTeam = event.awayTeam ? event.awayTeam.toLowerCase() : "";
+        const homeTeam = event.homeTeam ? event.homeTeam.toLowerCase() : "";
+        return airportCity && (awayTeam.includes(airportCity) || homeTeam.includes(airportCity));
+      }).map((event) => ({
+        id: event.eventUID,
+        name: `${event.awayTeam} vs. ${event.homeTeam}`,
+        description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
+        type: 'sport',
+        latitude: event.latitude,
+        longitude: event.longitude,
+      }));
+
+      setMatchingEvents(filteredSportEvents);
+    } else {
+      setMatchingEvents([]);
+    }
+  }, [allSportEvents, selectedAirport]);
+
   useEffect(() => {
     if (selectedAirport?.airportCode === 'BUF') {
       const bufLat = selectedAirport.lat;
@@ -220,7 +192,6 @@ export default function Dashboard() {
     })();
   }, []);
 
-  // Load all airports
   const { getAirports } = useAirports();
   useEffect(() => {
     const fetchAirports = async () => {
@@ -232,7 +203,6 @@ export default function Dashboard() {
     fetchAirports();
   }, [getAirports]);
 
-  // Compute nearest airport and ten closest airports to the user
   const [nearestAirports, setNearestAirports] = useState<{ closest: Airport | null, tenClosest: Airport[] }>({ closest: null, tenClosest: [] });
   useEffect(() => {
     if (!userLocation || allAirports.length === 0) return;
@@ -247,7 +217,6 @@ export default function Dashboard() {
     });
   }, [userLocation, allAirports]);
 
-  // Set default selected airport
   useEffect(() => {
     if (!selectedAirport && nearestAirports.closest) {
       setSelectedAirport(nearestAirports.closest);
@@ -255,7 +224,6 @@ export default function Dashboard() {
     }
   }, [nearestAirports.closest, selectedAirport]);
 
-  // Map region based on selected airport
   const mapRegion = selectedAirport
     ? {
         latitude: selectedAirport.lat,
@@ -265,7 +233,6 @@ export default function Dashboard() {
       }
     : null;
 
-  // Set user ID if available
   useEffect(() => {
     if (user) {
       setUserId(user.uid);
@@ -273,7 +240,6 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  // Dashboard feature buttons
   const features: FeatureButton[] = [
     { 
       icon: <FontAwesome5 name="user-friends" size={24} color="#FFFFFF" />, 
@@ -319,7 +285,6 @@ export default function Dashboard() {
     },
   ];
 
-  // Toggle the search view with animations
   const toggleSearch = (show: boolean) => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -337,14 +302,21 @@ export default function Dashboard() {
     if (!show) setSearchQuery("");
   };
 
-  // Update filteredResults based on searchType
+  const allEvents = [
+    ...matchingEvents, // Already have type: 'sport'
+    ...events.map(event => ({ ...event, type: 'regular' })), // Add type: 'regular'
+  ];
+
+
   const filteredResults = searchType === 'airports'
-    ? nearestAirports.tenClosest.filter((airport) =>
-        airport.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : events.filter((event) =>
-        event.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+  ? nearestAirports.tenClosest.filter((airport) =>
+      airport.name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  : allEvents.filter((event) =>
+      event.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+
 
   return (
     <View style={styles.container}>
@@ -484,18 +456,20 @@ export default function Dashboard() {
           style={{ opacity: fadeAnim }}
         >
           {filteredResults.map((result, index) => (
-            <TouchableOpacity 
-              key={index} 
-              style={styles.resultItem}
-              activeOpacity={0.9}
-              onPress={() => {
-                if (searchType === "airports") {
-                  setSelectedAirport(result);
-                  toggleSearch(false);
-                } else {
-                  router.push("/event/" + result.id);
-                }
-              }}
+          <TouchableOpacity 
+            key={index} 
+            style={styles.resultItem}
+            activeOpacity={0.9}
+            onPress={() => {
+              if (searchType === "airports") {
+                setSelectedAirport(result);
+                toggleSearch(false);
+              } else {
+                // Navigate based on event type
+                const route = result.type === 'sport' ? `/sport/${result.id}` : `/event/${result.id}`;
+                router.push(route);
+              }
+            }}
             >
               <LinearGradient
                 colors={['#FFFFFF', '#F8FAFC']}
@@ -517,7 +491,6 @@ export default function Dashboard() {
         <ScrollView 
           contentContainerStyle={styles.featuresContainer}
           showsVerticalScrollIndicator={false}
-          scrollEnabled={false}
         >
           <View style={styles.gridRow}>
             {features.slice(0, 2).map((feature, index) => (
@@ -618,6 +591,31 @@ export default function Dashboard() {
               </TouchableOpacity>
             </LinearGradient>
           </View>
+          {/* Events Section */}
+          <View style={styles.eventsSection}>
+            <Text style={styles.sectionTitle}>Events</Text>
+            {allEvents.map((event, index) => (
+              <TouchableOpacity 
+                key={index} 
+                style={styles.eventItem}
+                onPress={() => router.push(event.type === 'sport' ? `/sport/${event.id}` : `/event/${event.id}`)}
+              >
+                <LinearGradient
+                  colors={['#FFFFFF', '#F8FAFC']}
+                  style={styles.eventGradient}
+                >
+                  <Feather 
+                    name={event.type === 'sport' ? 'activity' : 'calendar'} 
+                    size={20} 
+                    color="#2F80ED" 
+                    style={styles.eventIcon}
+                  />
+                  <Text style={styles.eventText}>{event.name}</Text>
+                  <Feather name="chevron-right" size={18} color="#CBD5E1" />
+                </LinearGradient>
+              </TouchableOpacity>
+            ))}
+          </View>
         </ScrollView>
       )}
 
@@ -633,7 +631,6 @@ export default function Dashboard() {
                   key={index}
                   style={styles.statusOptionButton}
                   onPress={() => {
-                    // Update moodStatus with the selected preset
                     handleUpdateMoodStatus(status.label);
                     setShowStatusModal(false);
                   }}
@@ -657,7 +654,6 @@ export default function Dashboard() {
               <TouchableOpacity
                 style={styles.modalActionButton}
                 onPress={() => {
-                  // Update moodStatus with the custom input
                   handleUpdateMoodStatus(customStatus);
                   setShowStatusModal(false);
                 }}
@@ -889,7 +885,35 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     fontFamily: 'Inter-SemiBold',
   },
-  // Modal Styles (for Status Update)
+  eventsSection: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1E293B',
+    marginBottom: 12,
+  },
+  eventItem: {
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  eventGradient: {
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  eventIcon: {
+    marginRight: 12,
+  },
+  eventText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1E293B',
+    fontFamily: 'Inter-SemiBold',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -927,7 +951,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   statusOptionButton: {
-    width: '48%', // Two buttons per row
+    width: '48%',
     backgroundColor: '#2F80ED',
     marginVertical: 4,
     paddingVertical: 12,
@@ -993,7 +1017,6 @@ const styles = StyleSheet.create({
   modalCancelButtonText: {
     color: '#2F80ED',
   },
-  // Popup Notification Styles
   popupOverlay: {
     flex: 1,
     justifyContent: "center",

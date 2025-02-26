@@ -191,6 +191,26 @@ export default function RootLayout() {
           ),
         }}
       />
+      {/* Sport Event Screen */}
+      <Stack.Screen
+        name="sport/[id]"
+        options={{
+          headerShown: false,
+          headerStyle: {
+            backgroundColor: "white",
+          },
+          headerLeft: () => (
+            <TouchableOpacity style={{ marginLeft: 10 }}>
+              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
+            </TouchableOpacity>
+          ),
+          headerTitle: () => (
+            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
+              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
+            </TouchableOpacity>
+          ),
+        }}
+      />
       {/* Chat explore Screen */}
       <Stack.Screen
         name="chat/chatExplore"
