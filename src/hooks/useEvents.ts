@@ -1,7 +1,8 @@
 // hooks/useEvents.ts
 import { useEffect, useState } from "react";
-import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
-import { db } from "../../firebaseConfig";
+import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db, storage } from "../../firebaseConfig";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 const useEvents = () => {
   const [loading, setLoading] = useState<boolean>(false);
@@ -27,12 +28,34 @@ const useEvents = () => {
   const addEvent = async (eventData: any) => {
     setLoading(true);
     try {
-      const eventsCollection = collection(db, "events");
-      const docRef = await addDoc(eventsCollection, eventData);
-      return docRef.id; // Return the ID of the newly created event
+      // Step 1: Create a new document reference with an auto-generated ID
+      const docRef = doc(collection(db, "events"));
+      const eventId = docRef.id;
+  
+      // Step 2: Handle eventImage upload if provided
+      let eventImageUrl: string | null = null;
+      if (eventData.eventImage) {
+        // Assuming eventData.eventImage is a URI
+        const response = await fetch(eventData.eventImage);
+        const blob = await response.blob();
+        const storageRef = ref(storage, `eventImages/${eventId}`);
+        await uploadBytes(storageRef, blob);
+        eventImageUrl = await getDownloadURL(storageRef);
+      }
+  
+      // Step 3: Create the event document with the image URL and timestamps
+      await setDoc(docRef, {
+        ...eventData,
+        eventImage: eventImageUrl,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+  
+      return eventId;
     } catch (error) {
       setError("Failed to add event.");
       console.error(error);
+      throw error; // Throw error for caller to handle, consistent with signup
     } finally {
       setLoading(false);
     }

@@ -22,7 +22,7 @@ import useEvents from '../hooks/useEvents';
 import useAuth from '../hooks/auth';
 import useAirports, { Airport } from '../hooks/useAirports';
 import * as Location from 'expo-location';
-
+import * as ImagePicker from 'expo-image-picker'; // Added import
 
 const categories = ['Wellness', 'Food & Drink', 'Entertainment', 'Travel Tips', 'Activity', 'Misc'];
 
@@ -68,9 +68,10 @@ const EventCreation: React.FC = () => {
     organizer: user?.uid || '',
     attendees: [user?.uid || ''],
     createdAt: new Date(),
+    eventImage: null as string | null, // Added eventImage field
   });
 
-  const searchType = 'events'; // Define searchType for gradient logic
+  const searchType = 'events';
 
   useEffect(() => {
     const loadAirports = async () => {
@@ -80,24 +81,10 @@ const EventCreation: React.FC = () => {
     loadAirports();
   }, []);
 
-  const filteredAirports = allAirports.filter(airport =>
-    airport.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Replace region state with computed value
-  const mapRegion = selectedAirport ? {
-    latitude: selectedAirport.lat,
-    longitude: selectedAirport.long,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  } : null;
-
-  // Add location permission request
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") return;
-      
       const location = await Location.getCurrentPositionAsync({});
       setUserLocation({
         lat: location.coords.latitude,
@@ -106,7 +93,6 @@ const EventCreation: React.FC = () => {
     })();
   }, []);
 
-  // Add nearest airport calculation
   useEffect(() => {
     if (userLocation && allAirports.length > 0 && !selectedAirport) {
       const airportsWithDistance = allAirports.map(airport => ({
@@ -118,11 +104,21 @@ const EventCreation: React.FC = () => {
           airport.long
         ),
       }));
-      
       airportsWithDistance.sort((a, b) => a.distance - b.distance);
       setSelectedAirport(airportsWithDistance[0]);
     }
   }, [userLocation, allAirports, selectedAirport]);
+
+  const filteredAirports = allAirports.filter(airport =>
+    airport.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const mapRegion = selectedAirport ? {
+    latitude: selectedAirport.lat,
+    longitude: selectedAirport.long,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  } : null;
 
   const handleMapPress = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
@@ -145,6 +141,42 @@ const EventCreation: React.FC = () => {
     });
   };
 
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setEventData({ ...eventData, startTime: selectedDate });
+    }
+  };
+
+  // New function to select event image
+  const handleSelectEventImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert(
+          "Permission required",
+          "We need access to your photos to set an event image"
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        const selectedUri = result.assets[0].uri;
+        setEventData({ ...eventData, eventImage: selectedUri });
+      }
+    } catch (err) {
+      console.log("Image picker error:", err);
+    }
+  };
+
+  // Updated handleSubmit to include eventImage
   const handleSubmit = async () => {
     if (!eventCoords || !selectedAirport) {
       Alert.alert('Error', 'Please select an airport and event location');
@@ -164,15 +196,8 @@ const EventCreation: React.FC = () => {
 
       await addEvent(newEvent);
       Alert.alert('Success', 'Event created successfully!');
-    } catch (err) {
-      Alert.alert('Error', error || 'Failed to create event');
-    }
-  };
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setEventData({ ...eventData, startTime: selectedDate });
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to create event');
     }
   };
 
@@ -183,12 +208,10 @@ const EventCreation: React.FC = () => {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <ScrollView contentContainerStyle={styles.contentContainer}>
-          {/* Gradient Background for Sections */}
           <LinearGradient
             colors={['#F8FAFC', '#FFFFFF']}
             style={styles.backgroundGradient}
           >
-            {/* Airport Selection */}
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Select Airport</Text>
               <TouchableOpacity 
@@ -207,11 +230,10 @@ const EventCreation: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Event Location */}
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Event Location</Text>
               <View style={styles.mapContainer}>
-              <MapView
+                <MapView
                   style={styles.map}
                   region={mapRegion || {
                     latitude: 40.6895,
@@ -248,7 +270,6 @@ const EventCreation: React.FC = () => {
               </View>
             </View>
 
-            {/* Event Details */}
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Event Details</Text>
               <View style={styles.inputGroup}>
@@ -272,9 +293,18 @@ const EventCreation: React.FC = () => {
                   onChangeText={(text) => setEventData({ ...eventData, description: text })}
                 />
               </View>
+              {/* Added Event Image Selection */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Event Image</Text>
+                <TouchableOpacity style={styles.input} onPress={handleSelectEventImage}>
+                  <Text style={styles.dateText}>
+                    {eventData.eventImage ? "Image selected" : "Select an image"}
+                  </Text>
+                  <Feather name="image" size={18} color="#64748B" />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            {/* Category Selection */}
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Category</Text>
               <View style={styles.categoryContainer}>
@@ -293,7 +323,6 @@ const EventCreation: React.FC = () => {
               </View>
             </View>
 
-            {/* Event Time */}
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Event Time</Text>
               <TouchableOpacity 
@@ -315,7 +344,6 @@ const EventCreation: React.FC = () => {
               )}
             </View>
 
-            {/* Privacy Settings */}
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Privacy</Text>
               <View style={styles.privacyContainer}>
@@ -341,7 +369,6 @@ const EventCreation: React.FC = () => {
         </ScrollView>
       </TouchableWithoutFeedback>
 
-      {/* Search Modal */}
       {showSearch && (
         <LinearGradient
           colors={['rgba(255,255,255,0.98)', 'rgba(241,245,249,0.98)']}
@@ -378,7 +405,6 @@ const EventCreation: React.FC = () => {
         </LinearGradient>
       )}
 
-      {/* Create Event Button */}
       <LinearGradient
         colors={['#2F80ED', '#1A5FB4']}
         style={styles.createButton}
@@ -401,6 +427,7 @@ const EventCreation: React.FC = () => {
   );
 };
 
+// Styles remain unchanged
 const styles = StyleSheet.create({
   container: {
     flex: 1,
