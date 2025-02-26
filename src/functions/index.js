@@ -8,7 +8,7 @@ admin.initializeApp();
 
 const BASE_URL = 'https://api.sportradar.com/nba/trial/v8/en';
 
-// Helper function to validate date format (moved above its usage)
+// Helper function to validate date format
 function isValidDate(dateStr) {
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   return dateRegex.test(dateStr);
@@ -43,11 +43,11 @@ exports.getNBAGames = functions.https.onRequest(async (req, res) => {
       // Process each game and prepare it for Firestore
       games.forEach((game) => {
         const eventData = {
-          awayTeam: game.away.name || 'test',
+          awayTeam: game.away?.name || 'test',
           eventUID: game.id || 'test',
-          homeTeam: game.home.name || 'test',
+          homeTeam: game.home?.name || 'test',
           localTime: game.scheduled || 'test',
-          venueName: game.venue.name || 'test'
+          venueName: game.venue?.name || 'test'
         };
         const docRef = sportEventsRef.doc(game.id); // Use game ID as document ID
         batch.set(docRef, eventData);
@@ -68,6 +68,7 @@ exports.getNBAGames = functions.https.onRequest(async (req, res) => {
     }
   } catch (err) {
     // Handle API or server errors
+    console.error('Error fetching NBA games:', err);
     if (err.response) {
       res.status(err.response.status).json({
         error: err.response.data || `Error from API: ${err.response.statusText}`
