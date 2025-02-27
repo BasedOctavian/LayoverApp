@@ -1,5 +1,4 @@
-// Dashboard.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { 
   View, 
   Text, 
@@ -8,7 +7,7 @@ import {
   ScrollView, 
   TextInput, 
   Animated, 
-  Modal
+  Modal 
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from '@expo/vector-icons';
@@ -134,32 +133,6 @@ export default function Dashboard() {
     };
     loadSportEvents();
   }, [getSportEvents]);
-
-  useEffect(() => {
-    if (allSportEvents.length > 0 && selectedAirport) {
-      const airportLocationParts = selectedAirport.location
-        .split(",")
-        .map((part) => part.trim().toLowerCase());
-      const airportCity = airportLocationParts[0] || "";
-
-      const filteredSportEvents = allSportEvents.filter((event) => {
-        const awayTeam = event.awayTeam ? event.awayTeam.toLowerCase() : "";
-        const homeTeam = event.homeTeam ? event.homeTeam.toLowerCase() : "";
-        return airportCity && (awayTeam.includes(airportCity) || homeTeam.includes(airportCity));
-      }).map((event) => ({
-        id: event.eventUID,
-        name: `${event.awayTeam} vs. ${event.homeTeam}`,
-        description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
-        type: 'sport',
-        latitude: event.latitude,
-        longitude: event.longitude,
-      }));
-
-      setMatchingEvents(filteredSportEvents);
-    } else {
-      setMatchingEvents([]);
-    }
-  }, [allSportEvents, selectedAirport]);
 
   useEffect(() => {
     if (selectedAirport?.airportCode === 'BUF') {
@@ -302,21 +275,64 @@ export default function Dashboard() {
     if (!show) setSearchQuery("");
   };
 
-  const allEvents = [
-    ...matchingEvents, // Already have type: 'sport'
-    ...events.map(event => ({ ...event, type: 'regular' })), // Add type: 'regular'
-  ];
+  // Existing sport events filtering logic (kept unchanged)
+  useEffect(() => {
+    if (!selectedAirport) {
+      setMatchingEvents([]);
+      return;
+    }
 
+    const airportCity = selectedAirport.location.split(",")[0].trim().toLowerCase();
+    const filteredSportEvents = allSportEvents.filter(event => {
+      const awayTeam = event.awayTeam ? event.awayTeam.toLowerCase() : "";
+      const homeTeam = event.homeTeam ? event.homeTeam.toLowerCase() : "";
+      return awayTeam.includes(airportCity) || homeTeam.includes(airportCity);
+    }).map(event => ({
+      id: event.eventUID,
+      name: `${event.awayTeam} vs. ${event.homeTeam}`,
+      description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
+      type: 'sport',
+      latitude: event.latitude,
+      longitude: event.longitude,
+    }));
+
+    setMatchingEvents(filteredSportEvents);
+  }, [selectedAirport, allSportEvents]);
+
+  // New filtering for regular events based on distance
+  const filteredRegularEvents = useMemo(() => {
+    if (!selectedAirport) return [];
+
+    const airportLat = selectedAirport.lat;
+    const airportLong = selectedAirport.long;
+    const maxDistance = 10; // km
+
+    return events.filter(event => {
+      const lat = Number(event.latitude);
+      const long = Number(event.longitude);
+      if (isNaN(lat) || isNaN(long)) return false;
+      const distance = haversineDistance(airportLat, airportLong, lat, long);
+      return distance <= maxDistance;
+    }).map(event => ({
+      id: event.eventUID,
+      name: event.name,
+      description: event.description,
+      type: 'regular',
+      latitude: event.latitude,
+      longitude: event.longitude,
+    }));
+  }, [selectedAirport, events]);
+
+  // Combine filtered sport and regular events
+  const allEvents = [...matchingEvents, ...filteredRegularEvents];
 
   const filteredResults = searchType === 'airports'
-  ? nearestAirports.tenClosest.filter((airport) =>
-      airport.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  : allEvents.filter((event) =>
-      event.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-
+    ? nearestAirports.tenClosest.filter((airport) =>
+        airport.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : allEvents.filter((event) =>
+        event.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
 
   return (
     <View style={styles.container}>
@@ -434,12 +450,12 @@ export default function Dashboard() {
               description={airport.airportCode}
             />
           ))}
-          {events.map((event, index) => (
+          {allEvents.map((event, index) => (
             <Marker
-              key={`event-${index}`}
+              key={`${event.type}-${event.id}-${index}`}
               coordinate={{
-                latitude: parseFloat(event.latitude),
-                longitude: parseFloat(event.longitude),
+                latitude: Number(event.latitude),
+                longitude: Number(event.longitude),
               }}
               title={event.name}
               description={event.description}
@@ -456,20 +472,19 @@ export default function Dashboard() {
           style={{ opacity: fadeAnim }}
         >
           {filteredResults.map((result, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.resultItem}
-            activeOpacity={0.9}
-            onPress={() => {
-              if (searchType === "airports") {
-                setSelectedAirport(result);
-                toggleSearch(false);
-              } else {
-                // Navigate based on event type
-                const route = result.type === 'sport' ? `/sport/${result.id}` : `/event/${result.id}`;
-                router.push(route);
-              }
-            }}
+            <TouchableOpacity 
+              key={index} 
+              style={styles.resultItem}
+              activeOpacity={0.9}
+              onPress={() => {
+                if (searchType === "airports") {
+                  setSelectedAirport(result);
+                  toggleSearch(false);
+                } else {
+                  const route = result.type === 'sport' ? `/sport/${result.id}` : `/event/${result.id}`;
+                  router.push(route);
+                }
+              }}
             >
               <LinearGradient
                 colors={['#FFFFFF', '#F8FAFC']}
