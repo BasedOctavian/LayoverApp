@@ -253,7 +253,7 @@ export default function Dashboard() {
     { 
       icon: <Ionicons name="settings" size={24} color="#FFFFFF" />, 
       title: 'Settings', 
-      screen: 'settings',
+      screen: 'settings/settings',
       size: 'full'
     },
   ];
