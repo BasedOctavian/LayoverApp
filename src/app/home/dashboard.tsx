@@ -20,6 +20,8 @@ import useEvents from "../../hooks/useEvents";
 import useSportEvents from "../../hooks/useSportEvents";
 import useUsers from "../../hooks/useUsers";
 import { serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth } from "../../../firebaseConfig";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -64,6 +66,12 @@ export default function Dashboard() {
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [customStatus, setCustomStatus] = useState("");
+
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+
+
   const presetStatuses = [
     { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#FFFFFF" /> },
     { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#FFFFFF" /> },
@@ -79,6 +87,8 @@ export default function Dashboard() {
     message: "",
     type: "success",
   });
+
+  
 
   const showPopup = (title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
@@ -113,6 +123,17 @@ export default function Dashboard() {
       console.log("Selected airport:", selectedAirport);
     }
   }, [selectedAirport]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user){
+        setAuthUser(user);
+      } else {
+        router.replace("/LoginScreen");
+      }
+      setLoading(false);
+    })
+  }, []);
 
   useEffect(() => {
     const loadEvents = async () => {

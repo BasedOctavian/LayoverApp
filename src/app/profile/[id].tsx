@@ -15,32 +15,46 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
+import { auth } from "../../../firebaseConfig"; // Adjust path as needed
 
 const Profile = () => {
-  const [userData, setUserData] = useState<any>(null); // Store the authenticated user's data
-  const [loading, setLoading] = useState<boolean>(true); // Track loading state
-  const [error, setError] = useState<string | null>(null); // Track errors
-  const fadeAnim = useState(new Animated.Value(0))[0]; // For fade-in animation
-  const { user, userId } = useAuth(); // Get the authenticated user and userId
+  const [userData, setUserData] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const { user, userId } = useAuth();
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // Extract id from the local search params.
-  // Since it can be either a string or an array, ensure it's a string.
   const params = useLocalSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   
   const router = useRouter();
 
-  // Fetch the authenticated user's data from Firestore
+  // Added auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("/LoginScreen");
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe; // Cleanup subscription
+  }, []);
+
   useEffect(() => {
     const fetchUserData = async () => {
       if (userId && id) {
         setLoading(true);
         try {
-          const userDocRef = doc(db, "users", id); // Now id is guaranteed to be a string
+          const userDocRef = doc(db, "users", id);
           const userDoc = await getDoc(userDocRef);
 
           if (userDoc.exists()) {
-            setUserData(userDoc.data()); // Set the user's data
+            setUserData(userDoc.data());
           } else {
             setError("No user data found.");
           }
@@ -61,27 +75,43 @@ const Profile = () => {
     }).start();
   }, [userId, id, fadeAnim]);
 
+  if (authLoading) {
+    return (
+      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      </LinearGradient>
+    );
+  }
+
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
+      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      </LinearGradient>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+        <View style={styles.container}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </LinearGradient>
     );
   }
 
   if (!userData) {
     return (
-      <View style={styles.container}>
-        <Text>No user data found.</Text>
-      </View>
+      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+        <View style={styles.container}>
+          <Text style={styles.noDataText}>No user data found.</Text>
+        </View>
+      </LinearGradient>
     );
   }
 
@@ -231,13 +261,18 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   errorText: {
-    color: "red",
+    color: "#ff4444",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  noDataText: {
+    color: "#fff",
     fontSize: 16,
     textAlign: "center",
   },
   settingsIcon: {
     position: "absolute",
-    top: 40, // Adjust this value based on your status bar height
+    top: 40,
     right: 20,
     zIndex: 100,
     padding: 10,

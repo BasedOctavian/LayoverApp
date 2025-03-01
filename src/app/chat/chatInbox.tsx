@@ -14,6 +14,8 @@ import { MaterialIcons } from "@expo/vector-icons";
 import useAuth from "../../hooks/auth";
 import useChats from "../../hooks/useChats";
 import useUsers from "../../hooks/useUsers";
+import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
+import { auth } from "../../../firebaseConfig"; // Adjust path as needed
 
 // Component for rendering a single chat item
 function ChatItem({ chat, currentUser, getUser, onPress }: { 
@@ -63,12 +65,27 @@ function ChatItem({ chat, currentUser, getUser, onPress }: {
 
 export default function ChatInbox() {
   const { user } = useAuth();
-  const { getChats, loading, error } = useChats();
+  const { getChats, loading: chatsLoading, error: chatsError } = useChats();
   const { getUser } = useUsers();
 
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [chats, setChats] = useState<any[]>([]);
   const [filteredChats, setFilteredChats] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Added auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("/LoginScreen");
+      }
+      setLoading(false);
+    });
+    return unsubscribe; // Cleanup subscription
+  }, []);
 
   useEffect(() => {
     const fetchChats = async () => {
@@ -110,26 +127,32 @@ export default function ChatInbox() {
   return (
     <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
       <View style={styles.container}>
-        {/* Floating Action Button */}
-        <TouchableOpacity 
-          style={styles.fab}
-          onPress={() => router.push("chat/chatExplore")}
-        >
-          <MaterialIcons name="add" size={28} color="white" />
-        </TouchableOpacity>
-
-        {/* Chat List */}
         {loading ? (
-          <Text style={styles.loadingText}>Loading chats...</Text>
-        ) : error ? (
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.loadingText}>Loading...</Text>
         ) : (
-          <FlatList
-            data={filteredChats}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-          />
+          <>
+            {/* Floating Action Button */}
+            <TouchableOpacity 
+              style={styles.fab}
+              onPress={() => router.push("chat/chatExplore")}
+            >
+              <MaterialIcons name="add" size={28} color="white" />
+            </TouchableOpacity>
+
+            {/* Chat List */}
+            {chatsLoading ? (
+              <Text style={styles.loadingText}>Loading chats...</Text>
+            ) : chatsError ? (
+              <Text style={styles.errorText}>{chatsError}</Text>
+            ) : (
+              <FlatList
+                data={filteredChats}
+                renderItem={renderItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+              />
+            )}
+          </>
         )}
       </View>
     </LinearGradient>

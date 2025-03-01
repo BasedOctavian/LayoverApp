@@ -20,21 +20,39 @@ import {
   addDoc,
 } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
+import { onAuthStateChanged, User } from "firebase/auth"; // Added User type import
+import { auth } from "../../../firebaseConfig"; // Added auth import - adjust path as needed
 
 export default function ChatExplore() {
   const { user } = useAuth();
-  const { getUsers, loading, error } = useUsers();
+  const { getUsers, loading: usersLoading, error: usersError } = useUsers();
   const [users, setUsers] = useState<any[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  
+  // Added auth-related states
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // States to manage chat fetching and creation
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
-  // This state will hold the IDs of users that the auth user already has a chat with.
   const [chatPartnerIds, setChatPartnerIds] = useState<string[]>([]);
 
-  // Function to fetch chats where the current user is a participant.
+  // Added auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("/LoginScreen");
+      }
+      setLoading(false);
+    });
+    return unsubscribe; // Cleanup subscription on unmount
+  }, []);
+
+  // Function to fetch chats where the current user is a participant
   const getUserChats = async (userId: string) => {
     setChatLoading(true);
     try {
@@ -51,7 +69,7 @@ export default function ChatExplore() {
     }
   };
 
-  // Hook to create a chat document with the given chat data.
+  // Hook to create a chat document
   const addChat = async (chatData: any) => {
     setChatLoading(true);
     try {
@@ -66,12 +84,11 @@ export default function ChatExplore() {
     }
   };
 
-  // Fetch all users excluding the authenticated user.
+  // Fetch all users excluding the authenticated user
   useEffect(() => {
     const fetchUsers = async () => {
       if (user) {
         const allUsers = await getUsers();
-        // Exclude the current user.
         const otherUsers = allUsers.filter((u: any) => u.id !== user.uid);
         setUsers(otherUsers);
       }
@@ -79,19 +96,16 @@ export default function ChatExplore() {
     fetchUsers();
   }, [user]);
 
-  // Fetch chats and extract chat partner IDs.
+  // Fetch chats and extract chat partner IDs
   useEffect(() => {
     if (user) {
       const fetchUserChats = async () => {
         const chats = await getUserChats(user.uid);
         if (chats) {
-          // For each chat, remove the current user's ID from the participants list
-          // so that only the "other" user remains.
           const partners = chats.reduce<string[]>((acc, chat) => {
             const partnerIds = chat.participants.filter((p: string) => p !== user.uid);
             return [...acc, ...partnerIds];
           }, []);
-          // Remove duplicates by converting the array to a Set, then back to an array.
           setChatPartnerIds(Array.from(new Set(partners)));
         }
       };
@@ -99,12 +113,9 @@ export default function ChatExplore() {
     }
   }, [user]);
 
-  // Filter the users list by both search query and chat partner IDs.
+  // Filter users list
   useEffect(() => {
-    // Remove users that the auth user already has a chat with.
     let updatedFilteredUsers = users.filter((u) => !chatPartnerIds.includes(u.id));
-
-    // Apply search query filter if present.
     if (searchQuery) {
       updatedFilteredUsers = updatedFilteredUsers.filter((u) =>
         u.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -113,20 +124,17 @@ export default function ChatExplore() {
     setFilteredUsers(updatedFilteredUsers);
   }, [users, chatPartnerIds, searchQuery]);
 
-  // Render a user card. When tapped, create a new chat and navigate to it.
   const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity
       style={styles.userCard}
       onPress={async () => {
         if (!user) return;
-        // Prepare chat data with both participants and a creation timestamp.
         const chatData = {
           participants: [user.uid, item.id],
-          createdAt: new Date(), // You can replace this with serverTimestamp() if desired.
+          createdAt: new Date(),
         };
         const chatId = await addChat(chatData);
         if (chatId) {
-          // Navigate to the chat screen with the newly created chat's id.
           router.push("/chat/" + chatId);
         }
       }}
@@ -145,27 +153,30 @@ export default function ChatExplore() {
   return (
     <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
       <View style={styles.container}>
-        {/* Search Bar */}
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search users..."
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-
-        {/* User List */}
-        {loading || chatLoading ? (
-          <Text style={styles.loadingText}>Loading users...</Text>
-        ) : error || chatError ? (
-          <Text style={styles.errorText}>{error || chatError}</Text>
+        {loading ? (
+          <Text style={styles.loadingText}>Loading...</Text>
         ) : (
-          <FlatList
-            data={filteredUsers}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-          />
+          <>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search users..."
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {usersLoading || chatLoading ? (
+              <Text style={styles.loadingText}>Loading users...</Text>
+            ) : usersError || chatError ? (
+              <Text style={styles.errorText}>{usersError || chatError}</Text>
+            ) : (
+              <FlatList
+                data={filteredUsers}
+                renderItem={renderItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+              />
+            )}
+          </>
         )}
       </View>
     </LinearGradient>

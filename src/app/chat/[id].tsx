@@ -17,6 +17,8 @@ import useUsers from "../../hooks/useUsers"; // Adjust the path as needed
 import useChats from "../../hooks/useChats";
 import useAuth from "../../hooks/auth";
 import { router, useLocalSearchParams } from "expo-router";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth } from "../../../firebaseConfig";
 
 export default function Chat() {
   // Get the chat ID from the URL params
@@ -25,6 +27,20 @@ export default function Chat() {
 
   // Get the authenticated user
   const { user: authUser } = useAuth();
+
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
+    if (user){
+    setUser(user);
+    } else {
+    router.replace("/LoginScreen");
+    }
+    setAuthLoading(false);
+    })
+    }, []);
 
   // Use the chat ID from params
   const chatId = id; // or fallback: chatId = "mMJuXG3BgWLGtxmnZhpi";

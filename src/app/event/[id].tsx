@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import useEvents from "../../hooks/useEvents";
 import { useEffect, useState } from "react";
@@ -7,6 +7,8 @@ import { Feather, MaterialIcons } from "@expo/vector-icons";
 import MapView, { Marker } from "react-native-maps";
 import useUsers from "../../hooks/useUsers";
 import useAuth from "../../hooks/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth } from "../../../firebaseConfig";
 
 export default function Event() {
   const { id } = useLocalSearchParams();
@@ -18,12 +20,16 @@ export default function Event() {
   const [isAttending, setIsAttending] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     if (event && user) {
       setIsAttending(event.attendees?.includes(user.uid));
     }
   }, [event, user]);
+
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const handleAttend = async () => {
     if (!user?.uid || !event) return;
@@ -62,6 +68,17 @@ export default function Event() {
       })();
     }
   }, [id]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (user){
+    setAuthUser(user);
+    } else {
+    router.replace("/LoginScreen");
+    }
+    setLoading(false);
+    })
+    }, []);
 
   const formatDateTime = (timestamp: any) => {
     try {
