@@ -74,7 +74,7 @@ export default function Event() {
     if (user){
     setAuthUser(user);
     } else {
-    router.replace("/LoginScreen");
+    router.replace("login/login");
     }
     setLoading(false);
     })

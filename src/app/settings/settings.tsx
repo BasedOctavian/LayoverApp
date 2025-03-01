@@ -5,11 +5,28 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
+import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
+import { auth } from "../../../firebaseConfig"; // Adjust path as needed
 
 export default function Settings() {
   const { user, logout } = useAuth();
   const { getUser } = useUsers();
   const [userData, setUserData] = React.useState(null);
+  const [authUser, setAuthUser] = React.useState<User | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  // Added auth state listener
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("login/login");
+      }
+      setLoading(false);
+    });
+    return unsubscribe; // Cleanup subscription
+  }, []);
 
   // Fetch user data when the user object is available
   React.useEffect(() => {
@@ -17,6 +34,14 @@ export default function Settings() {
       getUser(user.uid).then((data) => setUserData(data));
     }
   }, [user]);
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -265,5 +290,10 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     marginLeft: 12,
+  },
+  loadingText: {
+    fontSize: 18,
+    color: "#1E293B",
+    textAlign: "center",
   },
 });

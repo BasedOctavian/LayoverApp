@@ -129,7 +129,7 @@ export default function Dashboard() {
       if (user){
         setAuthUser(user);
       } else {
-        router.replace("/LoginScreen");
+        router.replace("login/login");
       }
       setLoading(false);
     })

@@ -4,12 +4,32 @@ import { useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import useSportEvents from "../../hooks/useSportEvents";
+import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
+import { auth } from "../../../firebaseConfig"; // Adjust path as needed
+import useAuth from "../../hooks/auth";
+import { router } from "expo-router"; // Added router import
 
 export default function Sport() {
   const { id } = useLocalSearchParams();
   const { getSportEvent } = useSportEvents();
+  const { user } = useAuth();
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Added auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("login/login");
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe; // Cleanup subscription
+  }, []);
 
   // Fetch sport event data using eventUID
   useEffect(() => {
@@ -43,6 +63,16 @@ export default function Sport() {
       return "Date TBD";
     }
   };
+
+  if (authLoading) {
+    return (
+      <LinearGradient colors={["#1e3c72", "#2a5298"]} style={styles.gradient}>
+        <View style={styles.container}>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   // Event not found state
   if (!event) {

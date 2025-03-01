@@ -19,6 +19,9 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
+import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
+import { auth } from "../../../firebaseConfig"; // Adjust path as needed
+import { useRouter } from "expo-router"; // Added router import
 
 // Define an interface for our form data
 interface FormData {
@@ -52,7 +55,23 @@ const EditProfile = () => {
   });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const router = useRouter(); // Added router instance
+
+  // Added auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("login/login");
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe; // Cleanup subscription
+  }, []);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -109,7 +128,6 @@ const EditProfile = () => {
       });
 
       if (!result.canceled) {
-        // Ensure that the URI is not null
         const selectedUri = result.assets[0].uri ?? "";
         setFormData((prev) => ({ ...prev, profilePicture: selectedUri }));
       }
@@ -128,7 +146,6 @@ const EditProfile = () => {
     try {
       let profilePicUrl = formData.profilePicture;
 
-      // Upload new image if it's a local URI
       if (profilePicUrl && !profilePicUrl.startsWith("http")) {
         const response = await fetch(profilePicUrl);
         const blob = await response.blob();
@@ -185,11 +202,23 @@ const EditProfile = () => {
     }));
   };
 
+  if (authLoading) {
+    return (
+      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      </LinearGradient>
+    );
+  }
+
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
+      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      </LinearGradient>
     );
   }
 

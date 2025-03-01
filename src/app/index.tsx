@@ -46,7 +46,7 @@ export default function MainScreen() {
         {/* Login Button */}
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push("/LoginScreen")}
+          onPress={() => router.push("login/login")}
         >
           <MaterialIcons name="login" size={24} color="white" />
           <Text style={styles.buttonText}>Login</Text>

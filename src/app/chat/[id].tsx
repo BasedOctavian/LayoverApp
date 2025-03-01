@@ -36,7 +36,7 @@ export default function Chat() {
     if (user){
     setUser(user);
     } else {
-    router.replace("/LoginScreen");
+    router.replace("login/login");
     }
     setAuthLoading(false);
     })

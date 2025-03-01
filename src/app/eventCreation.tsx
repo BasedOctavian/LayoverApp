@@ -23,6 +23,9 @@ import useAuth from '../hooks/auth';
 import useAirports, { Airport } from '../hooks/useAirports';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker'; // Added import
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
+import { useRouter } from 'expo-router';
 
 const categories = ['Wellness', 'Food & Drink', 'Entertainment', 'Travel Tips', 'Activity', 'Misc'];
 
@@ -40,6 +43,7 @@ function haversineDistance(lat1: number, long1: number, lat2: number, long2: num
 }
 
 const EventCreation: React.FC = () => {
+  const router = useRouter();
   const { user } = useAuth();
   const { getAirports } = useAirports();
   const { addEvent, loading, error } = useEvents();
@@ -56,6 +60,9 @@ const EventCreation: React.FC = () => {
     longitudeDelta: 0.0421,
   });
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
+
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const [eventData, setEventData] = useState({
     name: '',
@@ -92,6 +99,17 @@ const EventCreation: React.FC = () => {
       });
     })();
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (user){
+    setAuthUser(user);
+    } else {
+    router.replace("login/login");
+    }
+    setAuthLoading(false);
+    })
+    }, []);
 
   useEffect(() => {
     if (userLocation && allAirports.length > 0 && !selectedAirport) {
