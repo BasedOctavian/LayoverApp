@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,16 +10,25 @@ import {
   Keyboard,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { StyleSheet } from "react-native";
 import useAuth from "../../hooks/auth";
+import { useRouter } from "expo-router";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { login, loading } = useAuth();
+  const { user, isAuthLoading, login, loading: isLoggingIn } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isAuthLoading && user) {
+      router.replace("/home/dashboard");
+    }
+  }, [isAuthLoading, user]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -28,96 +37,107 @@ const Login = () => {
     }
     try {
       await login(email, password);
-      Alert.alert("Success", "Logged in successfully!");
+      router.replace("/home/dashboard");
     } catch (err) {
       Alert.alert("Error", err.message || "Failed to log in");
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <LinearGradient
-          colors={["#F8FAFF", "#EFF2FF"]}
-          style={styles.gradient}
+    <LinearGradient colors={["#F8FAFF", "#EFF2FF"]} style={styles.gradient}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardAvoidingView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.contentContainer}>
-            <Text style={styles.title}>Welcome Back!</Text>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.contentContainer}>
+              {isAuthLoading ? (
+                <ActivityIndicator size="large" color="#6366F1" />
+              ) : (
+                <>
+                  <Text style={styles.title}>Welcome Back!</Text>
 
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Email</Text>
-              <View style={styles.inputContainer}>
-                <Feather name="mail" size={20} color="#64748B" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="flyer@skyconnect.com"
-                  placeholderTextColor="#94A3B8"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
+                  <View style={styles.fieldContainer}>
+                    <Text style={styles.fieldLabel}>Email</Text>
+                    <View style={styles.inputContainer}>
+                      <Feather name="mail" size={20} color="#64748B" />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="flyer@skyconnect.com"
+                        placeholderTextColor="#94A3B8"
+                        value={email}
+                        onChangeText={setEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.fieldContainer}>
+                    <Text style={styles.fieldLabel}>Password</Text>
+                    <View style={styles.inputContainer}>
+                      <Feather name="lock" size={20} color="#64748B" />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="••••••••"
+                        placeholderTextColor="#94A3B8"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry
+                      />
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.loginButton}
+                    onPress={handleLogin}
+                    disabled={isLoggingIn}
+                  >
+                    <LinearGradient
+                      colors={["#6366F1", "#4F46E5"]}
+                      style={styles.buttonGradient}
+                    >
+                      {isLoggingIn ? (
+                        <ActivityIndicator color="white" />
+                      ) : (
+                        <Text style={styles.buttonText}>Login</Text>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => router.push("/userOnboarding")}>
+                    <Text style={styles.signUpText}>Don't have an account? Sign up</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
-
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Password</Text>
-              <View style={styles.inputContainer}>
-                <Feather name="lock" size={20} color="#64748B" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="••••••••"
-                  placeholderTextColor="#94A3B8"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={handleLogin}
-              disabled={loading}
-            >
-              <LinearGradient
-                colors={["#6366F1", "#4F46E5"]}
-                style={styles.buttonGradient}
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={styles.buttonText}>Login</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => {/* Navigate to sign up */}}>
-              <Text style={styles.signUpText}>Don't have an account? Sign up</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+          </TouchableWithoutFeedback>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   gradient: {
     flex: 1,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    width: "100%",
-    paddingHorizontal: 24,
   },
   contentContainer: {
     width: "100%",
+    paddingHorizontal: 24,
+    paddingVertical: 40,
     alignItems: "center",
   },
   title: {

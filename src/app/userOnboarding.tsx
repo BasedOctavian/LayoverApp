@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,17 +10,17 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  Animated,
-  Dimensions,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import useAuth from "../hooks/auth";
+import { useRouter } from "expo-router";
 
-const { width } = Dimensions.get("window");
+const avatarSize = 100; // Fixed size for better control
 
 type StepKey = "email" | "profile" | "travel" | "social";
 
@@ -56,8 +56,16 @@ type IconName =
 const UserOnboarding = () => {
   const [stepIndex, setStepIndex] = useState(0);
   const [userData, setUserData] = useState<any>({});
-  const { signup, loading } = useAuth();
-  const slideAnim = useState(new Animated.Value(0))[0];
+  const { user, signup, loading } = useAuth();
+  const router = useRouter();
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
+
+  useEffect(() => {
+    if (user !== undefined) {
+      setIsAuthChecked(true);
+      if (user) router.replace("/home/dashboard");
+    }
+  }, [user]);
 
   const steps: Step[] = [
     {
@@ -159,15 +167,6 @@ const UserOnboarding = () => {
     },
   ];
 
-  const animateStep = (direction: "next" | "prev") => {
-    slideAnim.setValue(direction === "next" ? 50 : -50);
-    Animated.spring(slideAnim, {
-      toValue: 0,
-      speed: 20,
-      useNativeDriver: true,
-    }).start();
-  };
-
   const handleInputChange = (key: string, value: string) => {
     setUserData({ ...userData, [key]: value });
   };
@@ -192,8 +191,7 @@ const UserOnboarding = () => {
       });
 
       if (!result.canceled) {
-        const selectedUri = result.assets[0].uri;
-        handleInputChange("profilePicture", selectedUri);
+        handleInputChange("profilePicture", result.assets[0].uri);
       }
     } catch (err) {
       console.log("Image picker error:", err);
@@ -201,9 +199,9 @@ const UserOnboarding = () => {
   };
 
   const handleNext = async () => {
+    Keyboard.dismiss();
     if (stepIndex < steps.length - 1) {
-      animateStep("next");
-      setStepIndex((prev) => prev + 1);
+      setStepIndex(prev => prev + 1);
     } else {
       await handleSubmit();
     }
@@ -221,20 +219,10 @@ const UserOnboarding = () => {
         isAnonymous: false,
       };
 
-      const result = await signup(
-        userData.email,
-        userData.password,
-        userProfile
-      );
-
-      if (!result.user?.uid) {
-        throw new Error("User authentication failed - no UID received");
-      }
-
-      Alert.alert("Success", "Account created successfully!");
+      await signup(userData.email, userData.password, userProfile);
+      router.replace("/home/dashboard");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to create account");
-      console.error("Registration error:", err);
     }
   };
 
@@ -301,89 +289,87 @@ const UserOnboarding = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <LinearGradient
-          colors={["#F8FAFF", "#EFF2FF"]}
-          style={styles.gradient}
+    <LinearGradient colors={["#F8FAFF", "#EFF2FF"]} style={styles.gradient}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
-          <Animated.View
-            style={[
-              styles.contentContainer,
-              { transform: [{ translateX: slideAnim }] },
-            ]}
-          >
-            <Text style={styles.title}>{steps[stepIndex].title}</Text>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.contentContainer}>
+              {!isAuthChecked ? (
+                <ActivityIndicator size="large" color="#6366F1" />
+              ) : (
+                <>
+                  <Text style={styles.title}>{steps[stepIndex].title}</Text>
+                  
+                  {steps[stepIndex].fields.map((field) => (
+                    <View key={field.key} style={styles.fieldContainer}>
+                      <Text style={styles.fieldLabel}>{field.label}</Text>
+                      {renderField(field)}
+                    </View>
+                  ))}
 
-            {steps[stepIndex].fields.map((field) => (
-              <View key={field.key} style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>{field.label}</Text>
-                {renderField(field)}
-              </View>
-            ))}
-
-            <View style={styles.footer}>
-              {stepIndex > 0 && (
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={() => {
-                    animateStep("prev");
-                    setStepIndex((prev) => prev - 1);
-                  }}
-                >
-                  <Feather name="chevron-left" size={24} color="#4F46E5" />
-                </TouchableOpacity>
+                  <View style={styles.footer}>
+                    {stepIndex > 0 && (
+                      <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => setStepIndex(prev => prev - 1)}
+                      >
+                        <Feather name="chevron-left" size={24} color="#4F46E5" />
+                      </TouchableOpacity>
+                    )}
+                    
+                    <TouchableOpacity
+                      style={styles.nextButton}
+                      onPress={handleNext}
+                      disabled={loading}
+                    >
+                      <LinearGradient
+                        colors={["#6366F1", "#4F46E5"]}
+                        style={styles.buttonGradient}
+                      >
+                        {loading ? (
+                          <ActivityIndicator color="white" />
+                        ) : (
+                          <Text style={styles.buttonText}>
+                            {stepIndex === steps.length - 1
+                              ? "Start Exploring! ✈️"
+                              : "Continue Journey →"}
+                          </Text>
+                        )}
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </>
               )}
-
-              <TouchableOpacity
-                style={[
-                  styles.nextButton,
-                  stepIndex > 0 && { marginLeft: 16 },
-                ]}
-                onPress={handleNext}
-                disabled={loading}
-              >
-                <LinearGradient
-                  colors={["#6366F1", "#4F46E5"]}
-                  style={styles.buttonGradient}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text style={styles.buttonText}>
-                      {stepIndex === steps.length - 1
-                        ? "Start Exploring! ✈️"
-                        : "Continue Journey →"}
-                    </Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
             </View>
-          </Animated.View>
-        </LinearGradient>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+          </TouchableWithoutFeedback>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   gradient: {
     flex: 1,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
-    alignItems: "center",
-    width: "100%",
-    paddingHorizontal: 24,
   },
   contentContainer: {
     width: "100%",
+    paddingHorizontal: 24,
+    paddingVertical: 40,
     alignItems: "center",
   },
   title: {
@@ -393,7 +379,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 40,
   },
-  fieldContainer: { marginBottom: 24, width: "100%" },
+  fieldContainer: {
+    marginBottom: 24,
+    width: "100%",
+  },
   fieldLabel: {
     color: "#64748B",
     fontFamily: "Inter-Medium",
@@ -424,17 +413,17 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: avatarSize,
+    height: avatarSize,
+    borderRadius: avatarSize / 2,
     backgroundColor: "#E0E7FF",
     justifyContent: "center",
     alignItems: "center",
   },
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: avatarSize,
+    height: avatarSize,
+    borderRadius: avatarSize / 2,
   },
   cameraBadge: {
     position: "absolute",
@@ -483,7 +472,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 40,
-    paddingBottom: 20,
+    width: "100%",
   },
   backButton: {
     width: 50,
@@ -497,14 +486,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+    marginRight: 16,
   },
   nextButton: {
     borderRadius: 12,
     overflow: "hidden",
+    flex: 1,
   },
   buttonGradient: {
     paddingVertical: 18,
-    paddingHorizontal: 24,
     alignItems: "center",
   },
   buttonText: {
