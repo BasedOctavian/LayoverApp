@@ -120,7 +120,7 @@ export default function Settings() {
           <Text style={styles.sectionTitle}>Privacy</Text>
           <TouchableOpacity
             style={styles.settingsItem}
-            onPress={() => router.push("/privacy")}
+            onPress={() => router.push("locked/lockedScreen")}
           >
             <LinearGradient
               colors={["#2F80ED", "#1A5FB4"]}
@@ -143,7 +143,7 @@ export default function Settings() {
           <Text style={styles.sectionTitle}>Notifications</Text>
           <TouchableOpacity
             style={styles.settingsItem}
-            onPress={() => router.push("/notifications")}
+            onPress={() => router.push("locked/lockedScreen")}
           >
             <LinearGradient
               colors={["#2F80ED", "#1A5FB4"]}
@@ -166,7 +166,7 @@ export default function Settings() {
           <Text style={styles.sectionTitle}>App Settings</Text>
           <TouchableOpacity
             style={styles.settingsItem}
-            onPress={() => router.push("/app/theme")}
+            onPress={() => router.push("locked/lockedScreen")}
           >
             <LinearGradient
               colors={["#2F80ED", "#1A5FB4"]}
@@ -184,7 +184,7 @@ export default function Settings() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.settingsItem}
-            onPress={() => router.push("/app/language")}
+            onPress={() => router.push("locked/lockedScreen")}
           >
             <LinearGradient
               colors={["#2F80ED", "#1A5FB4"]}
