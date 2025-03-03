@@ -52,6 +52,7 @@ export default function Settings() {
 
       {/* User Information Section */}
       {userData && (
+        <TouchableOpacity onPress={() => router.push("profile/editProfile")}>
         <View style={styles.userHeader}>
           {userData.profilePicture ? (
             <Image source={{ uri: userData.profilePicture }} style={styles.profilePicture} />
@@ -60,6 +61,7 @@ export default function Settings() {
           )}
           <Text style={styles.userName}>{userData.name}</Text>
         </View>
+        </TouchableOpacity>
       )}
 
       {/* Settings Options */}
