@@ -293,7 +293,7 @@ const UserOnboarding = () => {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardAvoidingView}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -389,7 +389,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter-Bold",
     color: "#1E293B",
     textAlign: "center",
-    marginBottom: 40,
   },
   fieldContainer: {
     marginBottom: 24,

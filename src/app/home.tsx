@@ -82,7 +82,7 @@ export default function EventCreation() {
   );
 
   const handleSearchPress = () => {
-    router.push("/search");
+    router.push("locked/lockedScreen");
   };
 
   return (

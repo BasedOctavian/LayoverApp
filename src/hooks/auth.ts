@@ -8,6 +8,7 @@ import {
   onAuthStateChanged,
   User,
   AuthError,
+  sendEmailVerification,
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "../../firebaseConfig";
@@ -64,22 +65,32 @@ const useAuth = () => {
     setLoading(true);
     setError(null);
     try {
-      // Create the user using Firebase Auth.
+      // Create the user using Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const userId = userCredential.user.uid;
-
-      // If a profile picture URI is provided, upload the image using the UID as the filename.
+      const user = userCredential.user;
+  
+      // Send verification email
+      try {
+        await sendEmailVerification(user);
+        console.log("Verification email sent");
+      } catch (emailError) {
+        console.error("Failed to send verification email:", emailError);
+        // Continue signup even if email fails, as verification can be resent later
+      }
+  
+      const userId = user.uid;
+  
+      // If a profile picture URI is provided, upload the image using the UID as the filename
       let profilePicUrl: string | null = null;
       if (userData.profilePicture) {
         const response = await fetch(userData.profilePicture);
         const blob = await response.blob();
-        // Use UID instead of a timestamp
         const storageRef = ref(storage, `profilePictures/${userId}`);
         await uploadBytes(storageRef, blob);
         profilePicUrl = await getDownloadURL(storageRef);
       }
-
-      // Create a Firestore user document with the UID and profile picture URL.
+  
+      // Create a Firestore user document with the UID and profile picture URL
       const userDocRef = doc(db, "users", userId);
       await setDoc(userDocRef, {
         ...userData,
@@ -89,7 +100,7 @@ const useAuth = () => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-
+  
       setUser(userCredential.user);
       return userCredential;
     } catch (error) {
