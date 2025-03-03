@@ -238,7 +238,7 @@ export default function Dashboard() {
     { 
       icon: <FontAwesome5 name="user-friends" size={24} color="#FFFFFF" />, 
       title: 'Nearby Users', 
-      screen: 'swipe',
+      screen: 'locked/lockedScreen',
       size: 'full'
     },
     { 
@@ -262,7 +262,7 @@ export default function Dashboard() {
     { 
       icon: <Feather name="edit" size={18} color="#FFFFFF" />, 
       title: 'Status', 
-      screen: 'Status',
+      screen: 'locked/lockedScreen',
       size: 'half'
     },
     { 

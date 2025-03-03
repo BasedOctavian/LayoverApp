@@ -22,7 +22,7 @@ import useEvents from '../hooks/useEvents';
 import useAuth from '../hooks/auth';
 import useAirports, { Airport } from '../hooks/useAirports';
 import * as Location from 'expo-location';
-import * as ImagePicker from 'expo-image-picker'; // Added import
+import * as ImagePicker from 'expo-image-picker';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { useRouter } from 'expo-router';
@@ -75,7 +75,8 @@ const EventCreation: React.FC = () => {
     organizer: user?.uid || '',
     attendees: [user?.uid || ''],
     createdAt: new Date(),
-    eventImage: null as string | null, // Added eventImage field
+    eventImage: null as string | null,
+    airportCode: '', // Added to store the selected airport's code
   });
 
   const searchType = 'events';
@@ -102,14 +103,15 @@ const EventCreation: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-    if (user){
-    setAuthUser(user);
-    } else {
-    router.replace("login/login");
-    }
-    setAuthLoading(false);
-    })
-    }, []);
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("login/login");
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe; // Cleanup on unmount
+  }, []);
 
   useEffect(() => {
     if (userLocation && allAirports.length > 0 && !selectedAirport) {
@@ -123,7 +125,9 @@ const EventCreation: React.FC = () => {
         ),
       }));
       airportsWithDistance.sort((a, b) => a.distance - b.distance);
-      setSelectedAirport(airportsWithDistance[0]);
+      const nearestAirport = airportsWithDistance[0];
+      setSelectedAirport(nearestAirport);
+      setEventData(prev => ({ ...prev, airportCode: nearestAirport.airportCode })); // Set airportCode
     }
   }, [userLocation, allAirports, selectedAirport]);
 
@@ -150,6 +154,7 @@ const EventCreation: React.FC = () => {
 
   const handleSelectAirport = (airport: Airport) => {
     setSelectedAirport(airport);
+    setEventData(prev => ({ ...prev, airportCode: airport.airportCode })); // Set airportCode
     setShowSearch(false);
     setRegion({
       latitude: airport.lat,
@@ -166,7 +171,6 @@ const EventCreation: React.FC = () => {
     }
   };
 
-  // New function to select event image
   const handleSelectEventImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -194,7 +198,6 @@ const EventCreation: React.FC = () => {
     }
   };
 
-  // Updated handleSubmit to include eventImage
   const handleSubmit = async () => {
     if (!eventCoords || !selectedAirport) {
       Alert.alert('Error', 'Please select an airport and event location');
@@ -311,7 +314,6 @@ const EventCreation: React.FC = () => {
                   onChangeText={(text) => setEventData({ ...eventData, description: text })}
                 />
               </View>
-              {/* Added Event Image Selection */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Event Image</Text>
                 <TouchableOpacity style={styles.input} onPress={handleSelectEventImage}>
@@ -445,12 +447,11 @@ const EventCreation: React.FC = () => {
   );
 };
 
-// Styles remain unchanged
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',
-    marginTop: 15
+    marginTop: 25
   },
   backgroundGradient: {
     borderRadius: 24,
@@ -588,6 +589,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.95)',
     zIndex: 1000,
     padding: 16,
+    marginTop: 35,
   },
   searchHeader: {
     flexDirection: 'row',

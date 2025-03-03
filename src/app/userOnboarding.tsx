@@ -201,7 +201,7 @@ const UserOnboarding = () => {
   const handleNext = async () => {
     Keyboard.dismiss();
     if (stepIndex < steps.length - 1) {
-      setStepIndex(prev => prev + 1);
+      setStepIndex((prev) => prev + 1);
     } else {
       await handleSubmit();
     }
@@ -306,7 +306,7 @@ const UserOnboarding = () => {
               ) : (
                 <>
                   <Text style={styles.title}>{steps[stepIndex].title}</Text>
-                  
+
                   {steps[stepIndex].fields.map((field) => (
                     <View key={field.key} style={styles.fieldContainer}>
                       <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -318,12 +318,16 @@ const UserOnboarding = () => {
                     {stepIndex > 0 && (
                       <TouchableOpacity
                         style={styles.backButton}
-                        onPress={() => setStepIndex(prev => prev - 1)}
+                        onPress={() => setStepIndex((prev) => prev - 1)}
                       >
-                        <Feather name="chevron-left" size={24} color="#4F46E5" />
+                        <Feather
+                          name="chevron-left"
+                          size={24}
+                          color="#4F46E5"
+                        />
                       </TouchableOpacity>
                     )}
-                    
+
                     <TouchableOpacity
                       style={styles.nextButton}
                       onPress={handleNext}
@@ -345,6 +349,14 @@ const UserOnboarding = () => {
                       </LinearGradient>
                     </TouchableOpacity>
                   </View>
+
+                  {stepIndex === 0 && (
+                    <TouchableOpacity onPress={() => router.push("login/login")}>
+                      <Text style={styles.loginText}>
+                        Already have an account? Log in
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </>
               )}
             </View>
@@ -501,6 +513,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontFamily: "Inter-Bold",
     fontSize: 16,
+  },
+  loginText: {
+    color: "#4F46E5",
+    fontFamily: "Inter-Medium",
+    fontSize: 14,
+    marginTop: 20,
   },
 });
 
