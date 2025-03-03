@@ -1,4 +1,3 @@
-// hooks/auth.ts
 import { useState, useEffect } from "react";
 import {
   getAuth,
@@ -6,6 +5,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  updatePassword,
   User,
   AuthError,
   sendEmailVerification,
@@ -126,6 +126,25 @@ const useAuth = () => {
     }
   };
 
+  // New function to update the user's password
+  const changePassword = async (newPassword: string) => {
+    if (!auth.currentUser) {
+      const errMsg = "No user is currently logged in";
+      setError(errMsg);
+      throw new Error(errMsg);
+    }
+    try {
+      await updatePassword(auth.currentUser, newPassword);
+      console.log("Password updated successfully");
+    } catch (error) {
+      const authError = error as AuthError;
+      setError(authError.message);
+      // Note: If you get an error like "requires recent authentication",
+      // you'll need to reauthenticate the user before calling updatePassword.
+      throw authError;
+    }
+  };
+
   return {
     user,
     userId: user?.uid || null,
@@ -134,6 +153,7 @@ const useAuth = () => {
     login,
     signup,
     logout,
+    changePassword, // Expose the password update function
   };
 };
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +10,7 @@ import { auth } from "../../../firebaseConfig"; // Adjust path as needed
 
 export default function Settings() {
   const { user, logout } = useAuth();
+  const [userId, setUserId] = useState<string | null>(null);
   const { getUser } = useUsers();
   const [userData, setUserData] = React.useState(null);
   const [authUser, setAuthUser] = React.useState<User | null>(null);
@@ -27,6 +28,13 @@ export default function Settings() {
     });
     return unsubscribe; // Cleanup subscription
   }, []);
+
+    useEffect(() => {
+      if (user) {
+        setUserId(user.uid);
+        console.log("User ID:", user.uid);
+      }
+    }, [user]);
 
   // Fetch user data when the user object is available
   React.useEffect(() => {
@@ -52,7 +60,7 @@ export default function Settings() {
 
       {/* User Information Section */}
       {userData && (
-        <TouchableOpacity onPress={() => router.push("profile/editProfile")}>
+        <TouchableOpacity onPress={() => router.push('profile/' + userId)}>
         <View style={styles.userHeader}>
           {userData.profilePicture ? (
             <Image source={{ uri: userData.profilePicture }} style={styles.profilePicture} />
@@ -71,7 +79,7 @@ export default function Settings() {
           <Text style={styles.sectionTitle}>Account</Text>
           <TouchableOpacity
             style={styles.settingsItem}
-            onPress={() => router.push("/profile/edit")}
+            onPress={() => router.push('profile/editProfile')}
           >
             <LinearGradient
               colors={["#2F80ED", "#1A5FB4"]}
@@ -89,7 +97,7 @@ export default function Settings() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.settingsItem}
-            onPress={() => router.push("/account/password")}
+            onPress={() => router.push("/settings/updatePassword")}
           >
             <LinearGradient
               colors={["#2F80ED", "#1A5FB4"]}
