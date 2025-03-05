@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useContext } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { 
   View, 
   Text, 
@@ -22,7 +22,6 @@ import useUsers from "../../hooks/useUsers";
 import { serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
-import { ThemeContext } from "../../ThemeContext";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -33,7 +32,7 @@ type FeatureButton = {
 
 function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
   const toRad = (value: number) => (value * Math.PI) / 180;
-  const R = 6371;
+  const R = 6371; // Earth's radius in kilometers
   const dLat = toRad(lat2 - lat1);
   const dLong = toRad(long2 - long1);
   const a =
@@ -56,7 +55,6 @@ export default function Dashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [airportsNearBUF, setAirportsNearBUF] = useState<Airport[]>([]);
   const { updateUser } = useUsers();
-  const { theme } = useContext(ThemeContext);
 
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
@@ -72,6 +70,8 @@ export default function Dashboard() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+
+
   const presetStatuses = [
     { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#FFFFFF" /> },
     { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#FFFFFF" /> },
@@ -80,12 +80,15 @@ export default function Dashboard() {
   ];
 
   const [updatingMood, setUpdatingMood] = useState(false);
+
   const [popupData, setPopupData] = useState<{ visible: boolean; title: string; message: string; type: "success" | "error" }>({
     visible: false,
     title: "",
     message: "",
     type: "success",
   });
+
+  
 
   const showPopup = (title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
@@ -293,6 +296,7 @@ export default function Dashboard() {
     if (!show) setSearchQuery("");
   };
 
+  // Existing sport events filtering logic (kept unchanged)
   useEffect(() => {
     if (!selectedAirport) {
       setMatchingEvents([]);
@@ -316,12 +320,13 @@ export default function Dashboard() {
     setMatchingEvents(filteredSportEvents);
   }, [selectedAirport, allSportEvents]);
 
+  // New filtering for regular events based on distance
   const filteredRegularEvents = useMemo(() => {
     if (!selectedAirport) return [];
 
     const airportLat = selectedAirport.lat;
     const airportLong = selectedAirport.long;
-    const maxDistance = 10;
+    const maxDistance = 10; // km
 
     return events.filter(event => {
       const lat = Number(event.latitude);
@@ -339,6 +344,7 @@ export default function Dashboard() {
     }));
   }, [selectedAirport, events]);
 
+  // Combine filtered sport and regular events
   const allEvents = [...matchingEvents, ...filteredRegularEvents];
 
   const filteredResults = searchType === 'airports'
@@ -350,18 +356,17 @@ export default function Dashboard() {
       );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme === "light" ? "#F8FAFC" : "#1E293B" }]}>
+    <View style={styles.container}>
       {/* Search Header */}
       <Animated.View style={[styles.searchHeader, { 
         opacity: fadeAnim,
-        transform: [{ translateY: slideAnim }],
-        backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748",
+        transform: [{ translateY: slideAnim }]
       }]}>
         <View style={styles.searchInputContainer}>
           <TextInput
-            style={[styles.searchInput, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}
+            style={styles.searchInput}
             placeholder={`Search ${searchType}...`}
-            placeholderTextColor={theme === "light" ? "#64748B" : "#A0AEC0"}
+            placeholderTextColor="#64748B"
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoFocus={false}
@@ -370,7 +375,7 @@ export default function Dashboard() {
             style={styles.cancelButton} 
             onPress={() => toggleSearch(false)}
           >
-            <Feather name="x" size={24} color={theme === "light" ? "#2F80ED" : "#90CDF4"} />
+            <Feather name="x" size={24} color="#2F80ED" />
           </TouchableOpacity>
         </View>
         <View style={styles.filterContainer}>
@@ -379,18 +384,17 @@ export default function Dashboard() {
             onPress={() => setSearchType('airports')}
           >
             <LinearGradient
-              colors={searchType === 'airports' ? ['#2F80ED', '#1A5FB4'] : [theme === "light" ? '#F1F5F9' : '#2D3748', theme === "light" ? '#FFFFFF' : '#1E293B']}
+              colors={searchType === 'airports' ? ['#2F80ED', '#1A5FB4'] : ['#F1F5F9', '#FFFFFF']}
               style={[styles.filterGradient, styles.filterButtonInner]}
             >
               <Feather 
                 name="airplay" 
                 size={18} 
-                color={searchType === 'airports' ? '#FFFFFF' : (theme === "light" ? '#64748B' : '#CBD5E1')} 
+                color={searchType === 'airports' ? '#FFFFFF' : '#64748B'} 
               />
               <Text style={[
                 styles.filterText,
-                searchType === 'airports' && styles.activeFilterText,
-                { color: searchType === 'airports' ? '#FFFFFF' : (theme === "light" ? '#64748B' : '#CBD5E1') }
+                searchType === 'airports' && styles.activeFilterText
               ]}>
                 Airports
               </Text>
@@ -401,18 +405,17 @@ export default function Dashboard() {
             onPress={() => setSearchType('events')}
           >
             <LinearGradient
-              colors={searchType === 'events' ? ['#2F80ED', '#1A5FB4'] : [theme === "light" ? '#F1F5F9' : '#2D3748', theme === "light" ? '#FFFFFF' : '#1E293B']}
+              colors={searchType === 'events' ? ['#2F80ED', '#1A5FB4'] : ['#F1F5F9', '#FFFFFF']}
               style={[styles.filterGradient, styles.filterButtonInner]}
             >
               <Feather 
                 name="calendar" 
                 size={18} 
-                color={searchType === 'events' ? '#FFFFFF' : (theme === "light" ? '#64748B' : '#CBD5E1')} 
+                color={searchType === 'events' ? '#FFFFFF' : '#64748B'} 
               />
               <Text style={[
                 styles.filterText,
-                searchType === 'events' && styles.activeFilterText,
-                { color: searchType === 'events' ? '#FFFFFF' : (theme === "light" ? '#64748B' : '#CBD5E1') }
+                searchType === 'events' && styles.activeFilterText
               ]}>
                 Events
               </Text>
@@ -429,14 +432,14 @@ export default function Dashboard() {
           style={styles.defaultSearchContainer}
         >
           <LinearGradient
-            colors={theme === "light" ? ['#FFFFFF', '#F8FAFC'] : ['#2D3748', '#1E293B']}
+            colors={['#FFFFFF', '#F8FAFC']}
             style={styles.searchContainer}
           >
-            <Feather name="search" size={18} color={theme === "light" ? "#64748B" : "#A0AEC0"} />
-            <Text style={[styles.searchPlaceholder, { color: theme === "light" ? "#64748B" : "#A0AEC0" }]}>
+            <Feather name="search" size={18} color="#64748B" />
+            <Text style={styles.searchPlaceholder}>
               {selectedAirport ? selectedAirport.name : "Select an airport"}
             </Text>
-            <Feather name="chevron-down" size={20} color={theme === "light" ? "#64748B" : "#A0AEC0"} style={styles.searchIcon} />
+            <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
           </LinearGradient>
         </TouchableOpacity>
       )}
@@ -485,7 +488,7 @@ export default function Dashboard() {
       {/* Search Results or Dashboard Features */}
       {showSearch ? (
         <Animated.ScrollView 
-          contentContainerStyle={[styles.searchResultsContainer, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748" }]}
+          contentContainerStyle={styles.searchResultsContainer}
           showsVerticalScrollIndicator={false}
           style={{ opacity: fadeAnim }}
         >
@@ -505,17 +508,17 @@ export default function Dashboard() {
               }}
             >
               <LinearGradient
-                colors={theme === "light" ? ['#FFFFFF', '#F8FAFC'] : ['#2D3748', '#1E293B']}
+                colors={['#FFFFFF', '#F8FAFC']}
                 style={styles.resultGradient}
               >
                 <Feather 
                   name={searchType === "airports" ? "airplay" : "calendar"} 
                   size={20} 
-                  color={theme === "light" ? "#2F80ED" : "#90CDF4"} 
+                  color="#2F80ED" 
                   style={styles.resultIcon}
                 />
-                <Text style={[styles.resultText, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>{result.name}</Text>
-                <Feather name="chevron-right" size={18} color={theme === "light" ? "#CBD5E1" : "#4A5568"} />
+                <Text style={styles.resultText}>{result.name}</Text>
+                <Feather name="chevron-right" size={18} color="#CBD5E1" />
               </LinearGradient>
             </TouchableOpacity>
           ))}
@@ -626,7 +629,7 @@ export default function Dashboard() {
           </View>
           {/* Events Section */}
           <View style={styles.eventsSection}>
-            <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>Events</Text>
+            <Text style={styles.sectionTitle}>Events</Text>
             {allEvents.map((event, index) => (
               <TouchableOpacity 
                 key={index} 
@@ -634,17 +637,17 @@ export default function Dashboard() {
                 onPress={() => router.push(event.type === 'sport' ? `/sport/${event.id}` : `/event/${event.id}`)}
               >
                 <LinearGradient
-                  colors={theme === "light" ? ['#FFFFFF', '#F8FAFC'] : ['#2D3748', '#1E293B']}
+                  colors={['#FFFFFF', '#F8FAFC']}
                   style={styles.eventGradient}
                 >
                   <Feather 
                     name={event.type === 'sport' ? 'activity' : 'calendar'} 
                     size={20} 
-                    color={theme === "light" ? "#2F80ED" : "#90CDF4"} 
+                    color="#2F80ED" 
                     style={styles.eventIcon}
                   />
-                  <Text style={[styles.eventText, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>{event.name}</Text>
-                  <Feather name="chevron-right" size={18} color={theme === "light" ? "#CBD5E1" : "#4A5568"} />
+                  <Text style={styles.eventText}>{event.name}</Text>
+                  <Feather name="chevron-right" size={18} color="#CBD5E1" />
                 </LinearGradient>
               </TouchableOpacity>
             ))}
@@ -655,14 +658,14 @@ export default function Dashboard() {
       {/* Status Modal */}
       <Modal visible={showStatusModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748" }]}>
-            <Text style={[styles.modalHeader, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>Update Your Status</Text>
-            <View style={[styles.modalSeparator, { backgroundColor: theme === "light" ? "#E2E8F0" : "#4A5568" }]} />
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalHeader}>Update Your Status</Text>
+            <View style={styles.modalSeparator} />
             <View style={styles.statusOptions}>
               {presetStatuses.map((status, index) => (
                 <TouchableOpacity
                   key={index}
-                  style={[styles.statusOptionButton, { backgroundColor: theme === "light" ? "#2F80ED" : "#1A5FB4" }]}
+                  style={styles.statusOptionButton}
                   onPress={() => {
                     handleUpdateMoodStatus(status.label);
                     setShowStatusModal(false);
@@ -675,21 +678,17 @@ export default function Dashboard() {
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={[styles.customStatusLabel, { color: theme === "light" ? "#1E293B" : "#CBD5E1" }]}>Or enter a custom status</Text>
+            <Text style={styles.customStatusLabel}>Or enter a custom status</Text>
             <TextInput
-              style={[styles.customStatusInput, { 
-                borderColor: theme === "light" ? "#2F80ED" : "#1A5FB4",
-                color: theme === "light" ? "#1E293B" : "#FFFFFF",
-                backgroundColor: theme === "light" ? "#F8FAFC" : "#1E293B"
-              }]}
+              style={styles.customStatusInput}
               value={customStatus}
               onChangeText={setCustomStatus}
               placeholder="Type your status here..."
-              placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
+              placeholderTextColor="#999"
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={[styles.modalActionButton, { backgroundColor: theme === "light" ? "#2F80ED" : "#1A5FB4" }]}
+                style={styles.modalActionButton}
                 onPress={() => {
                   handleUpdateMoodStatus(customStatus);
                   setShowStatusModal(false);
@@ -699,14 +698,11 @@ export default function Dashboard() {
                 <Text style={styles.modalActionButtonText}>Submit</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalActionButton, styles.modalCancelButton, { 
-                  backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748",
-                  borderColor: theme === "light" ? "#2F80ED" : "#1A5FB4"
-                }]}
+                style={[styles.modalActionButton, styles.modalCancelButton]}
                 onPress={() => setShowStatusModal(false)}
               >
-                <Feather name="x" size={18} color={theme === "light" ? "#2F80ED" : "#90CDF4"} style={styles.modalActionIcon} />
-                <Text style={[styles.modalActionButtonText, styles.modalCancelButtonText, { color: theme === "light" ? "#2F80ED" : "#90CDF4" }]}>Cancel</Text>
+                <Feather name="x" size={18} color="#2F80ED" style={styles.modalActionIcon} />
+                <Text style={[styles.modalActionButtonText, styles.modalCancelButtonText]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -717,12 +713,9 @@ export default function Dashboard() {
       {popupData.visible && (
         <Modal transparent animationType="fade">
           <View style={styles.popupOverlay}>
-            <View style={[styles.popupContainer, popupData.type === "error" ? styles.popupError : styles.popupSuccess, { 
-              backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748",
-              borderLeftColor: popupData.type === "error" ? "#FF5A5F" : "#2F80ED"
-            }]}>
-              <Text style={[styles.popupTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>{popupData.title}</Text>
-              <Text style={[styles.popupMessage, { color: theme === "light" ? "#64748B" : "#CBD5E1" }]}>{popupData.message}</Text>
+            <View style={[styles.popupContainer, popupData.type === "error" ? styles.popupError : styles.popupSuccess]}>
+              <Text style={styles.popupTitle}>{popupData.title}</Text>
+              <Text style={styles.popupMessage}>{popupData.message}</Text>
             </View>
           </View>
         </Modal>
@@ -734,6 +727,7 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
   },
   searchHeader: {
     position: 'absolute',
@@ -741,6 +735,7 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     zIndex: 2,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     shadowColor: '#000',
@@ -756,6 +751,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
+    color: '#1E293B',
     fontFamily: 'Inter-SemiBold',
     paddingVertical: 8,
   },
@@ -781,6 +777,7 @@ const styles = StyleSheet.create({
   },
   filterText: {
     fontSize: 14,
+    color: '#64748B',
     fontWeight: '600',
     marginLeft: 8,
   },
@@ -809,6 +806,7 @@ const styles = StyleSheet.create({
   searchPlaceholder: {
     flex: 1,
     fontSize: 14,
+    color: '#64748B',
     marginLeft: 8,
     fontFamily: 'Inter-Medium',
   },
@@ -878,12 +876,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   buttonText: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
     fontFamily: 'Inter-SemiBold',
     textAlign: 'center',
   },
   smallButtonText: {
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
     fontFamily: 'Inter-SemiBold',
@@ -893,6 +893,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 8,
     padding: 16,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -917,6 +918,7 @@ const styles = StyleSheet.create({
   resultText: {
     flex: 1,
     fontSize: 14,
+    color: '#1E293B',
     fontFamily: 'Inter-SemiBold',
   },
   eventsSection: {
@@ -926,6 +928,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
+    color: '#1E293B',
     marginBottom: 12,
   },
   eventItem: {
@@ -944,6 +947,7 @@ const styles = StyleSheet.create({
   eventText: {
     flex: 1,
     fontSize: 14,
+    color: '#1E293B',
     fontFamily: 'Inter-SemiBold',
   },
   modalOverlay: {
@@ -954,6 +958,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: '85%',
+    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
     shadowColor: '#000',
@@ -967,9 +972,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 12,
     textAlign: 'center',
+    color: '#1E293B',
   },
   modalSeparator: {
     height: 1,
+    backgroundColor: '#e0e0e0',
     width: '100%',
     marginBottom: 15,
   },
@@ -981,6 +988,7 @@ const styles = StyleSheet.create({
   },
   statusOptionButton: {
     width: '48%',
+    backgroundColor: '#2F80ED',
     marginVertical: 4,
     paddingVertical: 12,
     borderRadius: 8,
@@ -991,6 +999,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statusOptionText: {
+    color: '#fff',
     fontSize: 14,
     fontWeight: '500',
     marginTop: 5,
@@ -998,6 +1007,7 @@ const styles = StyleSheet.create({
   },
   customStatusLabel: {
     fontSize: 14,
+    color: '#333',
     marginBottom: 8,
     marginTop: 15,
     textAlign: 'center',
@@ -1005,11 +1015,13 @@ const styles = StyleSheet.create({
   customStatusInput: {
     width: '100%',
     borderWidth: 1,
+    borderColor: '#2F80ED',
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginBottom: 15,
     fontSize: 14,
+    color: '#1E293B',
   },
   modalActions: {
     flexDirection: 'row',
@@ -1017,6 +1029,7 @@ const styles = StyleSheet.create({
   },
   modalActionButton: {
     flex: 1,
+    backgroundColor: '#2F80ED',
     paddingVertical: 10,
     borderRadius: 8,
     marginHorizontal: 4,
@@ -1028,15 +1041,17 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   modalActionButtonText: {
+    color: '#fff',
     fontSize: 14,
     fontWeight: '500',
   },
   modalCancelButton: {
+    backgroundColor: '#fff',
     borderWidth: 1,
+    borderColor: '#2F80ED',
   },
   modalCancelButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    color: '#2F80ED',
   },
   popupOverlay: {
     flex: 1,
@@ -1044,6 +1059,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   popupContainer: {
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 20,
     minWidth: "70%",
@@ -1066,9 +1082,11 @@ const styles = StyleSheet.create({
   },
   popupSuccess: {
     borderLeftWidth: 6,
+    borderLeftColor: "#2F80ED",
   },
   popupError: {
     borderLeftWidth: 6,
+    borderLeftColor: "#FF5A5F",
   },
 });
 
