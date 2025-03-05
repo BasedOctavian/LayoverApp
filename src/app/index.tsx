@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
 import useAuth from "../hooks/auth"; // Import your auth hook
@@ -10,6 +10,10 @@ export default function MainScreen() {
   const router = useRouter();
   const { user, logout } = useAuth(); // Get the authenticated user and logout function
   const { getProfilePicUrl } = useGetProfilePicUrl();
+
+  if (user) {
+    router.replace("home/dashboard");
+  }
 
   useEffect(() => {
 

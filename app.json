@@ -22,7 +22,8 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "googleServicesFile": "./GoogleService-Info.plist",
-      "bundleIdentifier": "com.octavian.layoverapp"
+      "bundleIdentifier": "com.octavian.layoverapp",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {

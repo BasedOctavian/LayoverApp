@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.48.1",
     "axios": "^1.7.9",
     "base64-arraybuffer": "^1.0.2",
+    "eas-cli": "^15.0.13",
     "expo": "~52.0.36",
     "expo-constants": "~17.0.7",
     "expo-file-system": "~18.0.11",

@@ -1,0 +1,70 @@
+"filename", "language", "JSON with Comments", "JavaScript", "TypeScript", "TypeScript JSX", "JSON", "CSS", "Groovy", "Batch", "Java Properties", "XML", "Properties", "comment", "blank", "total"
+"c:\Users\17162\source\repos\Freelance\Layover\.env", "Properties", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 3
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\build.gradle", "Groovy", 0, 0, 0, 0, 0, 0, 87, 0, 0, 0, 0, 68, 22, 177
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\debug\AndroidManifest.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 3, 8
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\AndroidManifest.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 0, 35
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\drawable\ic_launcher_background.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 6
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\drawable\rn_edit_text_material.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 23, 3, 38
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 5
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\mipmap-anydpi-v26\ic_launcher_round.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 5
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\values-night\colors.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\values\colors.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 6
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\values\strings.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 5
+"c:\Users\17162\source\repos\Freelance\Layover\android\app\src\main\res\values\styles.xml", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 17
+"c:\Users\17162\source\repos\Freelance\Layover\android\build.gradle", "Groovy", 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 0, 3, 6, 42
+"c:\Users\17162\source\repos\Freelance\Layover\android\gradle.properties", "Java Properties", 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 33, 13, 57
+"c:\Users\17162\source\repos\Freelance\Layover\android\gradle\wrapper\gradle-wrapper.properties", "Java Properties", 0, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 1, 8
+"c:\Users\17162\source\repos\Freelance\Layover\android\gradlew.bat", "Batch", 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 32, 22, 95
+"c:\Users\17162\source\repos\Freelance\Layover\android\settings.gradle", "Groovy", 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 0, 0, 6, 39
+"c:\Users\17162\source\repos\Freelance\Layover\app.json", "JSON", 0, 0, 0, 0, 72, 0, 0, 0, 0, 0, 0, 0, 1, 73
+"c:\Users\17162\source\repos\Freelance\Layover\babel.config.js", "JavaScript", 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9
+"c:\Users\17162\source\repos\Freelance\Layover\eas.json", "JSON", 0, 0, 0, 0, 21, 0, 0, 0, 0, 0, 0, 0, 1, 22
+"c:\Users\17162\source\repos\Freelance\Layover\firebase.json", "JSON", 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 15
+"c:\Users\17162\source\repos\Freelance\Layover\firebaseConfig.ts", "TypeScript", 0, 0, 25, 0, 0, 0, 0, 0, 0, 0, 0, 4, 8, 37
+"c:\Users\17162\source\repos\Freelance\Layover\functions\.env", "Properties", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2
+"c:\Users\17162\source\repos\Freelance\Layover\functions\.eslintrc.js", "JavaScript", 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 29
+"c:\Users\17162\source\repos\Freelance\Layover\functions\index.js", "JavaScript", 0, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 10, 76
+"c:\Users\17162\source\repos\Freelance\Layover\functions\package-lock.json", "JSON", 0, 0, 0, 0, 6673, 0, 0, 0, 0, 0, 0, 0, 1, 6674
+"c:\Users\17162\source\repos\Freelance\Layover\functions\package.json", "JSON", 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 1, 29
+"c:\Users\17162\source\repos\Freelance\Layover\global.css", "CSS", 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 3
+"c:\Users\17162\source\repos\Freelance\Layover\google-services.json", "JSON", 0, 0, 0, 0, 118, 0, 0, 0, 0, 0, 0, 0, 0, 118
+"c:\Users\17162\source\repos\Freelance\Layover\index.ts", "TypeScript", 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3
+"c:\Users\17162\source\repos\Freelance\Layover\metro.config.js", "JavaScript", 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 9
+"c:\Users\17162\source\repos\Freelance\Layover\nativewind-env.d.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1
+"c:\Users\17162\source\repos\Freelance\Layover\package-lock.json", "JSON", 0, 0, 0, 0, 14552, 0, 0, 0, 0, 0, 0, 0, 1, 14553
+"c:\Users\17162\source\repos\Freelance\Layover\package.json", "JSON", 0, 0, 0, 0, 55, 0, 0, 0, 0, 0, 0, 0, 1, 56
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\_layout.tsx", "TypeScript JSX", 0, 0, 0, 374, 0, 0, 0, 0, 0, 0, 0, 19, 6, 399
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\chat\[id].tsx", "TypeScript JSX", 0, 0, 0, 278, 0, 0, 0, 0, 0, 0, 0, 23, 22, 323
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\chat\chatExplore.tsx", "TypeScript JSX", 0, 0, 0, 224, 0, 0, 0, 0, 0, 0, 0, 8, 12, 244
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\chat\chatInbox.tsx", "TypeScript JSX", 0, 0, 0, 220, 0, 0, 0, 0, 0, 0, 0, 4, 13, 237
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\eventCreation.tsx", "TypeScript JSX", 0, 0, 0, 615, 0, 0, 0, 0, 0, 0, 0, 0, 32, 647
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\eventCreationContinued.tsx", "TypeScript JSX", 0, 0, 0, 183, 0, 0, 0, 0, 0, 0, 0, 1, 8, 192
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\event\[id].tsx", "TypeScript JSX", 0, 0, 0, 425, 0, 0, 0, 0, 0, 0, 0, 22, 41, 488
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\home.tsx", "TypeScript JSX", 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 10, 265
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\home\dashboard.tsx", "TypeScript JSX", 0, 0, 0, 1038, 0, 0, 0, 0, 0, 0, 0, 10, 45, 1093
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\index.tsx", "TypeScript JSX", 0, 0, 0, 144, 0, 0, 0, 0, 0, 0, 0, 10, 16, 170
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\locked\lockedScreen.tsx", "TypeScript JSX", 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 0, 3, 60
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\login\login.tsx", "TypeScript JSX", 0, 0, 0, 192, 0, 0, 0, 0, 0, 0, 0, 0, 10, 202
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\profile.tsx", "TypeScript JSX", 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 9, 16, 226
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\profile\[id].tsx", "TypeScript JSX", 0, 0, 0, 259, 0, 0, 0, 0, 0, 0, 0, 8, 20, 287
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\profile\editProfile.tsx", "TypeScript JSX", 0, 0, 0, 404, 0, 0, 0, 0, 0, 0, 0, 7, 24, 435
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\search.tsx", "TypeScript JSX", 0, 0, 0, 133, 0, 0, 0, 0, 0, 0, 0, 6, 12, 151
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\settings\settings.tsx", "TypeScript JSX", 0, 0, 0, 286, 0, 0, 0, 0, 0, 0, 0, 10, 13, 309
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\settings\updatePassword.tsx", "TypeScript JSX", 0, 0, 0, 137, 0, 0, 0, 0, 0, 0, 0, 4, 9, 150
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\sport\[id].tsx", "TypeScript JSX", 0, 0, 0, 264, 0, 0, 0, 0, 0, 0, 0, 14, 15, 293
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\swipe.tsx", "TypeScript JSX", 0, 0, 0, 230, 0, 0, 0, 0, 0, 0, 0, 8, 17, 255
+"c:\Users\17162\source\repos\Freelance\Layover\src\app\userOnboarding.tsx", "TypeScript JSX", 0, 0, 0, 501, 0, 0, 0, 0, 0, 0, 0, 0, 23, 524
+"c:\Users\17162\source\repos\Freelance\Layover\src\data.ts", "TypeScript", 0, 0, 27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 29
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\auth.ts", "TypeScript", 0, 0, 138, 0, 0, 0, 0, 0, 0, 0, 0, 8, 15, 161
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\useAirports.ts", "TypeScript", 0, 0, 115, 0, 0, 0, 0, 0, 0, 0, 0, 22, 11, 148
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\useChats.ts", "TypeScript", 0, 0, 141, 0, 0, 0, 0, 0, 0, 0, 0, 8, 12, 161
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\useEvents.ts", "TypeScript", 0, 0, 95, 0, 0, 0, 0, 0, 0, 0, 0, 10, 12, 117
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\useNearestAirport.ts", "TypeScript", 0, 0, 85, 0, 0, 0, 0, 0, 0, 0, 0, 19, 15, 119
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\useSportEvents.ts", "TypeScript", 0, 0, 95, 0, 0, 0, 0, 0, 0, 0, 0, 8, 11, 114
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\useSupabase.ts", "TypeScript", 0, 0, 54, 0, 0, 0, 0, 0, 0, 0, 0, 15, 15, 84
+"c:\Users\17162\source\repos\Freelance\Layover\src\hooks\useUsers.ts", "TypeScript", 0, 0, 78, 0, 0, 0, 0, 0, 0, 0, 0, 6, 8, 92
+"c:\Users\17162\source\repos\Freelance\Layover\src\types\index.ts", "TypeScript", 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12
+"c:\Users\17162\source\repos\Freelance\Layover\supabaseClient.ts", "TypeScript", 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 8
+"c:\Users\17162\source\repos\Freelance\Layover\tailwind.config.js", "JavaScript", 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 11
+"c:\Users\17162\source\repos\Freelance\Layover\tsconfig.json", "JSON with Comments", 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 8
+"Total", "-", 7, 106, 870, 6420, 21534, 3, 153, 41, 18, 97, 4, 436, 581, 30270

@@ -2,10 +2,15 @@ import { Stack } from "expo-router";
 import { TouchableOpacity, View } from "react-native";
 import { AntDesign, MaterialIcons } from "@expo/vector-icons"; // Import the required icons
 import "../../global.css";
+import { ThemeProvider } from "../ThemeContext";
 
 export default function RootLayout() {
   return (
-    <Stack>
+    <ThemeProvider>
+    <Stack
+    screenOptions={{
+      animation: "none"
+    }}>
       {/* Main Screen (index) */}
       <Stack.Screen
         name="index"
@@ -392,5 +397,6 @@ export default function RootLayout() {
         }}
       />
     </Stack>
+    </ThemeProvider>
   );
 }

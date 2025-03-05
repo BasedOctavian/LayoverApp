@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import { getAuth, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { ThemeContext } from "../../ThemeContext"; // Import ThemeContext
 
 export default function UpdatePassword() {
   const { changePassword } = useAuth();
@@ -13,6 +14,9 @@ export default function UpdatePassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Access ThemeContext
+  const { theme } = useContext(ThemeContext);
 
   const handleUpdatePassword = async () => {
     // Basic validation
@@ -60,31 +64,36 @@ export default function UpdatePassword() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Update Password</Text>
+    <View style={[styles.container, { backgroundColor: theme === "light" ? "#F8FAFC" : "#1E293B" }]}>
+      <Text style={[styles.header, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
+        Update Password
+      </Text>
       <View style={styles.form}>
         <TextInput
           placeholder="Current Password"
+          placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
           secureTextEntry
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748", color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}
           value={currentPassword}
           onChangeText={setCurrentPassword}
         />
         <TextInput
           placeholder="New Password"
+          placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
           secureTextEntry
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748", color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}
           value={newPassword}
           onChangeText={setNewPassword}
         />
         <TextInput
           placeholder="Confirm New Password"
+          placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
           secureTextEntry
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748", color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
         />
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? <Text style={[styles.errorText, { color: "#FF5A5F" }]}>{error}</Text> : null}
         <TouchableOpacity
           style={styles.button}
           onPress={handleUpdatePassword}
@@ -107,19 +116,16 @@ const styles = StyleSheet.create({
     flex: 1, 
     justifyContent: "center", // Centers vertically
     padding: 20,
-    backgroundColor: "#F8FAFC",
   },
   header: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#1E293B",
     marginBottom: 20,
   },
   form: {
     marginTop: 20,
   },
   input: {
-    backgroundColor: "#FFFFFF",
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
@@ -127,7 +133,6 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   errorText: {
-    color: "#FF5A5F",
     marginBottom: 16,
     textAlign: "center",
   },
