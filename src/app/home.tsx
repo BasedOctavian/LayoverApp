@@ -1,11 +1,28 @@
-import React, { useEffect, useState } from "react";
-import { StyleSheet, View, Text, FlatList, Image, TouchableOpacity } from "react-native";
+import React, { useEffect, useState, useMemo } from "react";
+import { StyleSheet, View, Text, FlatList, Image, TouchableOpacity, Alert } from "react-native";
 import MapView, { Circle, Marker } from "react-native-maps";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons, AntDesign } from "@expo/vector-icons";
+import { MaterialIcons, AntDesign, Feather, FontAwesome } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import useEvents from "./../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
+import * as Location from 'expo-location';
+
+// Haversine formula for distance calculation
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371e3; // Earth radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c;
+};
 
 export default function EventCreation() {
   const router = useRouter();
@@ -23,8 +40,29 @@ export default function EventCreation() {
       startTime: Date;
       organizer: string;
       organizerName?: string;
+      attendees: string[];
     }[]
   >([]);
+  const [currentLocation, setCurrentLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission to access location was denied');
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({});
+      setCurrentLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      });
+    })();
+  }, []);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -41,10 +79,11 @@ export default function EventCreation() {
               latitude: parseFloat(event.latitude),
               longitude: parseFloat(event.longitude),
               eventImage: event.eventImage,
-              createdAt: new Date(event.createdAt),
+              createdAt: event.createdAt.toDate(),
               startTime: new Date(event.startTime),
               organizer: event.organizer,
               organizerName: organizer?.name || "Auto Generated",
+              attendees: event.attendees || []
             };
           })
         );
@@ -54,32 +93,78 @@ export default function EventCreation() {
     fetchEvents();
   }, []);
 
-  const renderItem = ({ item }: { item: typeof events[0] }) => (
-    <TouchableOpacity style={styles.eventCard} onPress={() => router.push("/event/" + item.id)}>
-      <Image source={{ uri: item.eventImage }} style={styles.eventImage} />
-      <View style={styles.eventDetails}>
-        <Text style={styles.eventTitle}>{item.name}</Text>
-        <Text style={styles.eventDescription}>{item.description}</Text>
-        <Text style={styles.organizerText}>
-          Organized by: {item.organizerName}
-        </Text>
-        <View style={styles.eventMeta}>
-          <View style={styles.metaItem}>
-            <MaterialIcons name="access-time" size={16} color="#fff" />
-            <Text style={styles.metaText}>
-              Starts: {item.startTime.toLocaleDateString()}
+  // Compute sorted events based on distance (nearest first)
+  const sortedEvents = useMemo(() => {
+    if (!currentLocation) return events;
+    return events.slice().sort((a, b) => {
+      const distanceA = calculateDistance(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        a.latitude,
+        a.longitude
+      );
+      const distanceB = calculateDistance(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        b.latitude,
+        b.longitude
+      );
+      return distanceA - distanceB;
+    });
+  }, [events, currentLocation]);
+
+  const renderItem = ({ item }: { item: typeof events[0] }) => {
+    const distance = currentLocation 
+      ? calculateDistance(
+          currentLocation.latitude,
+          currentLocation.longitude,
+          item.latitude,
+          item.longitude
+        )
+      : null;
+
+    const formattedDistance = distance 
+      ? distance > 1000 
+        ? `${(distance/1000).toFixed(1)}km away` 
+        : `${Math.round(distance)}m away`
+      : 'Calculating...';
+
+    return (
+      <TouchableOpacity style={styles.eventCard} onPress={() => router.push("/event/" + item.id)}>
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: item.eventImage }} style={styles.eventImage} />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.7)']}
+            style={styles.imageOverlay}
+          />
+          <Text style={styles.eventDate}>
+            <Feather name="calendar" size={14} color="white" />{' '}
+            {item.startTime.toLocaleDateString('short')}
+          </Text>
+        </View>
+        <View style={styles.eventDetails}>
+          <Text style={styles.eventTitle} numberOfLines={1}>{item.name}</Text>
+          <View style={styles.organizerContainer}>
+            <FontAwesome name="user-circle-o" size={14} color="#64748B" />
+            <Text style={styles.organizerText} numberOfLines={1}>
+              {item.organizerName}
             </Text>
           </View>
-          <View style={styles.metaItem}>
-            <MaterialIcons name="calendar-today" size={16} color="#fff" />
-            <Text style={styles.metaText}>
-              Created: {item.createdAt.toLocaleDateString()}
-            </Text>
+          <Text style={styles.eventDescription} numberOfLines={2}>{item.description}</Text>
+          <View style={styles.metaContainer}>
+            <View style={styles.metaItem}>
+              <MaterialIcons name="location-pin" size={18} color="#2F80ED" />
+              <Text style={styles.metaText}>{formattedDistance}</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <MaterialIcons name="group" size={18} color="#2F80ED" />
+              <Text style={styles.metaText}>{item.attendees.length} going</Text>
+            </View>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const handleSearchPress = () => {
     router.push("locked/lockedScreen");
@@ -127,7 +212,7 @@ export default function EventCreation() {
 
       <Text style={styles.headerText}>Nearby Events</Text>
       <FlatList
-        data={events}
+        data={sortedEvents}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -138,7 +223,7 @@ export default function EventCreation() {
         onPress={handleSearchPress}
       >
         <LinearGradient
-          colors={['#2F80ED', '#1A5FB4']}
+          colors={["#2F80ED", "#1A5FB4"]}
           style={styles.searchButton}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -154,16 +239,16 @@ export default function EventCreation() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
     padding: 16,
   },
   mapContainer: {
     height: 300,
     borderRadius: 24,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginTop: 60,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -173,71 +258,73 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerText: {
-    fontSize: 24,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "700",
     color: "#1E293B",
-    marginBottom: 15,
-    paddingHorizontal: 16,
-    fontFamily: 'Inter-SemiBold',
+    marginBottom: 20,
+    paddingHorizontal: 8,
+    fontFamily: "Inter-SemiBold",
+    letterSpacing: -0.3,
   },
   listContent: {
     paddingBottom: 80,
   },
   eventCard: {
-    flexDirection: "row",
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: "center",
+    marginBottom: 16,
     shadowColor: "#2F80ED",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
+    overflow: 'hidden',
   },
   eventImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    marginRight: 16,
+    width: '100%',
+    height: '100%',
   },
   eventDetails: {
-    flex: 1,
+    padding: 16,
   },
   eventTitle: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#1E293B",
-    marginBottom: 6,
-    fontFamily: 'Inter-SemiBold',
+    marginBottom: 8,
+    fontFamily: "Inter-Bold",
+    letterSpacing: -0.3,
   },
   eventDescription: {
     fontSize: 14,
     color: "#64748B",
-    marginBottom: 6,
-    fontFamily: 'Inter-Medium',
+    lineHeight: 20,
+    marginBottom: 16,
+    fontFamily: "Inter-Regular",
   },
   organizerText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#64748B",
-    marginBottom: 8,
-    fontFamily: 'Inter-Medium',
+    marginLeft: 6,
+    fontFamily: "Inter-Medium",
   },
   eventMeta: {
     flexDirection: "row",
     justifyContent: "space-between",
   },
   metaItem: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
   metaText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#1E293B",
     marginLeft: 6,
-    opacity: 0.8,
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: "Inter-SemiBold",
   },
   searchButtonContainer: {
     position: "absolute",
@@ -257,7 +344,38 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 10,
     fontWeight: "500",
+    fontFamily: "Inter-SemiBold",
+  },
+  imageContainer: {
+    height: 140,
+    position: 'relative',
+  },
+  imageOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '40%',
+  },
+  eventDate: {
+    position: 'absolute',
+    bottom: 12,
+    left: 16,
+    color: 'white',
+    fontSize: 13,
     fontFamily: 'Inter-SemiBold',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  organizerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  metaContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
 });
 

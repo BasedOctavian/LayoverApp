@@ -49,6 +49,7 @@ const useEvents = () => {
         eventImage: eventImageUrl,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        eventUID: eventId
       });
   
       return eventId;

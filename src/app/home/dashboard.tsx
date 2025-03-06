@@ -70,8 +70,6 @@ export default function Dashboard() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-
-
   const presetStatuses = [
     { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#FFFFFF" /> },
     { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#FFFFFF" /> },
@@ -87,8 +85,6 @@ export default function Dashboard() {
     message: "",
     type: "success",
   });
-
-  
 
   const showPopup = (title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
@@ -132,7 +128,8 @@ export default function Dashboard() {
         router.replace("login/login");
       }
       setLoading(false);
-    })
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -296,13 +293,26 @@ export default function Dashboard() {
     if (!show) setSearchQuery("");
   };
 
-  // Existing sport events filtering logic (kept unchanged)
+  // Filter regular events by matching airportCode
+  const filteredRegularEvents = useMemo(() => {
+    if (!selectedAirport) return [];
+    return events.filter(event => event.airportCode === selectedAirport.airportCode).map(event => ({
+      id: event.id, // Firestore document ID
+      name: event.name,
+      description: event.description,
+      type: 'regular',
+      latitude: event.latitude,
+      longitude: event.longitude,
+      airportCode: event.airportCode,
+    }));
+  }, [selectedAirport, events]);
+
+  // Filter sport events by city name in team names (previous logic)
   useEffect(() => {
     if (!selectedAirport) {
       setMatchingEvents([]);
       return;
     }
-
     const airportCity = selectedAirport.location.split(",")[0].trim().toLowerCase();
     const filteredSportEvents = allSportEvents.filter(event => {
       const awayTeam = event.awayTeam ? event.awayTeam.toLowerCase() : "";
@@ -316,35 +326,10 @@ export default function Dashboard() {
       latitude: event.latitude,
       longitude: event.longitude,
     }));
-
     setMatchingEvents(filteredSportEvents);
   }, [selectedAirport, allSportEvents]);
 
-  // New filtering for regular events based on distance
-  const filteredRegularEvents = useMemo(() => {
-    if (!selectedAirport) return [];
-
-    const airportLat = selectedAirport.lat;
-    const airportLong = selectedAirport.long;
-    const maxDistance = 10; // km
-
-    return events.filter(event => {
-      const lat = Number(event.latitude);
-      const long = Number(event.longitude);
-      if (isNaN(lat) || isNaN(long)) return false;
-      const distance = haversineDistance(airportLat, airportLong, lat, long);
-      return distance <= maxDistance;
-    }).map(event => ({
-      id: event.eventUID,
-      name: event.name,
-      description: event.description,
-      type: 'regular',
-      latitude: event.latitude,
-      longitude: event.longitude,
-    }));
-  }, [selectedAirport, events]);
-
-  // Combine filtered sport and regular events
+  // Combine filtered events
   const allEvents = [...matchingEvents, ...filteredRegularEvents];
 
   const filteredResults = searchType === 'airports'
