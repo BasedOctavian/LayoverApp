@@ -16,19 +16,6 @@ export default function RootLayout() {
         name="index"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "black", // Background color of the top bar
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="menu" size={30} color="white" /> {/* Hamburger menu icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "black" }}>
-              <AntDesign name="home" size={30} color="white" /> {/* Home icon in the center */}
-            </TouchableOpacity>
-          ),
         }}
       />
 
@@ -37,19 +24,6 @@ export default function RootLayout() {
         name="home"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "black",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="white" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "black" }}>
-              <AntDesign name="home" size={30} color="white" /> {/* Calendar icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
 
@@ -58,19 +32,6 @@ export default function RootLayout() {
         name="search"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "black",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="white" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "black" }}>
-              <AntDesign name="home" size={30} color="white" /> {/* Calendar icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
 
@@ -79,19 +40,6 @@ export default function RootLayout() {
         name="eventCreation"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "black",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="white" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "black" }}>
-              <AntDesign name="home" size={30} color="white" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
 
@@ -100,19 +48,6 @@ export default function RootLayout() {
         name="eventCreationContinued"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "black",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="white" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "black" }}>
-              <AntDesign name="home" size={30} color="white" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
 
@@ -121,19 +56,6 @@ export default function RootLayout() {
         name="profile/[id]"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* User Onboarding */}
@@ -141,19 +63,6 @@ export default function RootLayout() {
         name="userOnboarding"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Swipe */}
@@ -161,19 +70,6 @@ export default function RootLayout() {
         name="swipe"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Event Screen */}
@@ -181,19 +77,6 @@ export default function RootLayout() {
         name="event/[id]"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Sport Event Screen */}
@@ -201,19 +84,6 @@ export default function RootLayout() {
         name="sport/[id]"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Chat explore Screen */}
@@ -221,19 +91,6 @@ export default function RootLayout() {
         name="chat/chatExplore"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Chat Inbox Screen */}
@@ -241,19 +98,6 @@ export default function RootLayout() {
         name="chat/chatInbox"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Chat Screen */}
@@ -261,19 +105,6 @@ export default function RootLayout() {
         name="chat/[id]"
         options={{
           headerShown: true,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Dashboard Screen */}
@@ -281,19 +112,6 @@ export default function RootLayout() {
         name="home/dashboard"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Edit Profile Screen */}
@@ -301,19 +119,6 @@ export default function RootLayout() {
         name="profile/editProfile"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Login Screen */}
@@ -321,19 +126,6 @@ export default function RootLayout() {
         name="login/login"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Locked Screen */}
@@ -341,19 +133,6 @@ export default function RootLayout() {
         name="locked/lockedScreen"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
       {/* Settings Screen */}
@@ -361,19 +140,7 @@ export default function RootLayout() {
         name="settings/settings"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
+         
         }}
       />
       {/* Update Password Screen */}
@@ -381,19 +148,6 @@ export default function RootLayout() {
         name="settings/updatePassword"
         options={{
           headerShown: false,
-          headerStyle: {
-            backgroundColor: "white",
-          },
-          headerLeft: () => (
-            <TouchableOpacity style={{ marginLeft: 10 }}>
-              <MaterialIcons name="arrow-back" size={30} color="black" /> {/* Back icon */}
-            </TouchableOpacity>
-          ),
-          headerTitle: () => (
-            <TouchableOpacity style={{ alignItems: "center", backgroundColor: "white" }}>
-              <AntDesign name="home" size={30} color="black" /> {/* Plus icon */}
-            </TouchableOpacity>
-          ),
         }}
       />
     </Stack>

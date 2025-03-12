@@ -1,0 +1,118 @@
+{
+  "project_info": {
+    "project_number": "7121898127",
+    "project_id": "layoverapp-b79bf",
+    "storage_bucket": "layoverapp-b79bf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:7121898127:android:cfe6da555bbf7df4de3efa",
+        "android_client_info": {
+          "package_name": "com.company.name"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "7121898127-9fb4n7okm54uuar247fivdes4q7burnv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7YvioUxd-JVpGgozWnmAj8jv75ubZcpE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "7121898127-9fb4n7okm54uuar247fivdes4q7burnv.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "7121898127-4ulh5gjt05jthhlqdmvr28bmjl0di6ol.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.octavian.layoverapp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:7121898127:android:1a444ce3d75bdfcede3efa",
+        "android_client_info": {
+          "package_name": "com.fillout"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "7121898127-9fb4n7okm54uuar247fivdes4q7burnv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7YvioUxd-JVpGgozWnmAj8jv75ubZcpE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "7121898127-9fb4n7okm54uuar247fivdes4q7burnv.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "7121898127-4ulh5gjt05jthhlqdmvr28bmjl0di6ol.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.octavian.layoverapp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:7121898127:android:2c9240f2622d7977de3efa",
+        "android_client_info": {
+          "package_name": "com.octavian.layoverapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "7121898127-9fb4n7okm54uuar247fivdes4q7burnv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7YvioUxd-JVpGgozWnmAj8jv75ubZcpE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "7121898127-9fb4n7okm54uuar247fivdes4q7burnv.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "7121898127-4ulh5gjt05jthhlqdmvr28bmjl0di6ol.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.octavian.layoverapp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
