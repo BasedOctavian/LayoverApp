@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "newArchEnabled": false,
+      "newArchEnabled": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location for nearby features.",
         "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos to select a profile picture.",
@@ -23,7 +23,7 @@
       },
       "googleServicesFile": "./GoogleService-Info.plist",
       "bundleIdentifier": "com.octavian.layoverapp",
-      "buildNumber": "1"
+      "buildNumber": "23"
     },
     "android": {
       "adaptiveIcon": {
