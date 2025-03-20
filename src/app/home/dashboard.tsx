@@ -13,7 +13,6 @@ import {
   Keyboard,
   ScrollView,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
@@ -25,12 +24,18 @@ import useUsers from "../../hooks/useUsers";
 import { serverTimestamp } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
+import { LinearGradient } from "expo-linear-gradient";
 
 type FeatureButton = {
   icon: React.ReactNode;
   title: string;
   screen: string;
-  size?: "half" | "full";
+};
+
+type NearbyUser = {
+  id: string;
+  name: string;
+  status: string;
 };
 
 function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
@@ -53,7 +58,6 @@ export default function Dashboard() {
   const [searchType, setSearchType] = useState<"airports" | "events">("airports");
   const { getEvents } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
-  const [airportsNearBUF, setAirportsNearBUF] = useState<Airport[]>([]);
   const { updateUser } = useUsers();
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
@@ -83,6 +87,13 @@ export default function Dashboard() {
     { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#FFFFFF" /> },
     { label: "Work Mode", icon: <Feather name="briefcase" size={18} color="#FFFFFF" /> },
     { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#FFFFFF" /> },
+  ];
+
+  // Mock nearby users (replace with real data from a hook if available)
+  const nearbyUsers: NearbyUser[] = [
+    { id: "1", name: "Alex Johnson", status: "Down to Chat" },
+    { id: "2", name: "Sam Carter", status: "Food & Drinks?" },
+    { id: "3", name: "Taylor Lee", status: "Work Mode" },
   ];
 
   const showPopup = (title: string, message: string, type: "success" | "error") => {
@@ -140,21 +151,6 @@ export default function Dashboard() {
   }, [getSportEvents]);
 
   useEffect(() => {
-    if (selectedAirport?.airportCode === "BUF") {
-      const bufLat = selectedAirport.lat;
-      const bufLong = selectedAirport.long;
-      const nearby = allAirports.filter((airport) => {
-        if (airport.airportCode === "BUF") return false;
-        const distance = haversineDistance(bufLat, bufLong, airport.lat, airport.long);
-        return distance <= 10;
-      });
-      setAirportsNearBUF(nearby);
-    } else {
-      setAirportsNearBUF([]);
-    }
-  }, [selectedAirport, allAirports]);
-
-  useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
@@ -206,13 +202,13 @@ export default function Dashboard() {
   }, [user]);
 
   const features: FeatureButton[] = [
-    { icon: <FontAwesome5 name="user-friends" size={24} color="#FFFFFF" />, title: "Nearby Users", screen: "locked/lockedScreen", size: "full" },
-    { icon: <Feather name="plus" size={24} color="#FFFFFF" />, title: "Create Event", screen: "eventCreation", size: "full" },
-    { icon: <MaterialIcons name="event" size={24} color="#FFFFFF" />, title: "Events", screen: "home", size: "full" },
-    { icon: <MaterialIcons name="message" size={24} color="#FFFFFF" />, title: "Messages", screen: "chat/chatInbox", size: "full" },
-    { icon: <Feather name="edit" size={18} color="#FFFFFF" />, title: "Status", screen: "locked/lockedScreen", size: "half" },
-    { icon: <Feather name="user" size={18} color="#FFFFFF" />, title: "Profile", screen: userId ? `profile/${userId}` : "profile", size: "half" },
-    { icon: <Ionicons name="settings" size={24} color="#FFFFFF" />, title: "Settings", screen: "settings/settings", size: "full" },
+    { icon: <FontAwesome5 name="user-friends" size={24} color="#2F80ED" />, title: "Nearby Users", screen: "locked/lockedScreen" },
+    { icon: <Feather name="plus" size={24} color="#2F80ED" />, title: "Create Event", screen: "eventCreation" },
+    { icon: <MaterialIcons name="event" size={24} color="#2F80ED" />, title: "Events", screen: "home" },
+    { icon: <MaterialIcons name="message" size={24} color="#2F80ED" />, title: "Messages", screen: "chat/chatInbox" },
+    { icon: <Feather name="edit" size={24} color="#2F80ED" />, title: "Status", screen: "locked/lockedScreen" },
+    { icon: <Feather name="user" size={24} color="#2F80ED" />, title: "Profile", screen: userId ? `profile/${userId}` : "profile" },
+    { icon: <Ionicons name="settings" size={24} color="#2F80ED" />, title: "Settings", screen: "settings/settings" },
   ];
 
   const filteredRegularEvents = useMemo(() => {
@@ -220,11 +216,8 @@ export default function Dashboard() {
     return events.filter((event) => event.airportCode === selectedAirport.airportCode).map((event) => ({
       id: event.id,
       name: event.name,
-      description: event.description,
+      description: event.description || "No description",
       type: "regular",
-      latitude: event.latitude,
-      longitude: event.longitude,
-      airportCode: event.airportCode,
     }));
   }, [selectedAirport, events]);
 
@@ -243,8 +236,6 @@ export default function Dashboard() {
       name: `${event.awayTeam} vs. ${event.homeTeam}`,
       description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
       type: "sport",
-      latitude: event.latitude,
-      longitude: event.longitude,
     }));
     setMatchingEvents(filteredSportEvents);
   }, [selectedAirport, allSportEvents]);
@@ -256,20 +247,18 @@ export default function Dashboard() {
       ? nearestAirports.tenClosest.filter((airport) => airport.name.toLowerCase().includes(searchQuery.toLowerCase()))
       : allEvents.filter((event) => event.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const mapRegion = useMemo(() => {
-    if (!selectedAirport) return null;
-    return {
-      latitude: selectedAirport.lat,
-      longitude: selectedAirport.long,
-      latitudeDelta: 0.0522,
-      longitudeDelta: 0.0321,
-    };
-  }, [selectedAirport]);
-
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.innerContainer}>
+        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.innerContainer}>
+          {/* Top Bar */}
+          <View style={styles.topBar}>
+            <Text style={styles.logo}>Wingman</Text>
+            <TouchableOpacity onPress={() => router.push(`profile/${userId}`)}>
+              <Ionicons name="person-circle" size={32} color="#2F80ED" />
+            </TouchableOpacity>
+          </View>
+
           {/* Search Header */}
           {showSearch && (
             <View style={styles.searchHeader}>
@@ -314,115 +303,129 @@ export default function Dashboard() {
             </TouchableOpacity>
           )}
 
-          {/* Map Section */}
-          <View style={styles.mapContainer}>
-            {mapRegion ? (
-              <MapView style={styles.map} region={mapRegion}>
-                {selectedAirport && (
-                  <Marker
-                    coordinate={{ latitude: selectedAirport.lat, longitude: selectedAirport.long }}
-                    title={selectedAirport.name}
-                    description={selectedAirport.airportCode}
-                  />
-                )}
-                {airportsNearBUF.map((airport, index) => (
-                  <Marker
-                    key={`nearby-${index}`}
-                    coordinate={{ latitude: airport.lat, longitude: airport.long }}
-                    title={airport.name}
-                    description={airport.airportCode}
-                  />
-                ))}
-                {allEvents.map((event, index) => (
-                  <Marker
-                    key={`${event.type}-${event.id}-${index}`}
-                    coordinate={{ latitude: Number(event.latitude), longitude: Number(event.longitude) }}
-                    title={event.name}
-                    description={event.description}
-                  />
-                ))}
-              </MapView>
-            ) : (
-              <Text>Loading map...</Text>
-            )}
-          </View>
+          {/* Scrollable Content */}
+          <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainerStyle}>
+            {/* Nearby Users and Events */}
+            {!showSearch && (
+              <>
+                {/* Nearby Users Section */}
+                <View style={styles.section}>
+                  <View style={styles.headerRow}>
+                    <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
+                    <Text style={styles.sectionHeader}>Nearby Users</Text>
+                  </View>
+                  {nearbyUsers.length > 0 ? (
+                    <FlatList
+                      horizontal
+                      data={nearbyUsers}
+                      keyExtractor={(item) => item.id}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={styles.userCard}
+                          activeOpacity={0.8}
+                          onPress={() => router.push(`profile/${item.id}`)}
+                        >
+                          <View style={styles.avatar}>
+                            <FontAwesome5 name="user" size={24} color="#2F80ED" />
+                          </View>
+                          <Text style={styles.userName}>{item.name}</Text>
+                          <Text style={styles.userStatus}>{item.status}</Text>
+                        </TouchableOpacity>
+                      )}
+                      showsHorizontalScrollIndicator={false}
+                    />
+                  ) : (
+                    <Text style={styles.noDataText}>No nearby users found.</Text>
+                  )}
+                </View>
 
-          {/* Search Results or Dashboard Features */}
-          {showSearch ? (
-            <FlatList
-              data={filteredResults}
-              keyExtractor={(item, index) => index.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.resultItem}
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    if (searchType === "airports") {
-                      setSelectedAirport(item);
-                      setShowSearch(false);
-                    } else {
-                      const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
-                      router.push(route);
-                    }
-                  }}
-                >
-                  <View style={styles.resultItemView}>
-                    <Feather name={searchType === "airports" ? "airplay" : "calendar"} size={20} color="#2F80ED" style={styles.resultIcon} />
-                    <Text style={styles.resultText}>{item.name}</Text>
-                    <Feather name="chevron-right" size={18} color="#CBD5E1" />
+                {/* Events Section */}
+                <View style={styles.section}>
+                  <View style={styles.headerRow}>
+                    <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
+                    <Text style={styles.sectionHeader}>
+                      Events at {selectedAirport ? selectedAirport.name : "Your Location"}
+                    </Text>
                   </View>
-                </TouchableOpacity>
-              )}
-              contentContainerStyle={styles.searchResultsContainer}
-            />
-          ) : (
-            <ScrollView contentContainerStyle={styles.featuresContainer} showsVerticalScrollIndicator={false}>
-              <View style={styles.gridRow}>
-                {features.slice(0, 2).map((feature, index) => (
-                  <View key={index} style={[styles.featureButton, styles.fullButton, { backgroundColor: "#2F80ED" }]}>
-                    <TouchableOpacity style={styles.buttonInner} onPress={() => router.push(feature.screen)}>
-                      {feature.icon}
-                      <Text style={styles.buttonText}>{feature.title}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-              <View style={styles.gridRow}>
-                {features.slice(2, 4).map((feature, index) => (
-                  <View key={index} style={[styles.featureButton, styles.fullButton, { backgroundColor: "#2F80ED" }]}>
-                    <TouchableOpacity style={styles.buttonInner} onPress={() => router.push(feature.screen)}>
-                      {feature.icon}
-                      <Text style={styles.buttonText}>{feature.title}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-              <View style={styles.gridRow}>
-                <View style={styles.halfButtonContainer}>
-                  {features.slice(4, 6).map((feature, index) => (
-                    <View key={index} style={[styles.featureButton, styles.halfButton, { backgroundColor: "#2F80ED" }]}>
-                      <TouchableOpacity
-                        style={styles.buttonInner}
-                        onPress={() => {
-                          if (feature.title === "Status") setShowStatusModal(true);
-                          else router.push(feature.screen);
-                        }}
-                      >
-                        {feature.icon}
-                        <Text style={styles.smallButtonText}>{feature.title}</Text>
-                      </TouchableOpacity>
+                  {allEvents.length > 0 ? (
+                    <FlatList
+                      horizontal
+                      data={allEvents}
+                      keyExtractor={(item) => `${item.type}-${item.id}`}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={styles.eventCard}
+                          activeOpacity={0.8}
+                          onPress={() => router.push(item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`)}
+                        >
+                          <Text style={styles.eventName}>{item.name}</Text>
+                          <Text style={styles.eventDescription}>{item.description}</Text>
+                        </TouchableOpacity>
+                      )}
+                      showsHorizontalScrollIndicator={false}
+                    />
+                  ) : (
+                    <Text style={styles.noDataText}>No events at this airport.</Text>
+                  )}
+                </View>
+              </>
+            )}
+
+            {/* Search Results */}
+            {showSearch && (
+              <FlatList
+                data={filteredResults}
+                keyExtractor={(item, index) => index.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.resultItem}
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      if (searchType === "airports") {
+                        setSelectedAirport(item);
+                        setShowSearch(false);
+                      } else {
+                        const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
+                        router.push(route);
+                      }
+                    }}
+                  >
+                    <View style={styles.resultItemView}>
+                      <Feather name={searchType === "airports" ? "airplay" : "calendar"} size={20} color="#2F80ED" style={styles.resultIcon} />
+                      <Text style={styles.resultText}>{item.name}</Text>
+                      <Feather name="chevron-right" size={18} color="#CBD5E1" />
                     </View>
-                  ))}
-                </View>
-                <View style={[styles.featureButton, styles.fullButton, { backgroundColor: "#2F80ED" }]}>
-                  <TouchableOpacity style={styles.buttonInner} onPress={() => router.push(features[6].screen)}>
-                    <Ionicons name="settings" size={24} color="#FFFFFF" />
-                    <Text style={styles.buttonText}>Settings</Text>
                   </TouchableOpacity>
-                </View>
-              </View>
-            </ScrollView>
-          )}
+                )}
+                contentContainerStyle={styles.searchResultsContainer}
+              />
+            )}
+
+            {/* Features */}
+            {!showSearch && (
+              <FlatList
+                data={features}
+                keyExtractor={(item, index) => index.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.featureItem}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      if (item.title === "Status") setShowStatusModal(true);
+                      else router.push(item.screen);
+                    }}
+                  >
+                    <View style={styles.featureItemContent}>
+                      {item.icon}
+                      <Text style={styles.featureItemText}>{item.title}</Text>
+                    </View>
+                    <Feather name="chevron-right" size={18} color="#CBD5E1" />
+                  </TouchableOpacity>
+                )}
+                contentContainerStyle={styles.featuresListContainer}
+              />
+            )}
+          </ScrollView>
 
           {/* Status Modal */}
           <Modal visible={showStatusModal} transparent animationType="fade">
@@ -486,7 +489,7 @@ export default function Dashboard() {
               </View>
             </Modal>
           )}
-        </View>
+        </LinearGradient>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
@@ -495,10 +498,140 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+
   },
   innerContainer: {
     flex: 1,
+    marginTop: 50,
+    marginBottom: 20,
+    backgroundColor: "#FFFFFF",
+  },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    height: 50,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  logo: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2F80ED",
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  contentContainerStyle: {
+    paddingTop: 80, // Space for search bar
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  headerIcon: {
+    marginRight: 8,
+  },
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1E293B",
+  },
+  userCard: {
+    width: 150,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    alignItems: "center",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#E6F0FA",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#1E293B",
+    textAlign: "center",
+  },
+  userStatus: {
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center",
+  },
+  eventCard: {
+    width: 200,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  eventName: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#1E293B",
+    marginBottom: 4,
+  },
+  eventDescription: {
+    fontSize: 14,
+    color: "#64748B",
+  },
+  noDataText: {
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center",
+    marginVertical: 16,
+  },
+  featuresListContainer: {
+    paddingBottom: 24,
+  },
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  featureItemContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  featureItemText: {
+    marginLeft: 12,
+    fontSize: 16,
+    color: "#1E293B",
+    fontWeight: "500",
   },
   searchHeader: {
     position: "absolute",
@@ -509,6 +642,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 16,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   searchInputContainer: {
     flexDirection: "row",
@@ -557,6 +695,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   searchPlaceholder: {
     flex: 1,
@@ -567,69 +710,8 @@ const styles = StyleSheet.create({
   searchIcon: {
     marginLeft: 8,
   },
-  mapContainer: {
-    height: "37%",
-    borderRadius: 24,
-    overflow: "hidden",
-    margin: 16,
-    marginTop: 115,
-    marginBottom: 8,
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  featuresContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
-  gridRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  featureButton: {
-    borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
-  },
-  fullButton: {
-    width: "48%",
-    height: 120,
-  },
-  halfButtonContainer: {
-    width: "48%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  halfButton: {
-    width: "48%",
-    height: 120,
-  },
-  buttonInner: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 8,
-  },
-  smallButtonText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "600",
-    marginTop: 8,
-  },
   searchResultsContainer: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    padding: 16,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    paddingBottom: 16,
   },
   resultItem: {
     marginBottom: 8,

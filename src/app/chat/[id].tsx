@@ -31,16 +31,7 @@ export default function Chat() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
-    if (user){
-    setUser(user);
-    } else {
-    router.replace("login/login");
-    }
-    setAuthLoading(false);
-    })
-    }, []);
+  
 
   // Use the chat ID from params
   const chatId = id; // or fallback: chatId = "mMJuXG3BgWLGtxmnZhpi";

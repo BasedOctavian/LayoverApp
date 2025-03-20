@@ -120,3 +120,107 @@ exports.getNBAGamesDaily = functions.pubsub
         console.error("Unexpected error in getNBAGamesDaily:", err.message);
       }
     });
+
+// List of predefined events to rotate daily
+const EVENT_TEMPLATES = [
+  { name: "Coffee Chat", description: "Meet for a casual chat over coffee or tea.", category: "Social" },
+  { name: "Book Swap", description: "Bring a book you’ve finished and swap it with someone.", category: "Activity" },
+  { name: "Language Exchange", description: "Practice a language with a native speaker.", category: "Learning" },
+  { name: "Travel Tips Sharing", description: "Share your best travel advice or stories.", category: "Social" },
+  { name: "Quick Yoga Session", description: "A 15-30 minute yoga session to relax.", category: "Wellness" },
+  { name: "Card Games", description: "Play a quick round of cards like Uno or Poker.", category: "Activity" },
+  { name: "Tech Talk", description: "Discuss the latest gadgets or apps.", category: "Learning" },
+  { name: "Photography Walk", description: "Snap photos around the airport and share tips.", category: "Activity" },
+  { name: "Music Jam", description: "Bring an instrument or sing for a fun jam session.", category: "Activity" },
+  { name: "Art and Drawing", description: "Doodle or sketch together with others.", category: "Activity" },
+  { name: "Meditation Session", description: "A 15-minute guided meditation to de-stress.", category: "Wellness" },
+  { name: "Trivia Game", description: "A quick trivia challenge on travel or general knowledge.", category: "Activity" },
+  { name: "Stretching Exercises", description: "Simple stretches to loosen up.", category: "Wellness" },
+  { name: "Origami Fun", description: "Fold paper into fun shapes with others.", category: "Activity" },
+  { name: "Airport Exploration Tour", description: "Walk around to explore the airport.", category: "Activity" },
+  { name: "Speed Friending", description: "Chat with someone new every few minutes.", category: "Social" },
+  { name: "Puzzle Solving", description: "Work together on a riddle or brain teaser.", category: "Activity" },
+  { name: "Storytelling Circle", description: "Share short stories or jokes.", category: "Social" },
+  { name: "Mindfulness Session", description: "A brief breathing exercise to stay present.", category: "Wellness" },
+  { name: "Cultural Exchange", description: "Share a tradition or fact from your culture.", category: "Learning" },
+];
+
+// Scheduled function to generate daily events for all airports
+exports.generateDailyAirportEvents = functions.pubsub
+  .schedule("0 0 * * *") // Runs at 12:00 AM every day
+  .timeZone("America/New_York") // Eastern Time (ET)
+  .onRun(async (_context) => {
+    const db = admin.firestore();
+    const date = getCurrentDate(); // e.g., "2025-03-18"
+    const airportsRef = db.collection("airports");
+    const eventsRef = db.collection("events");
+
+    try {
+      // Fetch all airports
+      const airportsSnapshot = await airportsRef.get();
+      if (airportsSnapshot.empty) {
+        await saveIssue(db, "noAirportsFound", "No airports found in the collection", {});
+        console.error("No airports found in the collection.");
+        return;
+      }
+
+      // Wipe existing events for the day (optional: you could filter by date instead)
+      try {
+        const snapshot = await eventsRef.get();
+        const batchDelete = db.batch();
+        snapshot.forEach((doc) => {
+          batchDelete.delete(doc.ref);
+        });
+        await batchDelete.commit();
+        console.log("Successfully wiped existing events collection.");
+      } catch (err) {
+        await saveIssue(db, "firestoreDeleteFailure", "Failed to wipe events collection", err.message);
+        console.error("Error wiping events collection:", err.message);
+        return;
+      }
+
+      // Generate events for each airport
+      const batch = db.batch();
+      const todayET = moment().tz("America/New_York").startOf("day");
+
+      airportsSnapshot.forEach((airportDoc) => {
+        const airportData = airportDoc.data();
+        const { airportCode, lat, long, name } = airportData;
+
+        // Randomly select 5-7 events per airport
+        const shuffledEvents = EVENT_TEMPLATES.sort(() => 0.5 - Math.random());
+        const selectedEvents = shuffledEvents.slice(0, Math.floor(Math.random() * 3) + 5); // 5-7 events
+
+        selectedEvents.forEach((eventTemplate, index) => {
+          const eventUID = `${airportCode}-${eventTemplate.name.replace(/\s+/g, "-")}-${date}-${index}`; // Unique ID
+          const eventData = {
+            airportCode: airportCode,
+            attendees: [],
+            category: eventTemplate.category,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            description: `${eventTemplate.description} Meet at ${name}.`,
+            eventImage: null, // Could add a default image URL if desired
+            eventUID: eventUID,
+            latitude: lat.toString(), // Convert number to string
+            longitude: long.toString(), // Convert number to string
+            name: `${eventTemplate.name} at ${airportCode}`,
+            organizer: null, // No organizer initially
+            private: false,
+            startTime: null, // No specific start time initially
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+
+          const docRef = eventsRef.doc(eventUID);
+          batch.set(docRef, eventData);
+        });
+      });
+
+      // Commit all events to Firestore
+      await batch.commit();
+      console.log(`Successfully added events for ${date} to Firestore.`);
+
+    } catch (err) {
+      await saveIssue(db, "unexpectedError", `Unexpected error in function: ${err.message}`, err.stack);
+      console.error("Unexpected error in generateDailyAirportEvents:", err.message);
+    }
+  });

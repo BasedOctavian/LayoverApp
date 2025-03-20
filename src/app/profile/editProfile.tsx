@@ -13,17 +13,16 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
-import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
-import { auth } from "../../../firebaseConfig"; // Adjust path as needed
-import { useRouter } from "expo-router"; // Added router import
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth } from "../../../firebaseConfig";
+import { useRouter } from "expo-router";
 
-// Define an interface for our form data
 interface FormData {
   name: string;
   age: string;
@@ -36,7 +35,6 @@ interface FormData {
   profilePicture: string;
 }
 
-// Define a union type for the keys that hold array data
 type ProfileArrayField = "languages" | "interests" | "goals" | "travelHistory";
 
 const EditProfile = () => {
@@ -58,9 +56,8 @@ const EditProfile = () => {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const fadeAnim = useState(new Animated.Value(0))[0];
-  const router = useRouter(); // Added router instance
+  const router = useRouter();
 
-  // Added auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -70,7 +67,7 @@ const EditProfile = () => {
       }
       setAuthLoading(false);
     });
-    return unsubscribe; // Cleanup subscription
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -202,29 +199,19 @@ const EditProfile = () => {
     }));
   };
 
-  if (authLoading) {
+  if (authLoading || loading) {
     return (
-      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-        <View style={styles.container}>
-          <ActivityIndicator size="large" color="#fff" />
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  if (loading) {
-    return (
-      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-        <View style={styles.container}>
-          <ActivityIndicator size="large" color="#fff" />
+      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6a11cb" />
         </View>
       </LinearGradient>
     );
   }
 
   return (
-    <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-      <ScrollView style={styles.scrollContainer}>
+    <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* Profile Header */}
           <View style={styles.profileHeader}>
@@ -242,7 +229,7 @@ const EditProfile = () => {
           </View>
 
           {/* Basic Info Section */}
-          <View style={styles.card}>
+          <View style={[styles.card, styles.sectionCard]}>
             <Text style={styles.cardTitle}>Basic Information</Text>
             <TextInput
               style={styles.input}
@@ -251,6 +238,7 @@ const EditProfile = () => {
               onChangeText={(text) =>
                 setFormData({ ...formData, name: text })
               }
+              placeholderTextColor="#718096"
             />
             <TextInput
               style={styles.input}
@@ -260,6 +248,7 @@ const EditProfile = () => {
                 setFormData({ ...formData, age: text })
               }
               keyboardType="numeric"
+              placeholderTextColor="#718096"
             />
             <TextInput
               style={styles.input}
@@ -268,29 +257,31 @@ const EditProfile = () => {
               onChangeText={(text) =>
                 setFormData({ ...formData, moodStatus: text })
               }
+              placeholderTextColor="#718096"
             />
             <TextInput
-              style={[styles.input, { height: 80 }]}
+              style={[styles.input, styles.multilineInput]}
               placeholder="Bio"
               value={formData.bio}
               onChangeText={(text) =>
                 setFormData({ ...formData, bio: text })
               }
               multiline
+              placeholderTextColor="#718096"
             />
           </View>
 
           {/* Dynamic Fields Section */}
           {(["languages", "interests", "goals", "travelHistory"] as ProfileArrayField[]).map(
             (field) => (
-              <View key={field} style={styles.card}>
+              <View key={field} style={[styles.card, styles.sectionCard]}>
                 <Text style={styles.cardTitle}>
                   {field.charAt(0).toUpperCase() + field.slice(1)}
                 </Text>
                 {formData[field].map((value, index) => (
                   <View key={index} style={styles.fieldRow}>
                     <TextInput
-                      style={[styles.input, { flex: 1 }]}
+                      style={[styles.input, styles.flexInput]}
                       value={value}
                       onChangeText={(text) =>
                         handleFieldChange(field, index, text)
@@ -348,57 +339,74 @@ const EditProfile = () => {
 const styles = StyleSheet.create({
   gradient: {
     flex: 1,
+    backgroundColor: "#f8f9fa",
   },
-  scrollContainer: {
-    flex: 1,
-    padding: 20,
-    marginTop: 60,
+  scrollContent: {
+    padding: 24,
+    paddingTop: 56,
+    paddingBottom: 160,
   },
-  profileHeader: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: "#fff",
-    marginBottom: 10,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#6a11cb",
-    marginBottom: 10,
-  },
-  container: {
+  loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  profileHeader: {
+    alignItems: "center",
+    marginBottom: 32,
+  },
+  profileImage: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    borderWidth: 3,
+    borderColor: "rgba(255,255,255,0.9)",
+  },
+  changePhotoText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#6a11cb",
+    fontWeight: "500",
+  },
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#6a11cb",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 3,
+    marginBottom: 24,
+  },
+  sectionCard: {
+    // Additional spacing between sections if needed
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#2D3748",
+    marginBottom: 12,
   },
   input: {
     backgroundColor: "#f5f5f5",
     borderRadius: 10,
     padding: 15,
-    marginBottom: 10,
     fontSize: 16,
+    color: "#2D3748",
+    marginBottom: 10,
+  },
+  multilineInput: {
+    height: 80,
+    textAlignVertical: "top",
   },
   fieldRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
+  },
+  flexInput: {
+    flex: 1,
   },
   removeButton: {
     marginLeft: 10,
@@ -423,12 +431,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
-  },
-  changePhotoText: {
-    color: "#fff",
-    textAlign: "center",
-    marginTop: 5,
-    fontSize: 14,
   },
 });
 

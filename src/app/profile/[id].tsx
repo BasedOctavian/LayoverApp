@@ -5,9 +5,9 @@ import {
   ActivityIndicator,
   StyleSheet,
   Image,
-  ScrollView,
   Animated,
   TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
@@ -15,8 +15,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
-import { auth } from "../../../firebaseConfig"; // Adjust path as needed
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth } from "../../../firebaseConfig";
 
 const Profile = () => {
   const [userData, setUserData] = useState<any>(null);
@@ -26,13 +26,25 @@ const Profile = () => {
   const { user, userId } = useAuth();
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showPrompts, setShowPrompts] = useState(false);
+  const promptAnim = useState(new Animated.Value(0))[0];
 
   const params = useLocalSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  
+
   const router = useRouter();
 
-  // Added auth state listener
+  // Toggle quick starters modal
+  const togglePrompts = () => {
+    Animated.spring(promptAnim, {
+      toValue: showPrompts ? 0 : 1,
+      useNativeDriver: true,
+      bounciness: 8,
+    }).start();
+    setShowPrompts(!showPrompts);
+  };
+
+  // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -42,7 +54,7 @@ const Profile = () => {
       }
       setAuthLoading(false);
     });
-    return unsubscribe; // Cleanup subscription
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -75,21 +87,18 @@ const Profile = () => {
     }).start();
   }, [userId, id, fadeAnim]);
 
-  if (authLoading) {
-    return (
-      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-        <View style={styles.container}>
-          <ActivityIndicator size="large" color="#fff" />
-        </View>
-      </LinearGradient>
-    );
-  }
+  // Preset messaging prompts
+  const presetPrompts = [
+    "Hi there!",
+    "How's it going?",
+    "Would love to chat!",
+  ];
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
-      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
         <View style={styles.container}>
-          <ActivityIndicator size="large" color="#fff" />
+          <ActivityIndicator size="large" color="#6a11cb" />
         </View>
       </LinearGradient>
     );
@@ -97,7 +106,7 @@ const Profile = () => {
 
   if (error) {
     return (
-      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
         <View style={styles.container}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
@@ -107,7 +116,7 @@ const Profile = () => {
 
   if (!userData) {
     return (
-      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
         <View style={styles.container}>
           <Text style={styles.noDataText}>No user data found.</Text>
         </View>
@@ -116,171 +125,377 @@ const Profile = () => {
   }
 
   return (
-    <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-      <TouchableOpacity
-        style={styles.settingsIcon}
-        onPress={() => router.push("profile/editProfile")}
+    <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
+      {id === authUser?.uid && (
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => router.push("profile/editProfile")}
+        >
+          <LinearGradient
+            colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.05)"]}
+            style={styles.settingsGradient}
+          >
+            <MaterialIcons name="tune" size={22} color="#6a11cb" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <MaterialIcons name="settings" size={24} color="#fff" />
-      </TouchableOpacity>
-      <ScrollView style={styles.scrollContainer}>
-        <Animated.View style={{ opacity: fadeAnim }}>
-          {/* Profile Header */}
+        <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
+          {/* Profile Header with Depth */}
           <View style={styles.profileHeader}>
-            <Image
-              source={{
-                uri:
-                  userData.profilePicture || "https://via.placeholder.com/150",
-              }}
-              style={styles.profileImage}
-            />
+            <View style={styles.avatarContainer}>
+              <Image
+                source={{ uri: userData.profilePicture || "https://via.placeholder.com/150" }}
+                style={styles.profileImage}
+              />
+              <View style={styles.statusIndicator} />
+            </View>
+            
             <Text style={styles.nameText}>
               {userData.name}, {userData.age}
+              <Text style={styles.pronounsText}>
+                {userData.pronouns && ` (${userData.pronouns})`}
+              </Text>
             </Text>
-            <Text style={styles.moodText}>
-              <MaterialIcons name="mood" size={16} color="#fff" />{" "}
-              {userData.moodStatus}
-            </Text>
+            
+            <View style={styles.moodContainer}>
+              <MaterialIcons name="mood" size={18} color="#6a11cb" />
+              <Text style={styles.moodText}>{userData.moodStatus}</Text>
+            </View>
           </View>
 
-          {/* Bio Section */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>About Me</Text>
-            <Text style={styles.cardContent}>{userData.bio}</Text>
+          {/* Profile Sections with Microinteractions */}
+          <View style={styles.sectionsContainer}>
+            <ProfileSection
+              icon="info"
+              title="About"
+              content={userData.bio}
+              cardStyle={styles.aboutCard}
+            />
+
+            <View style={styles.gridContainer}>
+              <ProfileSection
+                icon="language"
+                title="Languages"
+                content={userData.languages.join(", ")}
+                cardStyle={styles.gridCard}
+              />
+              <ProfileSection
+                icon="favorite"
+                title="Interests"
+                content={userData.interests.join(", ")}
+                cardStyle={styles.gridCard}
+              />
+              <ProfileSection
+                icon="flight"
+                title="Travel History"
+                content={userData.travelHistory.join(", ")}
+                cardStyle={styles.gridCard}
+              />
+              <ProfileSection
+                icon="bullseye"
+                title="Goals"
+                content={userData.goals.join(", ")}
+                cardStyle={styles.gridCard}
+              />
+            </View>
           </View>
 
-          {/* Languages Section */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              <MaterialIcons name="language" size={20} color="#6a11cb" /> Languages
-            </Text>
-            <Text style={styles.cardContent}>
-              {userData.languages.join(", ")}
+          {/* Subtle Metadata */}
+          <View style={styles.metaContainer}>
+            <Text style={styles.metaText}>
+              <MaterialIcons name="verified" size={14} color="#6a11cb" /> Joined{' '}
+              {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
             </Text>
           </View>
-
-          {/* Interests Section */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              <MaterialIcons name="favorite" size={20} color="#6a11cb" /> Interests
-            </Text>
-            <Text style={styles.cardContent}>
-              {userData.interests.join(", ")}
-            </Text>
-          </View>
-
-          {/* Goals Section */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              <FontAwesome name="bullseye" size={20} color="#6a11cb" /> Goals
-            </Text>
-            <Text style={styles.cardContent}>
-              {userData.goals.join(", ")}
-            </Text>
-          </View>
-
-          {/* Travel History Section */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              <MaterialIcons name="flight" size={20} color="#6a11cb" /> Travel History
-            </Text>
-            <Text style={styles.cardContent}>
-              {userData.travelHistory.join(", ")}
-            </Text>
-          </View>
-
-          {/* Member Since */}
-          <Text style={styles.createdAtText}>
-            Member since:{" "}
-            {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
-          </Text>
         </Animated.View>
       </ScrollView>
+
+      {/* Floating Action Container */}
+      {id !== authUser?.uid && (
+        <View style={styles.actionContainer}>
+          <TouchableOpacity 
+            style={styles.fab}
+            activeOpacity={0.9}
+            onPress={togglePrompts}
+          >
+            <LinearGradient
+              colors={["#7F5AFF", "#5A7CFF"]}
+              style={styles.fabGradient}
+            >
+              <MaterialIcons name="chat" size={24} color="white" />
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          {showPrompts && (
+            <Animated.View 
+              style={[
+                styles.promptSheet,
+                {
+                  transform: [
+                    {
+                      scale: promptAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1],
+                      })
+                    },
+                    {
+                      translateY: promptAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      })
+                    }
+                  ],
+                  opacity: promptAnim
+                }
+              ]}
+            >
+              <Text style={styles.promptTitle}>Quick starters</Text>
+              <View style={styles.promptGrid}>
+                {presetPrompts.map((prompt, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    style={styles.promptChip}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.promptText}>{prompt}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Animated.View>
+          )}
+        </View>
+      )}
     </LinearGradient>
   );
 };
 
+const ProfileSection = ({ icon, title, content, cardStyle }: any) => (
+  <TouchableOpacity 
+    style={[styles.card, cardStyle]}
+    activeOpacity={0.9}
+  >
+    <MaterialIcons name={icon} size={20} color="#6a11cb" style={styles.cardIcon} />
+    <Text style={styles.cardTitle}>{title}</Text>
+    <Text style={styles.cardContent}>{content}</Text>
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
   gradient: {
     flex: 1,
+    backgroundColor: '#ffffff',
   },
   scrollContainer: {
     flex: 1,
-    padding: 20,
-    marginTop: 60,
+  },
+  scrollContent: {
+    padding: 24,
+    paddingTop: 56,
+    paddingBottom: 160,
+  },
+  contentContainer: {
+    flex: 1,
   },
   profileHeader: {
-    alignItems: "center",
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 16,
   },
   profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     borderWidth: 3,
-    borderColor: "#fff",
-    marginBottom: 10,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   nameText: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 5,
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2D3748',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  pronounsText: {
+    fontSize: 16,
+    color: '#718096',
+    fontWeight: '400',
+  },
+  moodContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(106,17,203,0.1)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginTop: 8,
   },
   moodText: {
-    fontSize: 16,
-    color: "#fff",
-    opacity: 0.8,
+    fontSize: 14,
+    color: '#6a11cb',
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  sectionsContainer: {
+    flex: 1,
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 15,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
     padding: 20,
-    marginBottom: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowColor: '#6a11cb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 3,
+  },
+  aboutCard: {
+    marginBottom: 24,
+    minHeight: 120,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  gridCard: {
+    width: '100%',
+    minHeight: 120,
+    marginBottom: 12,
+  },
+  cardIcon: {
+    marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#6a11cb",
-    marginBottom: 10,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2D3748',
+    marginBottom: 8,
   },
   cardContent: {
-    fontSize: 16,
-    color: "#555",
-  },
-  createdAtText: {
     fontSize: 14,
-    color: "#fff",
-    textAlign: "center",
-    marginTop: 10,
-    opacity: 0.8,
+    color: '#718096',
+    lineHeight: 22,
   },
-  errorText: {
-    color: "#ff4444",
-    fontSize: 16,
-    textAlign: "center",
+  metaContainer: {
+    marginTop: 32,
+    alignItems: 'center',
   },
-  noDataText: {
-    color: "#fff",
-    fontSize: 16,
-    textAlign: "center",
+  metaText: {
+    fontSize: 12,
+    color: '#A0AEC0',
+    fontWeight: '500',
   },
-  settingsIcon: {
-    position: "absolute",
-    top: 40,
-    right: 20,
+  actionContainer: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    alignItems: 'flex-end',
     zIndex: 100,
-    padding: 10,
+  },
+  fab: {
+    shadowColor: '#6a11cb',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  fabGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promptSheet: {
+    position: 'absolute',
+    bottom: 72,
+    right: 0,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: 28,
+    padding: 20,
+    width: 240,
+    shadowColor: '#2D3748',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 10,
+    zIndex: 101,
+  },
+  promptTitle: {
+    fontSize: 13,
+    color: '#718096',
+    fontWeight: '600',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  promptGrid: {
+    gap: 12,
+  },
+  promptChip: {
+    backgroundColor: 'rgba(106,17,203,0.05)',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  promptText: {
+    fontSize: 14,
+    color: '#6a11cb',
+    fontWeight: '500',
+  },
+  settingsButton: {
+    position: 'absolute',
+    top: 48,
+    right: 24,
+    zIndex: 100,
+    shadowColor: '#2D3748',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  settingsGradient: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(106,17,203,0.1)',
   },
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#ff4444',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  noDataText: {
+    color: '#2D3748',
+    fontSize: 16,
+    textAlign: 'center',
   },
 });
 

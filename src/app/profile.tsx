@@ -7,32 +7,47 @@ import {
   Image,
   ScrollView,
   Animated,
+  TouchableOpacity,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
 import { doc, getDoc } from "firebase/firestore";
-// Adjust the path to your firebase config file
 import useAuth from "../hooks/auth"; // Import the useAuth hook
 import { db } from "../../firebaseConfig";
 
-const Profile = () => {
-  const [userData, setUserData] = useState<any>(null); // Store the authenticated user's data
-  const [loading, setLoading] = useState<boolean>(true); // Track loading state
-  const [error, setError] = useState<string | null>(null); // Track errors
-  const fadeAnim = useState(new Animated.Value(0))[0]; // For fade-in animation
-  const { user, userId } = useAuth(); // Get the authenticated user and userId
+interface ProfileProps {
+  profileUid: string; // UID of the profile being viewed
+}
 
-  // Fetch the authenticated user's data from Firestore
+const Profile: React.FC<ProfileProps> = ({ profileUid }) => {
+  const [userData, setUserData] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const { user, userId } = useAuth();
+
+  useEffect(() => {
+    
+  }, [userData]);
+
+  // These are the preset prompts you want to offer
+  const presetPrompts = [
+    "Hi there!",
+    "How's it going?",
+    "Would love to chat!",
+  ];
+
+  // Fetch the profile user's data from Firestore using profileUid prop
   useEffect(() => {
     const fetchUserData = async () => {
-      if (userId) {
+      if (profileUid) {
         setLoading(true);
         try {
-          const userDocRef = doc(db, "users", userId); // Reference the user's document
+          const userDocRef = doc(db, "users", profileUid);
           const userDoc = await getDoc(userDocRef);
-
           if (userDoc.exists()) {
-            setUserData(userDoc.data()); // Set the user's data
+            setUserData(userDoc.data());
+            console.log("User data:", userDoc.data());
           } else {
             setError("No user data found.");
           }
@@ -51,7 +66,7 @@ const Profile = () => {
       duration: 1000,
       useNativeDriver: true,
     }).start();
-  }, [userId]);
+  }, [profileUid]);
 
   if (loading) {
     return (
@@ -84,14 +99,19 @@ const Profile = () => {
           {/* Profile Header */}
           <View style={styles.profileHeader}>
             <Image
-              source={{ uri: userData.profilePicture || "https://via.placeholder.com/150" }}
+              source={{
+                uri:
+                  userData.profilePicture ||
+                  "https://via.placeholder.com/150",
+              }}
               style={styles.profileImage}
             />
             <Text style={styles.nameText}>
               {userData.name}, {userData.age}
             </Text>
             <Text style={styles.moodText}>
-              <MaterialIcons name="mood" size={16} color="#fff" /> {userData.moodStatus}
+              <MaterialIcons name="mood" size={16} color="#fff" />{" "}
+              {userData.moodStatus}
             </Text>
           </View>
 
@@ -143,9 +163,26 @@ const Profile = () => {
 
           {/* Member Since */}
           <Text style={styles.createdAtText}>
-            Member since: {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
+            Member since:{" "}
+            {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
           </Text>
         </Animated.View>
+
+        {/* If the profile being viewed is not the active auth user, show messaging options */}
+        {profileUid !== userId && (
+          <View style={styles.messageContainer}>
+            <TouchableOpacity style={styles.messageButton}>
+              <Text style={styles.messageButtonText}>Message</Text>
+            </TouchableOpacity>
+            <View style={styles.promptContainer}>
+              {presetPrompts.map((prompt, index) => (
+                <TouchableOpacity key={index} style={styles.promptButton}>
+                  <Text style={styles.promptButtonText}>{prompt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </LinearGradient>
   );
@@ -220,6 +257,40 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  messageContainer: {
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  messageButton: {
+    backgroundColor: "#6a11cb",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  messageButtonText: {
+    color: "#fff",
+    fontSize: 16,
+  },
+  promptContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+  },
+  promptButton: {
+    backgroundColor: "#2575fc",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 5,
+    marginHorizontal: 5,
+  },
+  promptButtonText: {
+    color: "#fff",
+    fontSize: 14,
   },
 });
 
