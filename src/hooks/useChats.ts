@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   collection,
   getDocs,
@@ -9,12 +9,13 @@ import {
   deleteDoc,
   query,
   where,
+  onSnapshot,
 } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 const useChats = () => {
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // Get all chats
   const getChats = async () => {
@@ -33,7 +34,7 @@ const useChats = () => {
   };
 
   // Get a specific chat by ID
-  const getChat = async (chatId: string) => {
+  const getChat = async (chatId) => {
     setLoading(true);
     try {
       const chatDoc = doc(db, "chats", chatId);
@@ -52,8 +53,24 @@ const useChats = () => {
     }
   };
 
-  // Get messages from a chat's "messages" subcollection
-  const getMessages = async (chatId: string) => {
+  // Subscribe to real-time updates for a chat document
+  const subscribeToChat = (chatId, callback) => {
+    const chatDoc = doc(db, "chats", chatId);
+    const unsubscribe = onSnapshot(
+      chatDoc,
+      (snapshot) => {
+        callback({ id: snapshot.id, ...snapshot.data() });
+      },
+      (err) => {
+        setError("Failed to subscribe to chat.");
+        console.error(err);
+      }
+    );
+    return unsubscribe;
+  };
+
+  // Get messages from a chat's "messages" subcollection (one-time fetch)
+  const getMessages = async (chatId) => {
     setLoading(true);
     try {
       const messagesCollectionRef = collection(db, "chats", chatId, "messages");
@@ -68,8 +85,25 @@ const useChats = () => {
     }
   };
 
+  // Subscribe to messages in real time
+  const subscribeToMessages = (chatId, callback) => {
+    const messagesCollectionRef = collection(db, "chats", chatId, "messages");
+    const unsubscribe = onSnapshot(
+      messagesCollectionRef,
+      (snapshot) => {
+        const messages = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        callback(messages);
+      },
+      (err) => {
+        setError("Failed to subscribe to messages.");
+        console.error(err);
+      }
+    );
+    return unsubscribe;
+  };
+
   // Get chats for a specific user (based on user ID)
-  const getUserChats = async (userId: string) => {
+  const getUserChats = async (userId) => {
     setLoading(true);
     try {
       const chatsCollection = collection(db, "chats");
@@ -86,7 +120,7 @@ const useChats = () => {
   };
 
   // Add a new chat
-  const addChat = async (chatData: any) => {
+  const addChat = async (chatData) => {
     setLoading(true);
     try {
       const chatsCollection = collection(db, "chats");
@@ -101,7 +135,7 @@ const useChats = () => {
   };
 
   // Update a chat
-  const updateChat = async (chatId: string, updatedData: any) => {
+  const updateChat = async (chatId, updatedData) => {
     setLoading(true);
     try {
       const chatDoc = doc(db, "chats", chatId);
@@ -115,7 +149,7 @@ const useChats = () => {
   };
 
   // Delete a chat
-  const deleteChat = async (chatId: string) => {
+  const deleteChat = async (chatId) => {
     setLoading(true);
     try {
       const chatDoc = doc(db, "chats", chatId);
@@ -128,15 +162,29 @@ const useChats = () => {
     }
   };
 
-  // **Add a new message** to the "messages" subcollection of a chat
-  const addMessage = async (chatId: string, messageData: any) => {
+  // Add a new message to the "messages" subcollection of a chat
+  const addMessage = async (chatId, messageData) => {
     setLoading(true);
     try {
       const messagesCollectionRef = collection(db, "chats", chatId, "messages");
       const docRef = await addDoc(messagesCollectionRef, messageData);
-      return docRef.id; // Returns the id of the newly created message
+      return docRef.id;
     } catch (error) {
       setError("Failed to add message.");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete a message from a chat
+  const deleteMessage = async (chatId, messageId) => {
+    setLoading(true);
+    try {
+      const messageDoc = doc(db, "chats", chatId, "messages", messageId);
+      await deleteDoc(messageDoc);
+    } catch (error) {
+      setError("Failed to delete message.");
       console.error(error);
     } finally {
       setLoading(false);
@@ -146,12 +194,15 @@ const useChats = () => {
   return { 
     getChats, 
     getChat, 
+    subscribeToChat,
     getMessages, 
+    subscribeToMessages, 
     getUserChats, 
     addChat, 
     updateChat, 
     deleteChat, 
-    addMessage, 
+    addMessage,
+    deleteMessage,
     loading, 
     error 
   };

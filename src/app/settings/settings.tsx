@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   Image,
   Animated,
+  StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,19 +16,22 @@ import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
-import { ThemeContext } from "../../ThemeContext"; // Import ThemeContext
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { ThemeContext } from "../../ThemeContext";
 
 export default function Settings() {
   const { user, logout } = useAuth();
   const [userId, setUserId] = useState<string | null>(null);
   const { getUser } = useUsers();
-  const [userData, setUserData] = useState<any>(null); // Specify type if possible
+  const [userData, setUserData] = useState<any>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Access ThemeContext
   const { theme, toggleTheme } = React.useContext(ThemeContext);
-
+  const insets = useSafeAreaInsets();
+  const topBarHeight = 50 + insets.top;
+  
   // Animation for theme toggle
   const [toggleAnimation] = useState(new Animated.Value(theme === "light" ? 0 : 1));
 
@@ -75,164 +79,190 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: theme === "light" ? "#F8FAFC" : "#1E293B" }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme === "light" ? "#F8FAFC" : "#1E293B" }]}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <Text style={[styles.loadingText, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
           Loading...
         </Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   // Interpolate animation for sliding effect
   const slideInterpolate = toggleAnimation.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 40], // Width of the toggle area
+    outputRange: [0, 40],
   });
 
   return (
-    <View style={[styles.container, { backgroundColor: theme === "light" ? "#F8FAFC" : "#1E293B" }]}>
-      {/* Header with Settings Title */}
-      <View style={[styles.header, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748" }]}>
-        <Text style={[styles.headerTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
-          Settings
-        </Text>
-      </View>
-
-      {/* User Information Section */}
-      {userData && (
-        <TouchableOpacity onPress={() => router.push("profile/" + userId)}>
-          <View style={[styles.userHeader, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748" }]}>
-            {userData.profilePicture ? (
-              <Image source={{ uri: userData.profilePicture }} style={styles.profilePicture} />
-            ) : (
-              <Ionicons name="person-circle" size={50} color={theme === "light" ? "#CBD5E1" : "#A0AEC0"} />
-            )}
-            <Text style={[styles.userName, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
-              {userData.name}
+    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+      <LinearGradient colors={theme === "light" ? ["#E6F0FA", "#F8FAFC"] : ["#1E293B", "#2D3748"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        {/* Global Top Bar */}
+        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+          <Text style={styles.logo}>Wingman</Text>
+          <TouchableOpacity onPress={() => router.push(`profile/${userId}`)}>
+            <Ionicons name="person-circle" size={32} color="#2F80ED" />
+          </TouchableOpacity>
+        </View>
+        {/* Settings Content */}
+        <ScrollView contentContainerStyle={styles.settingsContainer}>
+          {/* Header with Settings Title */}
+          <View style={[styles.header, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748" }]}>
+            <Text style={[styles.headerTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
+              Settings
             </Text>
           </View>
-        </TouchableOpacity>
-      )}
-
-      {/* Settings Options */}
-      <ScrollView contentContainerStyle={styles.settingsContainer}>
-        {/* Account Section */}
-        <View style={styles.settingsSection}>
-          <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
-            Account
-          </Text>
-          <TouchableOpacity
-            style={styles.settingsItem}
-            onPress={() => router.push("profile/editProfile")}
-          >
-            <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
-              <Ionicons name="person" size={24} color="#FFFFFF" />
-              <Text style={styles.settingsText}>Edit Profile</Text>
-              <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.settingsItem}
-            onPress={() => router.push("/settings/updatePassword")}
-          >
-            <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
-              <Ionicons name="lock-closed" size={24} color="#FFFFFF" />
-              <Text style={styles.settingsText}>Change Password</Text>
-              <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Privacy Section */}
-        <View style={styles.settingsSection}>
-          <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
-            Privacy
-          </Text>
-          <TouchableOpacity
-            style={styles.settingsItem}
-            onPress={() => router.push("locked/lockedScreen")}
-          >
-            <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
-              <Ionicons name="eye-off" size={24} color="#FFFFFF" />
-              <Text style={styles.settingsText}>Privacy Settings</Text>
-              <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Notifications Section */}
-        <View style={styles.settingsSection}>
-          <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
-            Notifications
-          </Text>
-          <TouchableOpacity
-            style={styles.settingsItem}
-            onPress={() => router.push("locked/lockedScreen")}
-          >
-            <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
-              <Ionicons name="notifications" size={24} color="#FFFFFF" />
-              <Text style={styles.settingsText}>Notification Preferences</Text>
-              <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* App Settings Section */}
-        <View style={styles.settingsSection}>
-          <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
-            App Settings
-          </Text>
-          {/* Theme Toggle */}
-          <TouchableOpacity style={styles.settingsItem} onPress={handleThemeToggle}>
-            <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
-              <Ionicons name="color-palette" size={24} color="#FFFFFF" />
-              <Text style={styles.settingsText}>Theme</Text>
-              <View style={styles.toggleContainer}>
-                <Animated.View
-                  style={[
-                    styles.toggleCircle,
-                    { transform: [{ translateX: slideInterpolate }] },
-                  ]}
-                />
-                <Text style={styles.toggleText}>
-                  {theme === "light" ? "Light" : "Dark"}
+          {/* User Information Section */}
+          {userData && (
+            <TouchableOpacity onPress={() => router.push("profile/" + userId)}>
+              <View style={[styles.userHeader, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748" }]}>
+                {userData.profilePicture ? (
+                  <Image source={{ uri: userData.profilePicture }} style={styles.profilePicture} />
+                ) : (
+                  <Ionicons name="person-circle" size={50} color={theme === "light" ? "#CBD5E1" : "#A0AEC0"} />
+                )}
+                <Text style={[styles.userName, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
+                  {userData.name}
                 </Text>
               </View>
+            </TouchableOpacity>
+          )}
+          {/* Account Section */}
+          <View style={styles.settingsSection}>
+            <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
+              Account
+            </Text>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={() => router.push("profile/editProfile")}
+            >
+              <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
+                <Ionicons name="person" size={24} color="#FFFFFF" />
+                <Text style={styles.settingsText}>Edit Profile</Text>
+                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={() => router.push("/settings/updatePassword")}
+            >
+              <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
+                <Ionicons name="lock-closed" size={24} color="#FFFFFF" />
+                <Text style={styles.settingsText}>Change Password</Text>
+                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+          {/* Privacy Section */}
+          <View style={styles.settingsSection}>
+            <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
+              Privacy
+            </Text>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={() => router.push("locked/lockedScreen")}
+            >
+              <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
+                <Ionicons name="eye-off" size={24} color="#FFFFFF" />
+                <Text style={styles.settingsText}>Privacy Settings</Text>
+                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+          {/* Notifications Section */}
+          <View style={styles.settingsSection}>
+            <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
+              Notifications
+            </Text>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={() => router.push("locked/lockedScreen")}
+            >
+              <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
+                <Ionicons name="notifications" size={24} color="#FFFFFF" />
+                <Text style={styles.settingsText}>Notification Preferences</Text>
+                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+          {/* App Settings Section */}
+          <View style={styles.settingsSection}>
+            <Text style={[styles.sectionTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
+              App Settings
+            </Text>
+            {/* Theme Toggle */}
+            <TouchableOpacity style={styles.settingsItem} onPress={handleThemeToggle}>
+              <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
+                <Ionicons name="color-palette" size={24} color="#FFFFFF" />
+                <Text style={styles.settingsText}>Theme</Text>
+                <View style={styles.toggleContainer}>
+                  <Animated.View
+                    style={[
+                      styles.toggleCircle,
+                      { transform: [{ translateX: slideInterpolate }] },
+                    ]}
+                  />
+                  <Text style={styles.toggleText}>
+                    {theme === "light" ? "Light" : "Dark"}
+                  </Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={() => router.push("locked/lockedScreen")}
+            >
+              <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
+                <Ionicons name="language" size={24} color="#FFFFFF" />
+                <Text style={styles.settingsText}>Language</Text>
+                <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+          {/* Logout Button */}
+          <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+            <LinearGradient colors={["#FF5A5F", "#C1134E"]} style={styles.logoutGradient}>
+              <Ionicons name="log-out" size={24} color="#FFFFFF" />
+              <Text style={styles.logoutText}>Logout</Text>
             </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.settingsItem}
-            onPress={() => router.push("locked/lockedScreen")}
-          >
-            <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.settingsGradient}>
-              <Ionicons name="language" size={24} color="#FFFFFF" />
-              <Text style={styles.settingsText}>Language</Text>
-              <Ionicons name="chevron-forward" size={24} color="#FFFFFF" style={styles.chevronIcon} />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <LinearGradient colors={["#FF5A5F", "#C1134E"]} style={styles.logoutGradient}>
-            <Ionicons name="log-out" size={24} color="#FFFFFF" />
-            <Text style={styles.logoutText}>Logout</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
-// Updated Styles
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "#E6F0FA",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  logo: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2F80ED",
+  },
+  settingsContainer: {
+    padding: 16,
+    paddingBottom: 32,
+  },
   header: {
-    paddingTop: 50,
-    paddingBottom: 10,
-    paddingHorizontal: 20,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    marginBottom: 16,
   },
   headerTitle: {
     fontSize: 28,
@@ -244,6 +274,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
+    marginBottom: 16,
   },
   profilePicture: {
     width: 50,
@@ -254,9 +285,6 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 20,
     fontWeight: "600",
-  },
-  settingsContainer: {
-    padding: 16,
   },
   settingsSection: {
     marginBottom: 24,
@@ -285,7 +313,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     marginLeft: 12,
-    flex: 1, // Allow text to take available space
+    flex: 1,
   },
   chevronIcon: {
     marginLeft: "auto",
@@ -334,3 +362,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+export { Settings };

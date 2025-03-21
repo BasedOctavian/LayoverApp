@@ -7,6 +7,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  SafeAreaView,
 } from "react-native";
 import useAuth from "../../hooks/auth";
 import { useEffect, useState } from "react";
@@ -20,8 +21,9 @@ import {
   addDoc,
 } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
-import { onAuthStateChanged, User } from "firebase/auth"; // Added User type import
-import { auth } from "../../../firebaseConfig"; // Added auth import - adjust path as needed
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth } from "../../../firebaseConfig";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function ChatExplore() {
   const { user } = useAuth();
@@ -29,8 +31,8 @@ export default function ChatExplore() {
   const [users, setUsers] = useState<any[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  
-  // Added auth-related states
+
+  // Auth-related states
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -113,7 +115,7 @@ export default function ChatExplore() {
     }
   }, [user]);
 
-  // Filter users list
+  // Filter users list to only show those you haven't chatted with yet
   useEffect(() => {
     let updatedFilteredUsers = users.filter((u) => !chatPartnerIds.includes(u.id));
     if (searchQuery) {
@@ -151,63 +153,92 @@ export default function ChatExplore() {
   );
 
   return (
-    <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-      <View style={styles.container}>
-        {loading ? (
-          <Text style={styles.loadingText}>Loading...</Text>
-        ) : (
-          <>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search users..."
-              placeholderTextColor="#999"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
+    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+      <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
+        {/* Global Top Bar */}
+        <View style={styles.topBar}>
+          <Text style={styles.logo}>Wingman</Text>
+          <TouchableOpacity onPress={() => router.push(`profile/${authUser?.uid}`)}>
+            <Ionicons name="person-circle" size={32} color="#2F80ED" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.container}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search users..."
+            placeholderTextColor="#64748B"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {usersLoading || chatLoading ? (
+            <Text style={styles.loadingText}>Loading users...</Text>
+          ) : usersError || chatError ? (
+            <Text style={styles.errorText}>{usersError || chatError}</Text>
+          ) : (
+            <FlatList
+              data={filteredUsers}
+              renderItem={renderItem}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContent}
             />
-            {usersLoading || chatLoading ? (
-              <Text style={styles.loadingText}>Loading users...</Text>
-            ) : usersError || chatError ? (
-              <Text style={styles.errorText}>{usersError || chatError}</Text>
-            ) : (
-              <FlatList
-                data={filteredUsers}
-                renderItem={renderItem}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.listContent}
-              />
-            )}
-          </>
-        )}
-      </View>
-    </LinearGradient>
+          )}
+        </View>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
+  flex: {
     flex: 1,
+    backgroundColor: "#E6F0FA",
+  },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "#E6F0FA",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    height: 50,
+  },
+  logo: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2F80ED",
   },
   container: {
     flex: 1,
     padding: 16,
   },
   searchInput: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "#FFFFFF",
     borderRadius: 25,
     paddingHorizontal: 20,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#fff",
+    color: "#1E293B",
     marginBottom: 16,
-    marginTop: 40,
+    marginTop: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   userCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
     padding: 16,
     marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   profileImage: {
     width: 50,
@@ -221,24 +252,27 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#fff",
+    color: "#1E293B",
     marginBottom: 4,
   },
   userBio: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.8)",
+    color: "#64748B",
   },
   loadingText: {
-    color: "#fff",
+    color: "#1E293B",
     textAlign: "center",
     marginTop: 20,
+    fontSize: 16,
   },
   errorText: {
-    color: "#ff4444",
+    color: "#FF3B30",
     textAlign: "center",
     marginTop: 20,
+    fontSize: 16,
   },
   listContent: {
     paddingBottom: 20,
+    
   },
 });

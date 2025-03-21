@@ -533,9 +533,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainerStyle: {
-    paddingTop: 80,
+    paddingTop: 40,
     paddingHorizontal: 16,
-    paddingBottom: 16,
   },
   section: {
     marginBottom: 24,
@@ -547,11 +546,13 @@ const styles = StyleSheet.create({
   },
   headerIcon: {
     marginRight: 8,
+    marginTop: 30,
   },
   sectionHeader: {
     fontSize: 18,
     fontWeight: "600",
     color: "#1E293B",
+    paddingTop: 30,
   },
   userCard: {
     width: 150,

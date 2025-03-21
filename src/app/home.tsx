@@ -1,26 +1,33 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { StyleSheet, View, Text, FlatList, Image, TouchableOpacity, Alert } from "react-native";
+import {
+  StyleSheet,
+  View,
+  Text,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  Alert,
+  SafeAreaView,
+} from "react-native";
 import MapView, { Circle, Marker } from "react-native-maps";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, AntDesign, Feather, FontAwesome } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import useEvents from "./../hooks/useEvents";
+import useEvents from "../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
-import * as Location from 'expo-location';
+import * as Location from "expo-location";
 
 // Haversine formula for distance calculation
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371e3; // Earth radius in meters
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(Δφ / 2) ** 2 +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
 
@@ -28,45 +35,28 @@ export default function EventCreation() {
   const router = useRouter();
   const { getUser } = useUsers();
   const { getEvents } = useEvents();
-  const [events, setEvents] = useState<
-    {
-      id: string;
-      name: string;
-      description: string;
-      latitude: number;
-      longitude: number;
-      eventImage: string;
-      createdAt: Date;
-      startTime: Date;
-      organizer: string;
-      organizerName?: string;
-      attendees: string[];
-    }[]
-  >([]);
-  const [currentLocation, setCurrentLocation] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  const [events, setEvents] = useState<any[]>([]);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
+  // Request current location on mount
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission to access location was denied');
+      if (status !== "granted") {
+        Alert.alert("Permission to access location was denied");
         return;
       }
-
       let location = await Location.getCurrentPositionAsync({});
       setCurrentLocation({
         latitude: location.coords.latitude,
-        longitude: location.coords.longitude
+        longitude: location.coords.longitude,
       });
     })();
   }, []);
 
+  // Fetch events and add organizer names
   useEffect(() => {
     const fetchEvents = async () => {
-      console.log("Fetching events...");
       const fetchedEvents = await getEvents();
       if (fetchedEvents) {
         const eventsWithOrganizerNames = await Promise.all(
@@ -83,7 +73,7 @@ export default function EventCreation() {
               startTime: new Date(event.startTime),
               organizer: event.organizer,
               organizerName: organizer?.name || "Auto Generated",
-              attendees: event.attendees || []
+              attendees: event.attendees || [],
             };
           })
         );
@@ -114,7 +104,7 @@ export default function EventCreation() {
   }, [events, currentLocation]);
 
   const renderItem = ({ item }: { item: typeof events[0] }) => {
-    const distance = currentLocation 
+    const distance = currentLocation
       ? calculateDistance(
           currentLocation.latitude,
           currentLocation.longitude,
@@ -122,24 +112,19 @@ export default function EventCreation() {
           item.longitude
         )
       : null;
-
-    const formattedDistance = distance 
-      ? distance > 1000 
-        ? `${(distance/1000).toFixed(1)}km away` 
+    const formattedDistance = distance
+      ? distance > 1000
+        ? `${(distance / 1000).toFixed(1)}km away`
         : `${Math.round(distance)}m away`
-      : 'Calculating...';
-
+      : "Calculating...";
     return (
       <TouchableOpacity style={styles.eventCard} onPress={() => router.push("/event/" + item.id)}>
         <View style={styles.imageContainer}>
           <Image source={{ uri: item.eventImage }} style={styles.eventImage} />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.7)']}
-            style={styles.imageOverlay}
-          />
+          <LinearGradient colors={["transparent", "rgba(0,0,0,0.7)"]} style={styles.imageOverlay} />
           <Text style={styles.eventDate}>
-            <Feather name="calendar" size={14} color="white" />{' '}
-            {item.startTime.toLocaleDateString('short')}
+            <Feather name="calendar" size={14} color="white" />{" "}
+            {item.startTime.toLocaleDateString("short")}
           </Text>
         </View>
         <View style={styles.eventDetails}>
@@ -171,82 +156,97 @@ export default function EventCreation() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.mapContainer}>
-        <MapView
-          mapType="hybrid"
-          style={styles.map}
-          initialRegion={{
-            latitude: 42.9405,
-            longitude: -78.7322,
-            latitudeDelta: 0.03,
-            longitudeDelta: 0.03,
-          }}
-        >
-          {events.map((event) => (
-            <React.Fragment key={event.id}>
-              <Circle
-                center={{
-                  latitude: event.latitude,
-                  longitude: event.longitude,
-                }}
-                radius={152.4}
-                strokeWidth={2}
-                strokeColor="rgba(255, 255, 255, 0.5)"
-                fillColor="rgba(255, 255, 255, 0.2)"
-              />
-              <Marker
-                coordinate={{
-                  latitude: event.latitude,
-                  longitude: event.longitude,
-                }}
-                title={event.name}
-                description={event.description}
-              >
-                <MaterialIcons name="event" size={24} color="#fff" />
-              </Marker>
-            </React.Fragment>
-          ))}
-        </MapView>
-      </View>
-
-      <Text style={styles.headerText}>Nearby Events</Text>
-      <FlatList
-        data={sortedEvents}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-      />
-
-      <TouchableOpacity 
-        style={styles.searchButtonContainer}
-        onPress={handleSearchPress}
-      >
-        <LinearGradient
-          colors={["#2F80ED", "#1A5FB4"]}
-          style={styles.searchButton}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <AntDesign name="search1" size={20} color="white" />
-          <Text style={styles.searchText}>Search Events</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-    </View>
+    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+      <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
+        {/* Global Top Bar */}
+        <View style={styles.topBar}>
+          <Text style={styles.logo}>Wingman</Text>
+          <TouchableOpacity onPress={() => router.push("profile")}>
+            <Feather name="user" size={32} color="#2F80ED" />
+          </TouchableOpacity>
+        </View>
+        {/* Map Section */}
+        <View style={styles.mapContainer}>
+          <MapView
+            mapType="hybrid"
+            style={styles.map}
+            initialRegion={{
+              latitude: 42.9405,
+              longitude: -78.7322,
+              latitudeDelta: 0.03,
+              longitudeDelta: 0.03,
+            }}
+          >
+            {events.map((event) => (
+              <React.Fragment key={event.id}>
+                <Circle
+                  center={{ latitude: event.latitude, longitude: event.longitude }}
+                  radius={152.4}
+                  strokeWidth={2}
+                  strokeColor="rgba(255,255,255,0.5)"
+                  fillColor="rgba(255,255,255,0.2)"
+                />
+                <Marker
+                  coordinate={{ latitude: event.latitude, longitude: event.longitude }}
+                  title={event.name}
+                  description={event.description}
+                >
+                  <MaterialIcons name="event" size={24} color="#fff" />
+                </Marker>
+              </React.Fragment>
+            ))}
+          </MapView>
+        </View>
+        <Text style={styles.headerText}>Nearby Events</Text>
+        <FlatList
+          data={sortedEvents}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+        />
+        <TouchableOpacity style={styles.searchButtonContainer} onPress={handleSearchPress}>
+          <LinearGradient
+            colors={["#2F80ED", "#1A5FB4"]}
+            style={styles.searchButton}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <AntDesign name="search1" size={20} color="white" />
+            <Text style={styles.searchText}>Search Events</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  flex: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
-    padding: 16,
+    backgroundColor: "#E6F0FA",
+  },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "#E6F0FA",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    height: 50,
+  },
+  logo: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2F80ED",
   },
   mapContainer: {
     height: 300,
+    maxWidth: 370,
+    marginLeft: 11,
     borderRadius: 24,
     overflow: "hidden",
-    marginTop: 60,
+    marginTop: 16,
     marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -263,8 +263,6 @@ const styles = StyleSheet.create({
     color: "#1E293B",
     marginBottom: 20,
     paddingHorizontal: 8,
-    fontFamily: "Inter-SemiBold",
-    letterSpacing: -0.3,
   },
   listContent: {
     paddingBottom: 80,
@@ -278,11 +276,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
-    overflow: 'hidden',
+    overflow: "hidden",
+  },
+  imageContainer: {
+    height: 160,
+    position: "relative",
   },
   eventImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
+  },
+  imageOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "40%",
+  },
+  eventDate: {
+    position: "absolute",
+    bottom: 12,
+    left: 16,
+    color: "white",
+    fontSize: 13,
   },
   eventDetails: {
     padding: 16,
@@ -292,30 +308,32 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1E293B",
     marginBottom: 8,
-    fontFamily: "Inter-Bold",
-    letterSpacing: -0.3,
+  },
+  organizerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  organizerText: {
+    fontSize: 13,
+    color: "#64748B",
+    marginLeft: 6,
   },
   eventDescription: {
     fontSize: 14,
     color: "#64748B",
     lineHeight: 20,
     marginBottom: 16,
-    fontFamily: "Inter-Regular",
   },
-  organizerText: {
-    fontSize: 13,
-    color: "#64748B",
-    marginLeft: 6,
-    fontFamily: "Inter-Medium",
-  },
-  eventMeta: {
+  metaContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
   },
   metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -324,7 +342,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#1E293B",
     marginLeft: 6,
-    fontFamily: "Inter-SemiBold",
   },
   searchButtonContainer: {
     position: "absolute",
@@ -344,38 +361,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 10,
     fontWeight: "500",
-    fontFamily: "Inter-SemiBold",
-  },
-  imageContainer: {
-    height: 140,
-    position: 'relative',
-  },
-  imageOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '40%',
-  },
-  eventDate: {
-    position: 'absolute',
-    bottom: 12,
-    left: 16,
-    color: 'white',
-    fontSize: 13,
-    fontFamily: 'Inter-SemiBold',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  organizerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  metaContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
 });
 
