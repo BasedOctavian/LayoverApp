@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   ScrollView,
+  StatusBar,
 } from "react-native";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -25,6 +26,7 @@ import { serverTimestamp } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -51,6 +53,9 @@ function haversineDistance(lat1: number, long1: number, lat2: number, long2: num
 }
 
 export default function Dashboard() {
+  const insets = useSafeAreaInsets();
+  const topBarHeight = 50 + insets.top;
+
   const { user } = useAuth();
   const [userId, setUserId] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -70,6 +75,7 @@ export default function Dashboard() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingMood, setUpdatingMood] = useState(false);
+  const [searchHeaderHeight, setSearchHeaderHeight] = useState(0); // State to store search header height
   const [popupData, setPopupData] = useState<{
     visible: boolean;
     title: string;
@@ -89,7 +95,6 @@ export default function Dashboard() {
     { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#FFFFFF" /> },
   ];
 
-  // Mock nearby users (replace with real data from a hook if available)
   const nearbyUsers: NearbyUser[] = [
     { id: "1", name: "Alex Johnson", status: "Down to Chat" },
     { id: "2", name: "Sam Carter", status: "Food & Drinks?" },
@@ -248,271 +253,257 @@ export default function Dashboard() {
       : allEvents.filter((event) => event.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.innerContainer}>
-          {/* Top Bar */}
-          <View style={styles.topBar}>
-            <Text style={styles.logo}>Wingman</Text>
-            <TouchableOpacity onPress={() => router.push(`profile/${userId}`)}>
-              <Ionicons name="person-circle" size={32} color="#2F80ED" />
+    <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+      <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+        <Text style={styles.logo}>Wingman</Text>
+        <TouchableOpacity onPress={() => router.push(`profile/${userId}`)}>
+          <Ionicons name="person-circle" size={32} color="#2F80ED" />
+        </TouchableOpacity>
+      </View>
+      {showSearch && (
+        <View
+          style={[styles.searchHeader, { top: topBarHeight }]}
+          onLayout={(event) => {
+            const { height } = event.nativeEvent.layout;
+            setSearchHeaderHeight(height);
+          }}
+        >
+          <View style={styles.searchInputContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder={`Search ${searchType}...`}
+              placeholderTextColor="#64748B"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowSearch(false)}>
+              <Feather name="x" size={24} color="#2F80ED" />
             </TouchableOpacity>
           </View>
-
-          {/* Search Header */}
-          {showSearch && (
-            <View style={styles.searchHeader}>
-              <View style={styles.searchInputContainer}>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder={`Search ${searchType}...`}
-                  placeholderTextColor="#64748B"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoFocus
-                />
-                <TouchableOpacity style={styles.cancelButton} onPress={() => setShowSearch(false)}>
-                  <Feather name="x" size={24} color="#2F80ED" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.filterContainer}>
-                <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("airports")}>
-                  <View style={[styles.filterButtonInner, { backgroundColor: searchType === "airports" ? "#2F80ED" : "#F1F5F9" }]}>
-                    <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : "#64748B"} />
-                    <Text style={[styles.filterText, { color: searchType === "airports" ? "#FFFFFF" : "#64748B" }]}>Airports</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("events")}>
-                  <View style={[styles.filterButtonInner, { backgroundColor: searchType === "events" ? "#2F80ED" : "#F1F5F9" }]}>
-                    <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : "#64748B"} />
-                    <Text style={[styles.filterText, { color: searchType === "events" ? "#FFFFFF" : "#64748B" }]}>Events</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* Default Search Bar */}
-          {!showSearch && (
-            <TouchableOpacity activeOpacity={0.9} onPress={() => setShowSearch(true)} style={styles.defaultSearchContainer}>
-              <View style={styles.searchContainer}>
-                <Feather name="search" size={18} color="#64748B" />
-                <Text style={styles.searchPlaceholder}>{selectedAirport ? selectedAirport.name : "Select an airport"}</Text>
-                <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
+          <View style={styles.filterContainer}>
+            <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("airports")}>
+              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "airports" ? "#2F80ED" : "#F1F5F9" }]}>
+                <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : "#64748B"} />
+                <Text style={[styles.filterText, { color: searchType === "airports" ? "#FFFFFF" : "#64748B" }]}>Airports</Text>
               </View>
             </TouchableOpacity>
-          )}
-
-          {/* Scrollable Content */}
-          <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainerStyle}>
-            {/* Nearby Users and Events */}
-            {!showSearch && (
-              <>
-                {/* Nearby Users Section */}
-                <View style={styles.section}>
-                  <View style={styles.headerRow}>
-                    <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
-                    <Text style={styles.sectionHeader}>Nearby Users</Text>
-                  </View>
-                  {nearbyUsers.length > 0 ? (
-                    <FlatList
-                      horizontal
-                      data={nearbyUsers}
-                      keyExtractor={(item) => item.id}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          style={styles.userCard}
-                          activeOpacity={0.8}
-                          onPress={() => router.push(`profile/${item.id}`)}
-                        >
-                          <View style={styles.avatar}>
-                            <FontAwesome5 name="user" size={24} color="#2F80ED" />
-                          </View>
-                          <Text style={styles.userName}>{item.name}</Text>
-                          <Text style={styles.userStatus}>{item.status}</Text>
-                        </TouchableOpacity>
-                      )}
-                      showsHorizontalScrollIndicator={false}
-                    />
-                  ) : (
-                    <Text style={styles.noDataText}>No nearby users found.</Text>
-                  )}
-                </View>
-
-                {/* Events Section */}
-                <View style={styles.section}>
-                  <View style={styles.headerRow}>
-                    <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
-                    <Text style={styles.sectionHeader}>
-                      Events at {selectedAirport ? selectedAirport.name : "Your Location"}
-                    </Text>
-                  </View>
-                  {allEvents.length > 0 ? (
-                    <FlatList
-                      horizontal
-                      data={allEvents}
-                      keyExtractor={(item) => `${item.type}-${item.id}`}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          style={styles.eventCard}
-                          activeOpacity={0.8}
-                          onPress={() => router.push(item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`)}
-                        >
-                          <Text style={styles.eventName}>{item.name}</Text>
-                          <Text style={styles.eventDescription}>{item.description}</Text>
-                        </TouchableOpacity>
-                      )}
-                      showsHorizontalScrollIndicator={false}
-                    />
-                  ) : (
-                    <Text style={styles.noDataText}>No events at this airport.</Text>
-                  )}
-                </View>
-              </>
-            )}
-
-            {/* Search Results */}
-            {showSearch && (
-              <FlatList
-                data={filteredResults}
-                keyExtractor={(item, index) => index.toString()}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.resultItem}
-                    activeOpacity={0.9}
-                    onPress={() => {
-                      if (searchType === "airports") {
-                        setSelectedAirport(item);
-                        setShowSearch(false);
-                      } else {
-                        const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
-                        router.push(route);
-                      }
-                    }}
-                  >
-                    <View style={styles.resultItemView}>
-                      <Feather name={searchType === "airports" ? "airplay" : "calendar"} size={20} color="#2F80ED" style={styles.resultIcon} />
-                      <Text style={styles.resultText}>{item.name}</Text>
-                      <Feather name="chevron-right" size={18} color="#CBD5E1" />
+            <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("events")}>
+              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "events" ? "#2F80ED" : "#F1F5F9" }]}>
+                <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : "#64748B"} />
+                <Text style={[styles.filterText, { color: searchType === "events" ? "#FFFFFF" : "#64748B" }]}>Events</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+      {!showSearch && (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => setShowSearch(true)}
+          style={[styles.defaultSearchContainer, { top: topBarHeight }]}
+        >
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={18} color="#64748B" />
+            <Text style={styles.searchPlaceholder}>{selectedAirport ? selectedAirport.name : "Select an airport"}</Text>
+            <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
+          </View>
+        </TouchableOpacity>
+      )}
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainerStyle}>
+              {!showSearch && (
+                <>
+                  <View style={styles.section}>
+                    <View style={styles.headerRow}>
+                      <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
+                      <Text style={styles.sectionHeader}>Nearby Users</Text>
                     </View>
-                  </TouchableOpacity>
-                )}
-                contentContainerStyle={styles.searchResultsContainer}
-              />
-            )}
-
-            {/* Features */}
-            {!showSearch && (
-              <FlatList
-                data={features}
-                keyExtractor={(item, index) => index.toString()}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.featureItem}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      if (item.title === "Status") setShowStatusModal(true);
-                      else router.push(item.screen);
-                    }}
-                  >
-                    <View style={styles.featureItemContent}>
-                      {item.icon}
-                      <Text style={styles.featureItemText}>{item.title}</Text>
+                    {nearbyUsers.length > 0 ? (
+                      <FlatList
+                        horizontal
+                        data={nearbyUsers}
+                        keyExtractor={(item) => item.id}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={styles.userCard}
+                            activeOpacity={0.8}
+                            onPress={() => router.push(`profile/${item.id}`)}
+                          >
+                            <View style={styles.avatar}>
+                              <FontAwesome5 name="user" size={24} color="#2F80ED" />
+                            </View>
+                            <Text style={styles.userName}>{item.name}</Text>
+                            <Text style={styles.userStatus}>{item.status}</Text>
+                          </TouchableOpacity>
+                        )}
+                        showsHorizontalScrollIndicator={false}
+                      />
+                    ) : (
+                      <Text style={styles.noDataText}>No nearby users found.</Text>
+                    )}
+                  </View>
+                  <View style={styles.section}>
+                    <View style={styles.headerRow}>
+                      <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
+                      <Text style={styles.sectionHeader}>
+                        Events at {selectedAirport ? selectedAirport.name : "Your Location"}
+                      </Text>
                     </View>
-                    <Feather name="chevron-right" size={18} color="#CBD5E1" />
-                  </TouchableOpacity>
-                )}
-                contentContainerStyle={styles.featuresListContainer}
-              />
-            )}
-          </ScrollView>
-
-          {/* Status Modal */}
-          <Modal visible={showStatusModal} transparent animationType="fade">
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContainer}>
-                <Text style={styles.modalHeader}>Update Your Status</Text>
-                <View style={styles.modalSeparator} />
-                <View style={styles.statusOptions}>
-                  {presetStatuses.map((status, index) => (
+                    {allEvents.length > 0 ? (
+                      <FlatList
+                        horizontal
+                        data={allEvents}
+                        keyExtractor={(item) => `${item.type}-${item.id}`}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={styles.eventCard}
+                            activeOpacity={0.8}
+                            onPress={() => router.push(item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`)}
+                          >
+                            <Text style={styles.eventName}>{item.name}</Text>
+                            <Text style={styles.eventDescription}>{item.description}</Text>
+                          </TouchableOpacity>
+                        )}
+                        showsHorizontalScrollIndicator={false}
+                      />
+                    ) : (
+                      <Text style={styles.noDataText}>No events at this airport.</Text>
+                    )}
+                  </View>
+                </>
+              )}
+              {showSearch && (
+                <View>
+                  <View style={{ height: searchHeaderHeight - 50 }} />
+                  <FlatList
+                    data={filteredResults}
+                    keyExtractor={(item, index) => index.toString()}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.resultItem}
+                        activeOpacity={0.9}
+                        onPress={() => {
+                          if (searchType === "airports") {
+                            setSelectedAirport(item);
+                            setShowSearch(false);
+                          } else {
+                            const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
+                            router.push(route);
+                          }
+                        }}
+                      >
+                        <View style={styles.resultItemView}>
+                          <Feather name={searchType === "airports" ? "airplay" : "calendar"} size={20} color="#2F80ED" style={styles.resultIcon} />
+                          <Text style={styles.resultText}>{item.name}</Text>
+                          <Feather name="chevron-right" size={18} color="#CBD5E1" />
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                    contentContainerStyle={styles.searchResultsContainer}
+                  />
+                </View>
+              )}
+              {!showSearch && (
+                <FlatList
+                  data={features}
+                  keyExtractor={(item, index) => index.toString()}
+                  renderItem={({ item }) => (
                     <TouchableOpacity
-                      key={index}
-                      style={styles.statusOptionButton}
+                      style={styles.featureItem}
+                      activeOpacity={0.8}
                       onPress={() => {
-                        handleUpdateMoodStatus(status.label);
-                        setShowStatusModal(false);
+                        if (item.title === "Status") setShowStatusModal(true);
+                        else router.push(item.screen);
                       }}
                     >
-                      <View style={styles.statusOptionContent}>
-                        {status.icon}
-                        <Text style={styles.statusOptionText}>{status.label}</Text>
+                      <View style={styles.featureItemContent}>
+                        {item.icon}
+                        <Text style={styles.featureItemText}>{item.title}</Text>
                       </View>
+                      <Feather name="chevron-right" size={18} color="#CBD5E1" />
                     </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={styles.customStatusLabel}>Or enter a custom status</Text>
-                <TextInput
-                  style={styles.customStatusInput}
-                  value={customStatus}
-                  onChangeText={setCustomStatus}
-                  placeholder="Type your status here..."
-                  placeholderTextColor="#999"
+                  )}
+                  contentContainerStyle={styles.featuresListContainer}
                 />
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={styles.modalActionButton}
-                    onPress={() => {
-                      handleUpdateMoodStatus(customStatus);
-                      setShowStatusModal(false);
-                    }}
-                  >
-                    <Feather name="check" size={18} color="#FFFFFF" style={styles.modalActionIcon} />
-                    <Text style={styles.modalActionButtonText}>Submit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalActionButton, styles.modalCancelButton]} onPress={() => setShowStatusModal(false)}>
-                    <Feather name="x" size={18} color="#2F80ED" style={styles.modalActionIcon} />
-                    <Text style={[styles.modalActionButtonText, styles.modalCancelButtonText]}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              )}
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+      <Modal visible={showStatusModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalHeader}>Update Your Status</Text>
+            <View style={styles.modalSeparator} />
+            <View style={styles.statusOptions}>
+              {presetStatuses.map((status, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.statusOptionButton}
+                  onPress={() => {
+                    handleUpdateMoodStatus(status.label);
+                    setShowStatusModal(false);
+                  }}
+                >
+                  <View style={styles.statusOptionContent}>
+                    {status.icon}
+                    <Text style={styles.statusOptionText}>{status.label}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
-          </Modal>
-
-          {/* Popup Notification */}
-          {popupData.visible && (
-            <Modal transparent animationType="fade">
-              <View style={styles.popupOverlay}>
-                <View style={[styles.popupContainer, popupData.type === "error" ? styles.popupError : styles.popupSuccess]}>
-                  <Text style={styles.popupTitle}>{popupData.title}</Text>
-                  <Text style={styles.popupMessage}>{popupData.message}</Text>
-                </View>
-              </View>
-            </Modal>
-          )}
-        </LinearGradient>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+            <Text style={styles.customStatusLabel}>Or enter a custom status</Text>
+            <TextInput
+              style={styles.customStatusInput}
+              value={customStatus}
+              onChangeText={setCustomStatus}
+              placeholder="Type your status here..."
+              placeholderTextColor="#999"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalActionButton}
+                onPress={() => {
+                  handleUpdateMoodStatus(customStatus);
+                  setShowStatusModal(false);
+                }}
+              >
+                <Feather name="check" size={18} color="#FFFFFF" style={styles.modalActionIcon} />
+                <Text style={styles.modalActionButtonText}>Submit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalActionButton, styles.modalCancelButton]} onPress={() => setShowStatusModal(false)}>
+                <Feather name="x" size={18} color="#2F80ED" style={styles.modalActionIcon} />
+                <Text style={[styles.modalActionButtonText, styles.modalCancelButtonText]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {popupData.visible && (
+        <Modal transparent animationType="fade">
+          <View style={styles.popupOverlay}>
+            <View style={[styles.popupContainer, popupData.type === "error" ? styles.popupError : styles.popupSuccess]}>
+              <Text style={styles.popupTitle}>{popupData.title}</Text>
+              <Text style={styles.popupMessage}>{popupData.message}</Text>
+            </View>
+          </View>
+        </Modal>
+      )}
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-
-  },
-  innerContainer: {
-    flex: 1,
-    marginTop: 50,
-    marginBottom: 20,
-    backgroundColor: "#FFFFFF",
-  },
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    height: 50,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#E6F0FA",
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
   },
@@ -525,7 +516,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainerStyle: {
-    paddingTop: 80, // Space for search bar
+    paddingTop: 80,
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
@@ -635,7 +626,6 @@ const styles = StyleSheet.create({
   },
   searchHeader: {
     position: "absolute",
-    top: 50,
     left: 20,
     right: 20,
     zIndex: 2,
@@ -683,7 +673,6 @@ const styles = StyleSheet.create({
   },
   defaultSearchContainer: {
     position: "absolute",
-    top: 50,
     left: 20,
     right: 20,
     zIndex: 2,

@@ -8,26 +8,28 @@ import {
   Dimensions,
   TouchableOpacity,
   Alert,
+  Animated,
 } from "react-native";
-import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import Swiper from "react-native-deck-swiper";
 import useUsers from "./../hooks/useUsers";
 import { arrayUnion } from "firebase/firestore";
-import SkeletonPlaceholder from "react-native-skeleton-placeholder";
+import { LinearGradient } from "expo-linear-gradient";
 
 const { width, height } = Dimensions.get("window");
+const CARD_WIDTH = width * 0.85;
+const CARD_HEIGHT = height * 0.75;
 
 const Swipe = () => {
-  // State Management
-  const [users, setUsers] = useState<any[]>([]);
-  const [connections, setConnections] = useState<any[]>([]);
+  const [users, setUsers] = useState([]);
+  const [connections, setConnections] = useState([]);
   const { getUsers, updateUser, loading, error } = useUsers();
-  const swiperRef = useRef<Swiper<any>>(null);
+  const swiperRef = useRef(null);
   const currentUserUID = "some-uid"; // Replace with actual UID from auth context
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSwiper, setShowSwiper] = useState(false);
+  const buttonScale = useRef(new Animated.Value(1)).current;
 
-  // Fetch users on component mount
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -37,9 +39,9 @@ const Swipe = () => {
       const fetchedUsers = await getUsers();
       if (fetchedUsers?.length) {
         setUsers(fetchedUsers);
-        setShowSwiper(true); // Delay swiper rendering
+        setShowSwiper(true);
       } else {
-        setShowSwiper(false); // Hide swiper if no users
+        setShowSwiper(false);
       }
     } catch (err) {
       Alert.alert("Error", "Failed to fetch users. Please try again later.");
@@ -47,8 +49,7 @@ const Swipe = () => {
     }
   };
 
-  // Handle right swipe (like)
-  const onSwipedRight = async (index: number) => {
+  const onSwipedRight = async (index) => {
     if (!users?.[index] || isProcessing) return;
     setIsProcessing(true);
 
@@ -56,12 +57,10 @@ const Swipe = () => {
     const swipedUserUID = swipedUser.id;
 
     try {
-      // Update current user's likedUsers array in Firestore
       await updateUser(currentUserUID, {
         likedUsers: arrayUnion(swipedUserUID),
       });
 
-      // Check for mutual like
       if (swipedUser.likedUsers?.includes(currentUserUID)) {
         const isDuplicate = connections.some(
           (conn) =>
@@ -84,85 +83,102 @@ const Swipe = () => {
     }
   };
 
-  // Handle left swipe (dislike)
-  const onSwipedLeft = (index: number) => {
+  const onSwipedLeft = (index) => {
     console.log("Swiped left on user:", users[index].name);
   };
 
-  // Render skeleton placeholder during loading
-  const renderLoadingSkeleton = () => (
-    <SkeletonPlaceholder backgroundColor="#e0e0e0" highlightColor="#f5f5f5">
-      <View style={styles.cardContainer}>
-        <SkeletonPlaceholder.Item width={120} height={120} borderRadius={60} alignSelf="center" />
-        <SkeletonPlaceholder.Item width={200} height={20} marginTop={10} alignSelf="center" />
-        <SkeletonPlaceholder.Item width={150} height={15} marginTop={5} alignSelf="center" />
-        <SkeletonPlaceholder.Item width="90%" height={15} marginTop={20} />
-        <SkeletonPlaceholder.Item width="80%" height={15} marginTop={10} />
-        <SkeletonPlaceholder.Item width="70%" height={15} marginTop={10} />
-      </View>
-    </SkeletonPlaceholder>
-  );
+  const animateButtonPress = () => {
+    Animated.sequence([
+      Animated.timing(buttonScale, {
+        toValue: 0.95,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(buttonScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
-  // Render individual user card
-  const renderCard = (user: any) => {
+  const renderCard = (user) => {
     if (!user) return null;
 
     return (
-      <View style={[styles.cardContainer, styles.cardBackground]}>
-        <View style={styles.profileHeader}>
-          <Image
-            source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
-            style={styles.profileImage}
-          />
-          <Text style={styles.nameText}>
-            {user.name}, {user.age || ''}
-          </Text>
-          <Text style={styles.moodText}>
-            <MaterialIcons name="mood" size={16} color="#fff" /> 
-            {user.moodStatus || 'No mood set'}
-          </Text>
-        </View>
+      <Animated.View style={[styles.cardContainer, styles.cardShadow]}>
+        <LinearGradient
+          colors={["#2A2D3E", "#1E202E"]}
+          style={styles.cardGradient}
+        >
+          <View style={styles.profileHeader}>
+            <View style={styles.imageContainer}>
+              <Image
+                source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
+                style={styles.profileImage}
+              />
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.8)"]}
+                style={styles.imageOverlay}
+              />
+            </View>
+            
+            <View style={styles.profileInfo}>
+              <Text style={styles.nameText}>
+                {user.name}, {user.age || ""}
+                <Text style={styles.pronounsText}> • {user.pronouns || "they/them"}</Text>
+              </Text>
+              <View style={styles.moodContainer}>
+                <MaterialIcons name="mood" size={20} color="#FFD700" />
+                <Text style={styles.moodText}>{user.moodStatus || "Exploring the world 🌍"}</Text>
+              </View>
+            </View>
+          </View>
 
-        {renderSection('About Me', user.bio)}
-        {renderSection('Languages', user.languages, 'language')}
-        {renderSection('Interests', user.interests, 'favorite')}
-        {renderSection('Goals', user.goals, 'bullseye')}
-        {renderSection('Travel History', user.travelHistory, 'flight')}
+          <View style={styles.contentContainer}>
+            {renderSection("person-outline", user.bio)}
+            {renderSection("translate", user.languages)}
+            {renderSection("favorite-border", user.interests)}
+            {renderSection("work-outline", user.goals)}
+            {renderSection("flight-takeoff", user.travelHistory)}
+          </View>
 
-        <Text style={styles.createdAtText}>
-          Member since: {user.createdAt?.toDate()?.toLocaleDateString() || 'Unknown'}
-        </Text>
-      </View>
+          <View style={styles.footer}>
+            <MaterialIcons name="verified" size={18} color="#6a11cb" />
+            <Text style={styles.createdAtText}>
+              Member since {user.createdAt?.toDate()?.toLocaleDateString() || "2024"}
+            </Text>
+          </View>
+        </LinearGradient>
+      </Animated.View>
     );
   };
 
-  // Render section content (e.g., bio, interests)
-  const renderSection = (title: string, content: any, iconName?: string) => {
+  const renderSection = (iconName, content) => {
     if (!content || (Array.isArray(content) && !content.length)) return null;
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          {iconName && <MaterialIcons name={iconName} size={20} color="#fff" />}{' '}
-          {title}
-        </Text>
-        <Text style={styles.sectionContent}>
-          {Array.isArray(content) ? content.join(", ") : content}
-        </Text>
+        <View style={styles.sectionHeader}>
+          <MaterialIcons name={iconName} size={20} color="#6a11cb" />
+          <Text style={styles.sectionContent}>
+            {Array.isArray(content) ? content.join(" • ") : content}
+          </Text>
+        </View>
+        <View style={styles.divider} />
       </View>
     );
   };
 
-  // Loading state
   if (loading) {
     return (
       <View style={styles.container}>
-        {renderLoadingSkeleton()}
+        <ActivityIndicator size="large" color="#6a11cb" />
+        <Text style={styles.loadingText}>Loading profiles...</Text>
       </View>
     );
   }
 
-  // Error state
   if (error) {
     return (
       <View style={styles.container}>
@@ -174,7 +190,6 @@ const Swipe = () => {
     );
   }
 
-  // No users state
   if (!users.length) {
     return (
       <View style={styles.container}>
@@ -186,7 +201,6 @@ const Swipe = () => {
     );
   }
 
-  // Main render with swiper
   return (
     <View style={styles.container}>
       {showSwiper && users.length > 0 ? (
@@ -202,8 +216,8 @@ const Swipe = () => {
           verticalSwipe={false}
           animateCardOpacity
           overlayLabels={{
-            left: overlayConfig('NOPE', 'red'),
-            right: overlayConfig('LIKE', 'green'),
+            left: overlayConfig("NOPE", "#FF3B30"),
+            right: overlayConfig("LIKE", "#4CD964"),
           }}
           onSwipedAll={() => {
             setShowSwiper(false);
@@ -219,105 +233,150 @@ const Swipe = () => {
   );
 };
 
-// Configure overlay labels for swipes
-const overlayConfig = (title: string, color: string) => ({
+const overlayConfig = (title, color) => ({
   title,
   style: {
     label: {
       backgroundColor: color,
       borderColor: color,
       color: "#fff",
-      borderWidth: 1,
+      borderWidth: 0,
+      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 20,
+      fontSize: 24,
+      fontWeight: "800",
+      transform: [{ rotate: color === "#4CD964" ? "-8deg" : "8deg" }],
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+      elevation: 6,
     },
     wrapper: {
       flexDirection: "column",
-      alignItems: color === 'green' ? "flex-start" : "flex-end",
-      justifyContent: "flex-start",
-      marginTop: 30,
-      marginLeft: color === 'green' ? 30 : -30,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 60,
     },
   },
 });
 
-// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#121318",
     justifyContent: "center",
     alignItems: "center",
   },
   cardContainer: {
-    flex: 1,
-    borderRadius: 15,
-    padding: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    width: width * 0.9,
-    marginHorizontal: 20,
-    minHeight: height * 0.7,
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    borderRadius: 24,
+    overflow: "hidden",
   },
-  cardBackground: {
-    backgroundColor: '#6a11cb',
+  cardShadow: {
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  profileHeader: {
-    alignItems: "center",
-    marginBottom: 20,
+  cardGradient: {
+    flex: 1,
+    padding: 20,
+  },
+  imageContainer: {
+    width: CARD_WIDTH - 40,
+    height: CARD_HEIGHT * 0.4,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 16,
   },
   profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: "#fff",
-    marginBottom: 10,
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  imageOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "40%",
+  },
+  profileInfo: {
+    alignItems: "center",
+    marginBottom: 16,
   },
   nameText: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 5,
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#FFF",
+    letterSpacing: -0.5,
+  },
+  pronounsText: {
+    fontSize: 16,
+    color: "#A0A0A0",
+    fontWeight: "400",
+  },
+  moodContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
   },
   moodText: {
     fontSize: 16,
-    color: "#fff",
-    opacity: 0.8,
+    color: "#FFD700",
+    marginLeft: 8,
+    fontWeight: "500",
+  },
+  contentContainer: {
+    flex: 1,
+    paddingHorizontal: 8,
   },
   section: {
-    width: "100%",
-    marginBottom: 15,
+    marginBottom: 16,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 10,
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
   },
   sectionContent: {
     fontSize: 16,
-    color: "#fff",
+    color: "#FFF",
+    marginLeft: 12,
+    flex: 1,
+    lineHeight: 22,
+    opacity: 0.9,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginVertical: 8,
+  },
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 12,
   },
   createdAtText: {
-    fontSize: 14,
-    color: "#fff",
-    textAlign: "center",
-    marginTop: 10,
-    opacity: 0.8,
+    fontSize: 12,
+    color: "#A0A0A0",
+    marginLeft: 8,
+    letterSpacing: 0.5,
   },
   errorText: {
-    color: "red",
+    color: "#FF3B30",
     fontSize: 16,
     textAlign: "center",
     marginBottom: 20,
   },
   emptyStateText: {
     fontSize: 18,
-    color: "#666",
+    color: "#A0A0A0",
     textAlign: "center",
     marginBottom: 20,
   },
@@ -328,14 +387,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: "#fff",
+    color: "#FFF",
     fontSize: 16,
     fontWeight: "600",
   },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#6a11cb",
+  },
   loadingFallback: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 
