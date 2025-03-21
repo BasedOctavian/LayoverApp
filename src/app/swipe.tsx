@@ -10,25 +10,31 @@ import {
   Alert,
   Animated,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import Swiper from "react-native-deck-swiper";
 import useUsers from "./../hooks/useUsers";
 import { arrayUnion } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import useAuth from "../hooks/auth";
+import { router } from "expo-router"; // For navigation consistency with Dashboard
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
-const CARD_HEIGHT = height * 0.75;
+const CARD_HEIGHT = height * 0.80;
 
 const Swipe = () => {
   const [users, setUsers] = useState([]);
   const [connections, setConnections] = useState([]);
   const { getUsers, updateUser, loading, error } = useUsers();
   const swiperRef = useRef(null);
-  const currentUserUID = "some-uid"; // Replace with actual UID from auth context
+  const { user } = useAuth(); // Get current user from auth context
+  const currentUserUID = user?.uid || "some-uid"; // Use actual UID or fallback
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSwiper, setShowSwiper] = useState(false);
   const buttonScale = useRef(new Animated.Value(1)).current;
+  const insets = useSafeAreaInsets(); // Handle safe area insets like Dashboard
+  const topBarHeight = 50 + insets.top; // Match Dashboard's top bar height
 
   useEffect(() => {
     fetchUsers();
@@ -107,29 +113,22 @@ const Swipe = () => {
 
     return (
       <Animated.View style={[styles.cardContainer, styles.cardShadow]}>
-        <LinearGradient
-          colors={["#2A2D3E", "#1E202E"]}
-          style={styles.cardGradient}
-        >
+        <View style={styles.cardContent}>
           <View style={styles.profileHeader}>
             <View style={styles.imageContainer}>
               <Image
                 source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
                 style={styles.profileImage}
               />
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.8)"]}
-                style={styles.imageOverlay}
-              />
+              {/* Removed image overlay to match Dashboard's simpler style */}
             </View>
-            
             <View style={styles.profileInfo}>
               <Text style={styles.nameText}>
                 {user.name}, {user.age || ""}
                 <Text style={styles.pronounsText}> • {user.pronouns || "they/them"}</Text>
               </Text>
               <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={20} color="#FFD700" />
+                <MaterialIcons name="mood" size={20} color="#2F80ED" /> {/* Updated color */}
                 <Text style={styles.moodText}>{user.moodStatus || "Exploring the world 🌍"}</Text>
               </View>
             </View>
@@ -143,13 +142,8 @@ const Swipe = () => {
             {renderSection("flight-takeoff", user.travelHistory)}
           </View>
 
-          <View style={styles.footer}>
-            <MaterialIcons name="verified" size={18} color="#6a11cb" />
-            <Text style={styles.createdAtText}>
-              Member since {user.createdAt?.toDate()?.toLocaleDateString() || "2024"}
-            </Text>
-          </View>
-        </LinearGradient>
+          
+        </View>
       </Animated.View>
     );
   };
@@ -160,7 +154,7 @@ const Swipe = () => {
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <MaterialIcons name={iconName} size={20} color="#6a11cb" />
+          <MaterialIcons name={iconName} size={20} color="#2F80ED" /> {/* Updated color */}
           <Text style={styles.sectionContent}>
             {Array.isArray(content) ? content.join(" • ") : content}
           </Text>
@@ -172,64 +166,104 @@ const Swipe = () => {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#6a11cb" />
-        <Text style={styles.loadingText}>Loading profiles...</Text>
-      </View>
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+          <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+            <Text style={styles.logo}>Wingman</Text>
+            <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
+              <Ionicons name="person-circle" size={32} color="#2F80ED" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.stateContainer}>
+            <ActivityIndicator size="large" color="#2F80ED" /> {/* Updated color */}
+            <Text style={styles.loadingText}>Loading profiles...</Text>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+          <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+            <Text style={styles.logo}>Wingman</Text>
+            <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
+              <Ionicons name="person-circle" size={32} color="#2F80ED" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.stateContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   if (!users.length) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.emptyStateText}>No users found nearby.</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
-          <Text style={styles.retryButtonText}>Refresh</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+          <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+            <Text style={styles.logo}>Wingman</Text>
+            <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
+              <Ionicons name="person-circle" size={32} color="#2F80ED" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.stateContainer}>
+            <Text style={styles.emptyStateText}>No users found nearby.</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
+              <Text style={styles.retryButtonText}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {showSwiper && users.length > 0 ? (
-        <Swiper
-          ref={swiperRef}
-          cards={users}
-          renderCard={renderCard}
-          onSwipedLeft={onSwipedLeft}
-          onSwipedRight={onSwipedRight}
-          cardIndex={0}
-          backgroundColor="transparent"
-          stackSize={3}
-          verticalSwipe={false}
-          animateCardOpacity
-          overlayLabels={{
-            left: overlayConfig("NOPE", "#FF3B30"),
-            right: overlayConfig("LIKE", "#4CD964"),
-          }}
-          onSwipedAll={() => {
-            setShowSwiper(false);
-            fetchUsers().then(() => setShowSwiper(true));
-          }}
-        />
-      ) : (
-        <View style={styles.loadingFallback}>
-          <ActivityIndicator size="large" color="#6a11cb" />
+    <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+      <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+          <Text style={styles.logo}>Wingman</Text>
+          <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
+            <Ionicons name="person-circle" size={32} color="#2F80ED" />
+          </TouchableOpacity>
         </View>
-      )}
-    </View>
+        <View style={{ flex: 1 }}>
+          {showSwiper && users.length > 0 ? (
+            <Swiper
+              ref={swiperRef}
+              cards={users}
+              renderCard={renderCard}
+              onSwipedLeft={onSwipedLeft}
+              onSwipedRight={onSwipedRight}
+              cardIndex={0}
+              backgroundColor="transparent"
+              stackSize={3}
+              verticalSwipe={false}
+              animateCardOpacity
+              overlayLabels={{
+                left: overlayConfig("NOPE", "#FF3B30"),
+                right: overlayConfig("LIKE", "#4CD964"),
+              }}
+              onSwipedAll={() => {
+                setShowSwiper(false);
+                fetchUsers().then(() => setShowSwiper(true));
+              }}
+            />
+          ) : (
+            <View style={styles.loadingFallback}>
+              <ActivityIndicator size="large" color="#2F80ED" /> {/* Updated color */}
+            </View>
+          )}
+        </View>
+      </LinearGradient>
+    </SafeAreaView>
   );
 };
 
@@ -263,27 +297,37 @@ const overlayConfig = (title, color) => ({
 });
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#121318",
-    justifyContent: "center",
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "#E6F0FA",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    marginBottom: -50,
+  },
+  logo: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2F80ED",
   },
   cardContainer: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 24,
+    borderRadius: 12, // Matches Dashboard's card border radius
     overflow: "hidden",
   },
   cardShadow: {
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3, // Lighter shadow to match Dashboard
   },
-  cardGradient: {
+  cardContent: {
     flex: 1,
+    backgroundColor: "#FFFFFF", // White background like Dashboard cards
     padding: 20,
   },
   imageContainer: {
@@ -298,26 +342,18 @@ const styles = StyleSheet.create({
     height: "100%",
     resizeMode: "cover",
   },
-  imageOverlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "40%",
-  },
   profileInfo: {
     alignItems: "center",
     marginBottom: 16,
   },
   nameText: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#FFF",
-    letterSpacing: -0.5,
+    fontSize: 24, // Slightly larger but reasonable for a profile card
+    fontWeight: "600",
+    color: "#1E293B", // Matches Dashboard's primary text color
   },
   pronounsText: {
     fontSize: 16,
-    color: "#A0A0A0",
+    color: "#64748B", // Matches Dashboard's secondary text color
     fontWeight: "400",
   },
   moodContainer: {
@@ -327,7 +363,7 @@ const styles = StyleSheet.create({
   },
   moodText: {
     fontSize: 16,
-    color: "#FFD700",
+    color: "#64748B", // Matches Dashboard's secondary text color
     marginLeft: 8,
     fontWeight: "500",
   },
@@ -345,15 +381,14 @@ const styles = StyleSheet.create({
   },
   sectionContent: {
     fontSize: 16,
-    color: "#FFF",
+    color: "#1E293B", // Matches Dashboard's primary text color
     marginLeft: 12,
     flex: 1,
     lineHeight: 22,
-    opacity: 0.9,
   },
   divider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#E2E8F0", // Matches Dashboard's border color
     marginVertical: 8,
   },
   footer: {
@@ -364,24 +399,29 @@ const styles = StyleSheet.create({
   },
   createdAtText: {
     fontSize: 12,
-    color: "#A0A0A0",
+    color: "#64748B", // Matches Dashboard's secondary text color
     marginLeft: 8,
     letterSpacing: 0.5,
   },
+  stateContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   errorText: {
-    color: "#FF3B30",
+    color: "#FF3B30", // Kept as is for error indication
     fontSize: 16,
     textAlign: "center",
     marginBottom: 20,
   },
   emptyStateText: {
     fontSize: 18,
-    color: "#A0A0A0",
+    color: "#64748B", // Matches Dashboard's secondary text color
     textAlign: "center",
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: "#6a11cb",
+    backgroundColor: "#2F80ED", // Matches Dashboard's primary action color
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
@@ -394,7 +434,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: "#6a11cb",
+    color: "#64748B", // Matches Dashboard's secondary text color
   },
   loadingFallback: {
     flex: 1,

@@ -223,6 +223,7 @@ export default function Dashboard() {
       name: event.name,
       description: event.description || "No description",
       type: "regular",
+      organizer: event.organizer, // Include organizer field
     }));
   }, [selectedAirport, events]);
 
@@ -241,6 +242,7 @@ export default function Dashboard() {
       name: `${event.awayTeam} vs. ${event.homeTeam}`,
       description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
       type: "sport",
+      organizer: null, // Auto-generated sport events have no organizer
     }));
     setMatchingEvents(filteredSportEvents);
   }, [selectedAirport, allSportEvents]);
@@ -360,12 +362,16 @@ export default function Dashboard() {
                         keyExtractor={(item) => `${item.type}-${item.id}`}
                         renderItem={({ item }) => (
                           <TouchableOpacity
-                            style={styles.eventCard}
+                            style={item.organizer !== null ? styles.organizedEventCard : styles.eventCard}
                             activeOpacity={0.8}
                             onPress={() => router.push(item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`)}
                           >
-                            <Text style={styles.eventName}>{item.name}</Text>
-                            <Text style={styles.eventDescription}>{item.description}</Text>
+                            <Text style={item.organizer !== null ? styles.organizedEventName : styles.eventName}>
+                              {item.name}
+                            </Text>
+                            <Text style={item.organizer !== null ? styles.organizedEventDescription : styles.eventDescription}>
+                              {item.description}
+                            </Text>
                           </TouchableOpacity>
                         )}
                         showsHorizontalScrollIndicator={false}
@@ -378,7 +384,7 @@ export default function Dashboard() {
               )}
               {showSearch && (
                 <View>
-                  <View style={{ height: searchHeaderHeight - 50 }} />
+                  <View style={{ height: searchHeaderHeight }} />
                   <FlatList
                     data={filteredResults}
                     keyExtractor={(item, index) => index.toString()}
@@ -396,10 +402,21 @@ export default function Dashboard() {
                           }
                         }}
                       >
-                        <View style={styles.resultItemView}>
-                          <Feather name={searchType === "airports" ? "airplay" : "calendar"} size={20} color="#2F80ED" style={styles.resultIcon} />
-                          <Text style={styles.resultText}>{item.name}</Text>
-                          <Feather name="chevron-right" size={18} color="#CBD5E1" />
+                        <View style={searchType === "events" && item.organizer !== null ? styles.organizedResultItemView : styles.resultItemView}>
+                          <Feather
+                            name={searchType === "airports" ? "airplay" : "calendar"}
+                            size={20}
+                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#2F80ED"}
+                            style={styles.resultIcon}
+                          />
+                          <Text style={searchType === "events" && item.organizer !== null ? styles.organizedResultText : styles.resultText}>
+                            {item.name}
+                          </Text>
+                          <Feather
+                            name="chevron-right"
+                            size={18}
+                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#CBD5E1"}
+                          />
                         </View>
                       </TouchableOpacity>
                     )}
@@ -581,15 +598,37 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 4,
   },
+  organizedEventCard: {
+    width: 200,
+    backgroundColor: "#2F80ED",
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
   eventName: {
     fontSize: 16,
     fontWeight: "500",
     color: "#1E293B",
     marginBottom: 4,
   },
+  organizedEventName: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#FFFFFF",
+    marginBottom: 4,
+  },
   eventDescription: {
     fontSize: 14,
     color: "#64748B",
+  },
+  organizedEventDescription: {
+    fontSize: 14,
+    color: "#FFFFFF",
   },
   noDataText: {
     fontSize: 14,
@@ -713,6 +752,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#F8FAFC",
   },
+  organizedResultItemView: {
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#2F80ED",
+  },
   resultIcon: {
     marginRight: 12,
   },
@@ -720,6 +765,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#1E293B",
+  },
+  organizedResultText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#FFFFFF",
   },
   modalOverlay: {
     flex: 1,
