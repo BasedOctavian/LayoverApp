@@ -210,12 +210,15 @@ const UserOnboarding = () => {
   const handleSubmit = async () => {
     try {
       const userProfile = {
-        ...userData,
+        email: userData.email,
+        name: userData.name,
         age: parseInt(userData.age, 10) || null,
-        interests: userData.interests?.split(/,\s*/) || [],
-        languages: userData.languages?.split(/,\s*/) || [],
+        bio: userData.bio,
+        profilePicture: userData.profilePicture,
         travelHistory: userData.travelHistory?.split(/,\s*/) || [],
         goals: userData.goals?.split(/,\s*/) || [],
+        interests: userData.interests?.split(/,\s*/) || [],
+        languages: userData.languages?.split(/,\s*/) || [],
         isAnonymous: false,
       };
 
@@ -306,14 +309,12 @@ const UserOnboarding = () => {
               ) : (
                 <>
                   <Text style={styles.title}>{steps[stepIndex].title}</Text>
-
                   {steps[stepIndex].fields.map((field) => (
                     <View key={field.key} style={styles.fieldContainer}>
                       <Text style={styles.fieldLabel}>{field.label}</Text>
                       {renderField(field)}
                     </View>
                   ))}
-
                   <View style={styles.footer}>
                     {stepIndex > 0 && (
                       <TouchableOpacity
@@ -327,7 +328,6 @@ const UserOnboarding = () => {
                         />
                       </TouchableOpacity>
                     )}
-
                     <TouchableOpacity
                       style={styles.nextButton}
                       onPress={handleNext}
@@ -349,7 +349,6 @@ const UserOnboarding = () => {
                       </LinearGradient>
                     </TouchableOpacity>
                   </View>
-
                   {stepIndex === 0 && (
                     <TouchableOpacity onPress={() => router.push("login/login")}>
                       <Text style={styles.loginText}>

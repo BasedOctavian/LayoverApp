@@ -17,7 +17,7 @@ import { arrayUnion } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import useAuth from "../hooks/auth";
-import { router } from "expo-router"; // For navigation consistency with Dashboard
+import { router } from "expo-router";
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
@@ -26,35 +26,36 @@ const CARD_HEIGHT = height * 0.80;
 const Swipe = () => {
   const [users, setUsers] = useState([]);
   const [connections, setConnections] = useState([]);
+  const [swipedUserIds, setSwipedUserIds] = useState<string[]>([]); // Track swiped users
   const { getUsers, updateUser, loading, error } = useUsers();
-  const swiperRef = useRef(null);
-  const { user } = useAuth(); // Get current user from auth context
-  const currentUserUID = user?.uid || "some-uid"; // Use actual UID or fallback
+  const { user } = useAuth();
+  const currentUserUID = user?.uid || "some-uid";
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSwiper, setShowSwiper] = useState(false);
   const buttonScale = useRef(new Animated.Value(1)).current;
-  const insets = useSafeAreaInsets(); // Handle safe area insets like Dashboard
-  const topBarHeight = 50 + insets.top; // Match Dashboard's top bar height
+  const insets = useSafeAreaInsets();
+  const topBarHeight = 50 + insets.top;
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
+  /** Fetch users and filter out those already swiped */
   const fetchUsers = async () => {
     try {
       const fetchedUsers = await getUsers();
-      if (fetchedUsers?.length) {
-        setUsers(fetchedUsers);
-        setShowSwiper(true);
-      } else {
-        setShowSwiper(false);
-      }
+      const filteredUsers = fetchedUsers.filter(
+        (user) => !swipedUserIds.includes(user.id)
+      );
+      setUsers(filteredUsers);
+      setShowSwiper(filteredUsers.length > 0);
     } catch (err) {
       Alert.alert("Error", "Failed to fetch users. Please try again later.");
       console.error("Error fetching users:", err);
     }
   };
 
+  /** Handle right swipe (like) */
   const onSwipedRight = async (index) => {
     if (!users?.[index] || isProcessing) return;
     setIsProcessing(true);
@@ -63,10 +64,12 @@ const Swipe = () => {
     const swipedUserUID = swipedUser.id;
 
     try {
+      // Update the current user's likedUsers in Firestore
       await updateUser(currentUserUID, {
         likedUsers: arrayUnion(swipedUserUID),
       });
 
+      // Check if it's a match
       if (swipedUser.likedUsers?.includes(currentUserUID)) {
         const isDuplicate = connections.some(
           (conn) =>
@@ -78,7 +81,10 @@ const Swipe = () => {
             ...prev,
             { user1: currentUserUID, user2: swipedUserUID },
           ]);
-          Alert.alert("It's a match!", `You and ${swipedUser.name} liked each other!`);
+          // Delay the alert to let the swipe animation complete
+          setTimeout(() => {
+            Alert.alert("It's a match!", `You and ${swipedUser.name} liked each other!`);
+          }, 500);
         }
       }
     } catch (err) {
@@ -86,28 +92,18 @@ const Swipe = () => {
       console.error("Error processing right swipe:", err);
     } finally {
       setIsProcessing(false);
+      setSwipedUserIds((prev) => [...prev, swipedUserUID]); // Add to swiped users
     }
   };
 
+  /** Handle left swipe (pass) */
   const onSwipedLeft = (index) => {
+    const swipedUserId = users[index].id;
+    setSwipedUserIds((prev) => [...prev, swipedUserId]); // Add to swiped users
     console.log("Swiped left on user:", users[index].name);
   };
 
-  const animateButtonPress = () => {
-    Animated.sequence([
-      Animated.timing(buttonScale, {
-        toValue: 0.95,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(buttonScale, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
+  /** Render individual user card */
   const renderCard = (user) => {
     if (!user) return null;
 
@@ -120,15 +116,13 @@ const Swipe = () => {
                 source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
                 style={styles.profileImage}
               />
-              {/* Removed image overlay to match Dashboard's simpler style */}
             </View>
             <View style={styles.profileInfo}>
               <Text style={styles.nameText}>
                 {user.name}, {user.age || ""}
-                <Text style={styles.pronounsText}> • {user.pronouns || "they/them"}</Text>
               </Text>
               <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={20} color="#2F80ED" /> {/* Updated color */}
+                <MaterialIcons name="mood" size={20} color="#2F80ED" />
                 <Text style={styles.moodText}>{user.moodStatus || "Exploring the world 🌍"}</Text>
               </View>
             </View>
@@ -141,20 +135,19 @@ const Swipe = () => {
             {renderSection("work-outline", user.goals)}
             {renderSection("flight-takeoff", user.travelHistory)}
           </View>
-
-          
         </View>
       </Animated.View>
     );
   };
 
+  /** Render profile section with icon and content */
   const renderSection = (iconName, content) => {
     if (!content || (Array.isArray(content) && !content.length)) return null;
 
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <MaterialIcons name={iconName} size={20} color="#2F80ED" /> {/* Updated color */}
+          <MaterialIcons name={iconName} size={20} color="#2F80ED" />
           <Text style={styles.sectionContent}>
             {Array.isArray(content) ? content.join(" • ") : content}
           </Text>
@@ -164,6 +157,7 @@ const Swipe = () => {
     );
   };
 
+  /** Loading state */
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
@@ -175,7 +169,7 @@ const Swipe = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.stateContainer}>
-            <ActivityIndicator size="large" color="#2F80ED" /> {/* Updated color */}
+            <ActivityIndicator size="large" color="#2F80ED" />
             <Text style={styles.loadingText}>Loading profiles...</Text>
           </View>
         </LinearGradient>
@@ -183,6 +177,7 @@ const Swipe = () => {
     );
   }
 
+  /** Error state */
   if (error) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
@@ -204,6 +199,7 @@ const Swipe = () => {
     );
   }
 
+  /** No users available state */
   if (!users.length) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
@@ -225,6 +221,7 @@ const Swipe = () => {
     );
   }
 
+  /** Main Swiper view */
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
@@ -237,7 +234,6 @@ const Swipe = () => {
         <View style={{ flex: 1 }}>
           {showSwiper && users.length > 0 ? (
             <Swiper
-              ref={swiperRef}
               cards={users}
               renderCard={renderCard}
               onSwipedLeft={onSwipedLeft}
@@ -248,8 +244,28 @@ const Swipe = () => {
               verticalSwipe={false}
               animateCardOpacity
               overlayLabels={{
-                left: overlayConfig("NOPE", "#FF3B30"),
-                right: overlayConfig("LIKE", "#4CD964"),
+                left: {
+                  element: <Text style={{ color: "#FF3B30", fontSize: 24, fontWeight: "800" }}>NOPE</Text>,
+                  style: {
+                    wrapper: {
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: 60,
+                    },
+                  },
+                },
+                right: {
+                  element: <Text style={{ color: "#4CD964", fontSize: 24, fontWeight: "800" }}>LIKE</Text>,
+                  style: {
+                    wrapper: {
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: 60,
+                    },
+                  },
+                },
               }}
               onSwipedAll={() => {
                 setShowSwiper(false);
@@ -258,7 +274,7 @@ const Swipe = () => {
             />
           ) : (
             <View style={styles.loadingFallback}>
-              <ActivityIndicator size="large" color="#2F80ED" /> {/* Updated color */}
+              <ActivityIndicator size="large" color="#2F80ED" />
             </View>
           )}
         </View>
@@ -267,35 +283,7 @@ const Swipe = () => {
   );
 };
 
-const overlayConfig = (title, color) => ({
-  title,
-  style: {
-    label: {
-      backgroundColor: color,
-      borderColor: color,
-      color: "#fff",
-      borderWidth: 0,
-      borderRadius: 12,
-      paddingVertical: 8,
-      paddingHorizontal: 20,
-      fontSize: 24,
-      fontWeight: "800",
-      transform: [{ rotate: color === "#4CD964" ? "-8deg" : "8deg" }],
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-      elevation: 6,
-    },
-    wrapper: {
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      marginTop: 60,
-    },
-  },
-});
-
+/** Styles */
 const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
@@ -315,19 +303,20 @@ const styles = StyleSheet.create({
   cardContainer: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 12, // Matches Dashboard's card border radius
+    borderRadius: 12,
     overflow: "hidden",
+    marginLeft: 10,
   },
   cardShadow: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
-    elevation: 3, // Lighter shadow to match Dashboard
+    elevation: 3,
   },
   cardContent: {
     flex: 1,
-    backgroundColor: "#FFFFFF", // White background like Dashboard cards
+    backgroundColor: "#FFFFFF",
     padding: 20,
   },
   imageContainer: {
@@ -347,14 +336,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   nameText: {
-    fontSize: 24, // Slightly larger but reasonable for a profile card
+    fontSize: 24,
     fontWeight: "600",
-    color: "#1E293B", // Matches Dashboard's primary text color
-  },
-  pronounsText: {
-    fontSize: 16,
-    color: "#64748B", // Matches Dashboard's secondary text color
-    fontWeight: "400",
+    color: "#1E293B",
   },
   moodContainer: {
     flexDirection: "row",
@@ -363,7 +347,7 @@ const styles = StyleSheet.create({
   },
   moodText: {
     fontSize: 16,
-    color: "#64748B", // Matches Dashboard's secondary text color
+    color: "#64748B",
     marginLeft: 8,
     fontWeight: "500",
   },
@@ -381,27 +365,15 @@ const styles = StyleSheet.create({
   },
   sectionContent: {
     fontSize: 16,
-    color: "#1E293B", // Matches Dashboard's primary text color
+    color: "#1E293B",
     marginLeft: 12,
     flex: 1,
     lineHeight: 22,
   },
   divider: {
     height: 1,
-    backgroundColor: "#E2E8F0", // Matches Dashboard's border color
+    backgroundColor: "#E2E8F0",
     marginVertical: 8,
-  },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 12,
-  },
-  createdAtText: {
-    fontSize: 12,
-    color: "#64748B", // Matches Dashboard's secondary text color
-    marginLeft: 8,
-    letterSpacing: 0.5,
   },
   stateContainer: {
     flex: 1,
@@ -409,19 +381,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   errorText: {
-    color: "#FF3B30", // Kept as is for error indication
+    color: "#FF3B30",
     fontSize: 16,
     textAlign: "center",
     marginBottom: 20,
   },
   emptyStateText: {
     fontSize: 18,
-    color: "#64748B", // Matches Dashboard's secondary text color
+    color: "#64748B",
     textAlign: "center",
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: "#2F80ED", // Matches Dashboard's primary action color
+    backgroundColor: "#2F80ED",
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
@@ -434,7 +406,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: "#64748B", // Matches Dashboard's secondary text color
+    color: "#64748B",
   },
   loadingFallback: {
     flex: 1,

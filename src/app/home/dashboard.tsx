@@ -11,7 +11,6 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  ScrollView,
   StatusBar,
 } from "react-native";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from "@expo/vector-icons";
@@ -75,7 +74,8 @@ export default function Dashboard() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingMood, setUpdatingMood] = useState(false);
-  const [searchHeaderHeight, setSearchHeaderHeight] = useState(0); // State to store search header height
+  const [searchHeaderHeight, setSearchHeaderHeight] = useState(0);
+  const [defaultSearchHeight, setDefaultSearchHeight] = useState(0);
   const [popupData, setPopupData] = useState<{
     visible: boolean;
     title: string;
@@ -223,7 +223,7 @@ export default function Dashboard() {
       name: event.name,
       description: event.description || "No description",
       type: "regular",
-      organizer: event.organizer, // Include organizer field
+      organizer: event.organizer,
     }));
   }, [selectedAirport, events]);
 
@@ -242,7 +242,7 @@ export default function Dashboard() {
       name: `${event.awayTeam} vs. ${event.homeTeam}`,
       description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
       type: "sport",
-      organizer: null, // Auto-generated sport events have no organizer
+      organizer: null,
     }));
     setMatchingEvents(filteredSportEvents);
   }, [selectedAirport, allSportEvents]);
@@ -253,6 +253,12 @@ export default function Dashboard() {
     searchType === "airports"
       ? nearestAirports.tenClosest.filter((airport) => airport.name.toLowerCase().includes(searchQuery.toLowerCase()))
       : allEvents.filter((event) => event.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const dashboardData = useMemo(() => [
+    { type: 'section', id: 'users', data: nearbyUsers },
+    { type: 'section', id: 'events', data: allEvents },
+    ...features.map((feature, index) => ({ type: 'feature', id: index.toString(), data: feature }))
+  ], [nearbyUsers, allEvents, features]);
 
   return (
     <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
@@ -305,10 +311,16 @@ export default function Dashboard() {
           activeOpacity={0.9}
           onPress={() => setShowSearch(true)}
           style={[styles.defaultSearchContainer, { top: topBarHeight }]}
+          onLayout={(event) => {
+            const { height } = event.nativeEvent.layout;
+            setDefaultSearchHeight(height);
+          }}
         >
           <View style={styles.searchContainer}>
             <Feather name="search" size={18} color="#64748B" />
-            <Text style={styles.searchPlaceholder}>{selectedAirport ? selectedAirport.name : "Select an airport"}</Text>
+            <Text style={styles.searchPlaceholder}>
+              {selectedAirport ? selectedAirport.name : "Select an airport"}
+            </Text>
             <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
           </View>
         </TouchableOpacity>
@@ -316,138 +328,138 @@ export default function Dashboard() {
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainerStyle}>
-              {!showSearch && (
-                <>
-                  <View style={styles.section}>
-                    <View style={styles.headerRow}>
-                      <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
-                      <Text style={styles.sectionHeader}>Nearby Users</Text>
-                    </View>
-                    {nearbyUsers.length > 0 ? (
-                      <FlatList
-                        horizontal
-                        data={nearbyUsers}
-                        keyExtractor={(item) => item.id}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity
-                            style={styles.userCard}
-                            activeOpacity={0.8}
-                            onPress={() => router.push(`profile/${item.id}`)}
-                          >
-                            <View style={styles.avatar}>
-                              <FontAwesome5 name="user" size={24} color="#2F80ED" />
-                            </View>
-                            <Text style={styles.userName}>{item.name}</Text>
-                            <Text style={styles.userStatus}>{item.status}</Text>
-                          </TouchableOpacity>
-                        )}
-                        showsHorizontalScrollIndicator={false}
-                      />
-                    ) : (
-                      <Text style={styles.noDataText}>No nearby users found.</Text>
-                    )}
-                  </View>
-                  <View style={styles.section}>
-                    <View style={styles.headerRow}>
-                      <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
-                      <Text style={styles.sectionHeader}>
-                        Events at {selectedAirport ? selectedAirport.name : "Your Location"}
-                      </Text>
-                    </View>
-                    {allEvents.length > 0 ? (
-                      <FlatList
-                        horizontal
-                        data={allEvents}
-                        keyExtractor={(item) => `${item.type}-${item.id}`}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity
-                            style={item.organizer !== null ? styles.organizedEventCard : styles.eventCard}
-                            activeOpacity={0.8}
-                            onPress={() => router.push(item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`)}
-                          >
-                            <Text style={item.organizer !== null ? styles.organizedEventName : styles.eventName}>
-                              {item.name}
-                            </Text>
-                            <Text style={item.organizer !== null ? styles.organizedEventDescription : styles.eventDescription}>
-                              {item.description}
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                        showsHorizontalScrollIndicator={false}
-                      />
-                    ) : (
-                      <Text style={styles.noDataText}>No events at this airport.</Text>
-                    )}
-                  </View>
-                </>
-              )}
-              {showSearch && (
-                <View>
-                  <View style={{ height: searchHeaderHeight }} />
-                  <FlatList
-                    data={filteredResults}
-                    keyExtractor={(item, index) => index.toString()}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={styles.resultItem}
-                        activeOpacity={0.9}
-                        onPress={() => {
-                          if (searchType === "airports") {
-                            setSelectedAirport(item);
-                            setShowSearch(false);
-                          } else {
-                            const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
-                            router.push(route);
-                          }
-                        }}
-                      >
-                        <View style={searchType === "events" && item.organizer !== null ? styles.organizedResultItemView : styles.resultItemView}>
-                          <Feather
-                            name={searchType === "airports" ? "airplay" : "calendar"}
-                            size={20}
-                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#2F80ED"}
-                            style={styles.resultIcon}
-                          />
-                          <Text style={searchType === "events" && item.organizer !== null ? styles.organizedResultText : styles.resultText}>
-                            {item.name}
-                          </Text>
-                          <Feather
-                            name="chevron-right"
-                            size={18}
-                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#CBD5E1"}
-                          />
+            <FlatList
+              style={{ flex: 1 }}
+              data={showSearch ? filteredResults : dashboardData}
+              keyExtractor={(item, index) => showSearch ? index.toString() : item.id}
+              renderItem={({ item }) => {
+                if (showSearch) {
+                  return (
+                    <TouchableOpacity
+                      style={styles.resultItem}
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        if (searchType === "airports") {
+                          setSelectedAirport(item);
+                          setShowSearch(false);
+                        } else {
+                          const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
+                          router.push(route);
+                        }
+                      }}
+                    >
+                      <View style={searchType === "events" && item.organizer !== null ? styles.organizedResultItemView : styles.resultItemView}>
+                        <Feather
+                          name={searchType === "airports" ? "airplay" : "calendar"}
+                          size={20}
+                          color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#2F80ED"}
+                          style={styles.resultIcon}
+                        />
+                        <Text style={searchType === "events" && item.organizer !== null ? styles.organizedResultText : styles.resultText}>
+                          {item.name}
+                        </Text>
+                        <Feather
+                          name="chevron-right"
+                          size={18}
+                          color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#CBD5E1"}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                } else if (item.type === 'section') {
+                  if (item.id === 'users') {
+                    return (
+                      <View style={styles.section}>
+                        <View style={styles.headerRow}>
+                          <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
+                          <Text style={styles.sectionHeader}>Nearby Users</Text>
                         </View>
-                      </TouchableOpacity>
-                    )}
-                    contentContainerStyle={styles.searchResultsContainer}
-                  />
-                </View>
-              )}
-              {!showSearch && (
-                <FlatList
-                  data={features}
-                  keyExtractor={(item, index) => index.toString()}
-                  renderItem={({ item }) => (
+                        {item.data.length > 0 ? (
+                          <FlatList
+                            horizontal
+                            data={item.data}
+                            keyExtractor={(user) => user.id}
+                            renderItem={({ item: user }) => (
+                              <TouchableOpacity
+                                style={styles.userCard}
+                                activeOpacity={0.8}
+                                onPress={() => router.push(`profile/${user.id}`)}
+                              >
+                                <View style={styles.avatar}>
+                                  <FontAwesome5 name="user" size={24} color="#2F80ED" />
+                                </View>
+                                <Text style={styles.userName}>{user.name}</Text>
+                                <Text style={styles.userStatus}>{user.status}</Text>
+                              </TouchableOpacity>
+                            )}
+                            showsHorizontalScrollIndicator={false}
+                          />
+                        ) : (
+                          <Text style={styles.noDataText}>No nearby users found.</Text>
+                        )}
+                      </View>
+                    );
+                  } else if (item.id === 'events') {
+                    return (
+                      <View style={styles.section}>
+                        <View style={styles.headerRow}>
+                          <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
+                          <Text style={styles.sectionHeader}>
+                            Events at {selectedAirport ? selectedAirport.name : "Your Location"}
+                          </Text>
+                        </View>
+                        {item.data.length > 0 ? (
+                          <FlatList
+                            horizontal
+                            data={item.data}
+                            keyExtractor={(event) => `${event.type}-${event.id}`}
+                            renderItem={({ item: event }) => (
+                              <TouchableOpacity
+                                style={event.organizer !== null ? styles.organizedEventCard : styles.eventCard}
+                                activeOpacity={0.8}
+                                onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
+                              >
+                                <Text style={event.organizer !== null ? styles.organizedEventName : styles.eventName}>
+                                  {event.name}
+                                </Text>
+                                <Text style={event.organizer !== null ? styles.organizedEventDescription : styles.eventDescription}>
+                                  {event.description}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            showsHorizontalScrollIndicator={false}
+                          />
+                        ) : (
+                          <Text style={styles.noDataText}>No events at this airport.</Text>
+                        )}
+                      </View>
+                    );
+                  }
+                } else if (item.type === 'feature') {
+                  return (
                     <TouchableOpacity
                       style={styles.featureItem}
                       activeOpacity={0.8}
                       onPress={() => {
-                        if (item.title === "Status") setShowStatusModal(true);
-                        else router.push(item.screen);
+                        if (item.data.title === "Status") setShowStatusModal(true);
+                        else router.push(item.data.screen);
                       }}
                     >
                       <View style={styles.featureItemContent}>
-                        {item.icon}
-                        <Text style={styles.featureItemText}>{item.title}</Text>
+                        {item.data.icon}
+                        <Text style={styles.featureItemText}>{item.data.title}</Text>
                       </View>
                       <Feather name="chevron-right" size={18} color="#CBD5E1" />
                     </TouchableOpacity>
-                  )}
-                  contentContainerStyle={styles.featuresListContainer}
-                />
-              )}
-            </ScrollView>
+                  );
+                }
+                return null;
+              }}
+              ListHeaderComponent={
+                showSearch ? <View style={{ height: searchHeaderHeight }} /> : <View style={{ height: defaultSearchHeight }} />
+              }
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+            />
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -529,13 +541,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#2F80ED",
   },
-  scrollContainer: {
-    flex: 1,
-  },
-  contentContainerStyle: {
-    paddingTop: 40,
-    paddingHorizontal: 16,
-  },
   section: {
     marginBottom: 24,
   },
@@ -546,13 +551,13 @@ const styles = StyleSheet.create({
   },
   headerIcon: {
     marginRight: 8,
-    marginTop: 30,
+    marginTop: 20,
   },
   sectionHeader: {
     fontSize: 18,
     fontWeight: "600",
     color: "#1E293B",
-    paddingTop: 30,
+    marginTop: 20,
   },
   userCard: {
     width: 150,
@@ -636,9 +641,6 @@ const styles = StyleSheet.create({
     color: "#64748B",
     textAlign: "center",
     marginVertical: 16,
-  },
-  featuresListContainer: {
-    paddingBottom: 24,
   },
   featureItem: {
     flexDirection: "row",
@@ -738,9 +740,6 @@ const styles = StyleSheet.create({
   },
   searchIcon: {
     marginLeft: 8,
-  },
-  searchResultsContainer: {
-    paddingBottom: 16,
   },
   resultItem: {
     marginBottom: 8,
