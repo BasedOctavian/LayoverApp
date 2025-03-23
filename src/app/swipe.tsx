@@ -13,11 +13,12 @@ import {
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import Swiper from "react-native-deck-swiper";
 import useUsers from "./../hooks/useUsers";
-import { arrayUnion } from "firebase/firestore";
+import { arrayUnion, doc, onSnapshot } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import useAuth from "../hooks/auth";
 import { router } from "expo-router";
+import { db } from "../../firebaseConfig";
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
@@ -26,26 +27,50 @@ const CARD_HEIGHT = height * 0.80;
 const Swipe = () => {
   const [users, setUsers] = useState([]);
   const [connections, setConnections] = useState([]);
-  const [swipedUserIds, setSwipedUserIds] = useState<string[]>([]); // Track swiped users
+  const [currentUserData, setCurrentUserData] = useState(null);
   const { getUsers, updateUser, loading, error } = useUsers();
   const { user } = useAuth();
-  const currentUserUID = user?.uid || "some-uid";
+  const currentUserUID = user?.uid || "some-uid"; // Step 1: Store authenticated user's ID
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSwiper, setShowSwiper] = useState(false);
   const buttonScale = useRef(new Animated.Value(1)).current;
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
 
+  // Step 5: Set up listener for array updates
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    const userDocRef = doc(db, "users", currentUserUID);
+    const unsubscribe = onSnapshot(userDocRef, (doc) => {
+      if (doc.exists()) {
+        setCurrentUserData({ id: doc.id, ...doc.data() });
+      } else {
+        console.error("User document not found.");
+      }
+    }, (err) => {
+      console.error("Error listening to user data:", err);
+    });
 
-  /** Fetch users and filter out those already swiped */
+    return () => unsubscribe();
+  }, [currentUserUID]);
+
+  // Fetch users when currentUserData is available
+  useEffect(() => {
+    if (currentUserData) {
+      fetchUsers();
+    }
+  }, [currentUserData]);
+
+  /** Fetch users and filter based on likedUsers and dislikedUsers */
   const fetchUsers = async () => {
     try {
-      const fetchedUsers = await getUsers();
+      const fetchedUsers = await getUsers(); // Step 2: Loop through users collection (handled by getUsers)
+      const likedAndDisliked = [
+        ...(currentUserData?.likedUsers || []),
+        ...(currentUserData?.dislikedUsers || []),
+      ];
+      // Steps 3 & 4: Filter users based on likedUsers and dislikedUsers
       const filteredUsers = fetchedUsers.filter(
-        (user) => !swipedUserIds.includes(user.id)
+        (user) => user.id !== currentUserUID && !likedAndDisliked.includes(user.id)
       );
       setUsers(filteredUsers);
       setShowSwiper(filteredUsers.length > 0);
@@ -64,12 +89,10 @@ const Swipe = () => {
     const swipedUserUID = swipedUser.id;
 
     try {
-      // Update the current user's likedUsers in Firestore
       await updateUser(currentUserUID, {
         likedUsers: arrayUnion(swipedUserUID),
       });
 
-      // Check if it's a match
       if (swipedUser.likedUsers?.includes(currentUserUID)) {
         const isDuplicate = connections.some(
           (conn) =>
@@ -81,7 +104,6 @@ const Swipe = () => {
             ...prev,
             { user1: currentUserUID, user2: swipedUserUID },
           ]);
-          // Delay the alert to let the swipe animation complete
           setTimeout(() => {
             Alert.alert("It's a match!", `You and ${swipedUser.name} liked each other!`);
           }, 500);
@@ -92,15 +114,28 @@ const Swipe = () => {
       console.error("Error processing right swipe:", err);
     } finally {
       setIsProcessing(false);
-      setSwipedUserIds((prev) => [...prev, swipedUserUID]); // Add to swiped users
     }
   };
 
-  /** Handle left swipe (pass) */
-  const onSwipedLeft = (index) => {
-    const swipedUserId = users[index].id;
-    setSwipedUserIds((prev) => [...prev, swipedUserId]); // Add to swiped users
-    console.log("Swiped left on user:", users[index].name);
+  /** Handle left swipe (dislike) - Step 6: Add to dislikedUsers */
+  const onSwipedLeft = async (index) => {
+    if (!users?.[index] || isProcessing) return;
+    setIsProcessing(true);
+
+    const swipedUser = users[index];
+    const swipedUserUID = swipedUser.id;
+
+    try {
+      await updateUser(currentUserUID, {
+        dislikedUsers: arrayUnion(swipedUserUID),
+      });
+      console.log("Swiped left on user:", swipedUser.name);
+    } catch (err) {
+      Alert.alert("Error", "Failed to process swipe. Please try again.");
+      console.error("Error processing left swipe:", err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   /** Render individual user card */
