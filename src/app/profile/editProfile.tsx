@@ -23,6 +23,12 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import { useRouter } from "expo-router";
 
+interface Trip {
+  id: string;
+  name: string;
+  photos: string[];
+}
+
 interface FormData {
   name: string;
   age: string;
@@ -31,11 +37,11 @@ interface FormData {
   languages: string[];
   interests: string[];
   goals: string[];
-  travelHistory: string[];
+  travelHistory: Trip[];
   profilePicture: string;
 }
 
-type ProfileArrayField = "languages" | "interests" | "goals" | "travelHistory";
+type ProfileArrayField = "languages" | "interests" | "goals";
 
 const EditProfile = () => {
   const { userId } = useAuth();
@@ -48,7 +54,7 @@ const EditProfile = () => {
     languages: [""],
     interests: [""],
     goals: [""],
-    travelHistory: [""],
+    travelHistory: [],
     profilePicture: "",
   });
   const [loading, setLoading] = useState(true);
@@ -86,7 +92,15 @@ const EditProfile = () => {
               languages: data.languages || [""],
               interests: data.interests || [""],
               goals: data.goals || [""],
-              travelHistory: data.travelHistory || [""],
+              travelHistory: data.travelHistory
+                ? Array.isArray(data.travelHistory) && typeof data.travelHistory[0] === "string"
+                  ? data.travelHistory.map((name) => ({
+                      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                      name,
+                      photos: [],
+                    }))
+                  : data.travelHistory
+                : [],
               profilePicture: data.profilePicture || "",
             });
           }
@@ -134,6 +148,66 @@ const EditProfile = () => {
     }
   };
 
+  const handleAddTrip = () => {
+    const newTrip = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: "",
+      photos: [],
+    };
+    setFormData((prev) => ({
+      ...prev,
+      travelHistory: [...prev.travelHistory, newTrip],
+    }));
+  };
+
+  const handleRemoveTrip = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      travelHistory: prev.travelHistory.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleTripNameChange = (index: number, text: string) => {
+    setFormData((prev) => {
+      const updatedTrips = [...prev.travelHistory];
+      updatedTrips[index] = { ...updatedTrips[index], name: text };
+      return { ...prev, travelHistory: updatedTrips };
+    });
+  };
+
+  const handleAddPhoto = async (tripIndex: number) => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert("Permission required", "We need access to your photos");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        const selectedUri = result.assets[0].uri ?? "";
+        setFormData((prev) => {
+          const updatedTrips = [...prev.travelHistory];
+          const currentPhotos = updatedTrips[tripIndex].photos;
+          if (currentPhotos.includes(selectedUri)) {
+            Alert.alert("Photo already added", "This photo is already in the gallery.");
+            return prev; // Skip adding the duplicate
+          }
+          updatedTrips[tripIndex].photos = [...currentPhotos, selectedUri];
+          return { ...prev, travelHistory: updatedTrips };
+        });
+      }
+    } catch (err) {
+      console.log("Image picker error:", err);
+      Alert.alert("Error", "Failed to select image");
+    }
+  };
+
   const handleUpdateProfile = async () => {
     if (!userId) {
       Alert.alert("Error", "User not logged in");
@@ -151,6 +225,28 @@ const EditProfile = () => {
         profilePicUrl = await getDownloadURL(storageRef);
       }
 
+      const updatedTravelHistory = await Promise.all(
+        formData.travelHistory.map(async (trip) => {
+          const updatedPhotos = await Promise.all(
+            trip.photos.map(async (photo) => {
+              if (photo.startsWith("http")) {
+                return photo;
+              } else {
+                const response = await fetch(photo);
+                const blob = await response.blob();
+                const storageRef = ref(
+                  storage,
+                  `trips/${userId}/${trip.id}/${Date.now()}.jpg`
+                );
+                await uploadBytes(storageRef, blob);
+                return await getDownloadURL(storageRef);
+              }
+            })
+          );
+          return { ...trip, photos: updatedPhotos };
+        })
+      );
+
       const updatedData = {
         ...formData,
         profilePicture: profilePicUrl,
@@ -158,7 +254,7 @@ const EditProfile = () => {
         languages: formData.languages.filter((l) => l.trim() !== ""),
         interests: formData.interests.filter((i) => i.trim() !== ""),
         goals: formData.goals.filter((g) => g.trim() !== ""),
-        travelHistory: formData.travelHistory.filter((t) => t.trim() !== ""),
+        travelHistory: updatedTravelHistory,
         updatedAt: serverTimestamp(),
       };
 
@@ -272,7 +368,7 @@ const EditProfile = () => {
           </View>
 
           {/* Dynamic Fields Section */}
-          {(["languages", "interests", "goals", "travelHistory"] as ProfileArrayField[]).map(
+          {(["languages", "interests", "goals"] as ProfileArrayField[]).map(
             (field) => (
               <View key={field} style={[styles.card, styles.sectionCard]}>
                 <Text style={styles.cardTitle}>
@@ -317,6 +413,43 @@ const EditProfile = () => {
               </View>
             )
           )}
+
+          {/* Travel History Section */}
+          <View style={[styles.card, styles.sectionCard]}>
+            <Text style={styles.cardTitle}>Travel History</Text>
+            {formData.travelHistory.map((trip, index) => (
+              <View key={trip.id} style={styles.tripContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Trip Name"
+                  value={trip.name}
+                  onChangeText={(text) => handleTripNameChange(index, text)}
+                />
+                <View style={styles.photosContainer}>
+                  {trip.photos.map((photo, photoIndex) => (
+                    <Image
+                      key={photoIndex}
+                      source={{ uri: photo }}
+                      style={styles.photoThumbnail}
+                    />
+                  ))}
+                </View>
+                <TouchableOpacity onPress={() => handleAddPhoto(index)}>
+                  <Text style={styles.addPhotoText}>Add Photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleRemoveTrip(index)}>
+                  <MaterialIcons
+                    name="remove-circle"
+                    size={24}
+                    color="#ff4444"
+                  />
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity onPress={handleAddTrip}>
+              <Text style={styles.addButtonText}>Add Trip</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Save Button */}
           <TouchableOpacity
@@ -379,9 +512,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginBottom: 24,
   },
-  sectionCard: {
-    // Additional spacing between sections if needed
-  },
+  sectionCard: {},
   cardTitle: {
     fontSize: 16,
     fontWeight: "600",
@@ -431,6 +562,28 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  tripContainer: {
+    marginBottom: 20,
+    padding: 10,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 10,
+  },
+  photosContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 10,
+  },
+  photoThumbnail: {
+    width: 60,
+    height: 60,
+    margin: 5,
+    borderRadius: 5,
+  },
+  addPhotoText: {
+    color: "#6a11cb",
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 

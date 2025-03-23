@@ -17,6 +17,7 @@ import useAuth from "../../hooks/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
+import ImageViewing from "react-native-image-viewing"; // Import the image viewing library
 
 const Profile = () => {
   const [userData, setUserData] = useState<any>(null);
@@ -28,6 +29,11 @@ const Profile = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [showPrompts, setShowPrompts] = useState(false);
   const promptAnim = useState(new Animated.Value(0))[0];
+
+  // States for image viewing modal
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [currentImages, setCurrentImages] = useState<string[]>([]);
+  const [initialIndex, setInitialIndex] = useState(0);
 
   const params = useLocalSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -42,6 +48,13 @@ const Profile = () => {
       bounciness: 8,
     }).start();
     setShowPrompts(!showPrompts);
+  };
+
+  // Handle photo press to open modal
+  const handlePhotoPress = (photos: string[], index: number) => {
+    setCurrentImages(photos);
+    setInitialIndex(index);
+    setIsModalVisible(true);
   };
 
   // Auth state listener
@@ -155,14 +168,12 @@ const Profile = () => {
               />
               <View style={styles.statusIndicator} />
             </View>
-            
             <Text style={styles.nameText}>
               {userData.name}, {userData.age}
               <Text style={styles.pronounsText}>
                 {userData.pronouns && ` (${userData.pronouns})`}
               </Text>
             </Text>
-            
             <View style={styles.moodContainer}>
               <MaterialIcons name="mood" size={18} color="#6a11cb" />
               <Text style={styles.moodText}>{userData.moodStatus}</Text>
@@ -192,18 +203,21 @@ const Profile = () => {
                 cardStyle={styles.gridCard}
               />
               <ProfileSection
-                icon="flight"
-                title="Travel History"
-                content={userData.travelHistory.join(", ")}
-                cardStyle={styles.gridCard}
-              />
-              <ProfileSection
                 icon="bullseye"
                 title="Goals"
                 content={userData.goals.join(", ")}
                 cardStyle={styles.gridCard}
               />
             </View>
+
+            {/* Trip Galleries */}
+            {userData.travelHistory.map((trip, index) => (
+              <TripGallery
+                key={index}
+                trip={trip}
+                onPhotoPress={handlePhotoPress}
+              />
+            ))}
           </View>
 
           {/* Subtle Metadata */}
@@ -219,7 +233,7 @@ const Profile = () => {
       {/* Floating Action Container */}
       {id !== authUser?.uid && (
         <View style={styles.actionContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.fab}
             activeOpacity={0.9}
             onPress={togglePrompts}
@@ -231,9 +245,9 @@ const Profile = () => {
               <MaterialIcons name="chat" size={24} color="white" />
             </LinearGradient>
           </TouchableOpacity>
-          
+
           {showPrompts && (
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.promptSheet,
                 {
@@ -242,24 +256,24 @@ const Profile = () => {
                       scale: promptAnim.interpolate({
                         inputRange: [0, 1],
                         outputRange: [0.8, 1],
-                      })
+                      }),
                     },
                     {
                       translateY: promptAnim.interpolate({
                         inputRange: [0, 1],
                         outputRange: [20, 0],
-                      })
-                    }
+                      }),
+                    },
                   ],
-                  opacity: promptAnim
-                }
+                  opacity: promptAnim,
+                },
               ]}
             >
               <Text style={styles.promptTitle}>Quick starters</Text>
               <View style={styles.promptGrid}>
                 {presetPrompts.map((prompt, index) => (
-                  <TouchableOpacity 
-                    key={index} 
+                  <TouchableOpacity
+                    key={index}
                     style={styles.promptChip}
                     activeOpacity={0.8}
                   >
@@ -271,19 +285,44 @@ const Profile = () => {
           )}
         </View>
       )}
+
+      {/* Image Viewing Modal */}
+      <ImageViewing
+        images={currentImages.map((uri) => ({ uri }))}
+        imageIndex={initialIndex}
+        visible={isModalVisible}
+        onRequestClose={() => setIsModalVisible(false)}
+      />
     </LinearGradient>
   );
 };
 
 const ProfileSection = ({ icon, title, content, cardStyle }: any) => (
-  <TouchableOpacity 
-    style={[styles.card, cardStyle]}
-    activeOpacity={0.9}
-  >
+  <TouchableOpacity style={[styles.card, cardStyle]} activeOpacity={0.9}>
     <MaterialIcons name={icon} size={20} color="#6a11cb" style={styles.cardIcon} />
     <Text style={styles.cardTitle}>{title}</Text>
     <Text style={styles.cardContent}>{content}</Text>
   </TouchableOpacity>
+);
+
+const TripGallery = ({ trip, onPhotoPress }) => (
+  <View style={styles.tripContainer}>
+    <Text style={styles.tripTitle}>{trip.name}</Text>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.tripScrollContent}
+    >
+      {trip.photos.map((photo, index) => (
+        <TouchableOpacity
+          key={index}
+          onPress={() => onPhotoPress(trip.photos, index)}
+        >
+          <Image source={{ uri: photo }} style={styles.tripPhoto} />
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  </View>
 );
 
 const styles = StyleSheet.create({
@@ -375,6 +414,7 @@ const styles = StyleSheet.create({
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: 16,
   },
   gridCard: {
@@ -496,6 +536,34 @@ const styles = StyleSheet.create({
     color: '#2D3748',
     fontSize: 16,
     textAlign: 'center',
+  },
+  tripContainer: {
+    marginBottom: 32,
+    width: '100%',
+  },
+  tripTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2D3748',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  tripScrollContent: {
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  tripPhoto: {
+    width: 120,
+    height: 160,
+    borderRadius: 16,
+    backgroundColor: '#e9ecef',
+    shadowColor: '#2D3748',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    marginLeft: -20,
+    marginRight: 20,
   },
 });
 
