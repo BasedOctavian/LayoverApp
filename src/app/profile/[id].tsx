@@ -8,16 +8,18 @@ import {
   Animated,
   TouchableOpacity,
   ScrollView,
+  StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
+import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
-import ImageViewing from "react-native-image-viewing"; // Import the image viewing library
+import ImageViewing from "react-native-image-viewing";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 const Profile = () => {
   const [userData, setUserData] = useState<any>(null);
@@ -29,16 +31,14 @@ const Profile = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [showPrompts, setShowPrompts] = useState(false);
   const promptAnim = useState(new Animated.Value(0))[0];
-
-  // States for image viewing modal
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [currentImages, setCurrentImages] = useState<string[]>([]);
   const [initialIndex, setInitialIndex] = useState(0);
-
   const params = useLocalSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const topBarHeight = 50 + insets.top;
 
   // Toggle quick starters modal
   const togglePrompts = () => {
@@ -77,7 +77,6 @@ const Profile = () => {
         try {
           const userDocRef = doc(db, "users", id);
           const userDoc = await getDoc(userDocRef);
-
           if (userDoc.exists()) {
             setUserData(userDoc.data());
           } else {
@@ -109,191 +108,211 @@ const Profile = () => {
 
   if (authLoading || loading) {
     return (
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
-        <View style={styles.container}>
-          <ActivityIndicator size="large" color="#6a11cb" />
-        </View>
-      </LinearGradient>
+      <SafeAreaView style={styles.flex} edges={["bottom"]}>
+        <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
+          <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+          <View style={styles.container}>
+            <ActivityIndicator size="large" color="#6a11cb" />
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
-        <View style={styles.container}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      </LinearGradient>
+      <SafeAreaView style={styles.flex} edges={["bottom"]}>
+        <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
+          <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+          <View style={styles.container}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   if (!userData) {
     return (
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
-        <View style={styles.container}>
-          <Text style={styles.noDataText}>No user data found.</Text>
-        </View>
-      </LinearGradient>
+      <SafeAreaView style={styles.flex} edges={["bottom"]}>
+        <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
+          <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+          <View style={styles.container}>
+            <Text style={styles.noDataText}>No user data found.</Text>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   return (
-    <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
-      {id === authUser?.uid && (
-        <TouchableOpacity
-          style={styles.settingsButton}
-          onPress={() => router.push("profile/editProfile")}
-        >
-          <LinearGradient
-            colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.05)"]}
-            style={styles.settingsGradient}
-          >
-            <MaterialIcons name="tune" size={22} color="#6a11cb" />
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
-
-      <ScrollView
-        style={styles.scrollContainer}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
-          {/* Profile Header with Depth */}
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              <Image
-                source={{ uri: userData.profilePicture || "https://via.placeholder.com/150" }}
-                style={styles.profileImage}
-              />
-              <View style={styles.statusIndicator} />
-            </View>
-            <Text style={styles.nameText}>
-              {userData.name}, {userData.age}
-              <Text style={styles.pronounsText}>
-                {userData.pronouns && ` (${userData.pronouns})`}
-              </Text>
-            </Text>
-            <View style={styles.moodContainer}>
-              <MaterialIcons name="mood" size={18} color="#6a11cb" />
-              <Text style={styles.moodText}>{userData.moodStatus}</Text>
-            </View>
+    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+        {/* Top Bar */}
+        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+          <Text style={styles.logo}>Wingman</Text>
+          <View style={styles.topBarRight}>
+            {id === authUser?.uid && (
+              <TouchableOpacity onPress={() => router.push("profile/editProfile")}>
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.05)"]}
+                  style={styles.settingsGradient}
+                >
+                  <MaterialIcons name="tune" size={22} color="#6a11cb" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => router.push(`profile/${authUser?.uid}`)}>
+              <Ionicons name="person-circle" size={32} color="#2F80ED" />
+            </TouchableOpacity>
           </View>
-
-          {/* Profile Sections with Microinteractions */}
-          <View style={styles.sectionsContainer}>
-            <ProfileSection
-              icon="info"
-              title="About"
-              content={userData.bio}
-              cardStyle={styles.aboutCard}
-            />
-
-            <View style={styles.gridContainer}>
-              <ProfileSection
-                icon="language"
-                title="Languages"
-                content={userData.languages.join(", ")}
-                cardStyle={styles.gridCard}
-              />
-              <ProfileSection
-                icon="favorite"
-                title="Interests"
-                content={userData.interests.join(", ")}
-                cardStyle={styles.gridCard}
-              />
-              <ProfileSection
-                icon="bullseye"
-                title="Goals"
-                content={userData.goals.join(", ")}
-                cardStyle={styles.gridCard}
-              />
-            </View>
-
-            {/* Trip Galleries */}
-            {userData.travelHistory.map((trip, index) => (
-              <TripGallery
-                key={index}
-                trip={trip}
-                onPhotoPress={handlePhotoPress}
-              />
-            ))}
-          </View>
-
-          {/* Subtle Metadata */}
-          <View style={styles.metaContainer}>
-            <Text style={styles.metaText}>
-              <MaterialIcons name="verified" size={14} color="#6a11cb" /> Joined{' '}
-              {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
-            </Text>
-          </View>
-        </Animated.View>
-      </ScrollView>
-
-      {/* Floating Action Container */}
-      {id !== authUser?.uid && (
-        <View style={styles.actionContainer}>
-          <TouchableOpacity
-            style={styles.fab}
-            activeOpacity={0.9}
-            onPress={togglePrompts}
-          >
-            <LinearGradient
-              colors={["#7F5AFF", "#5A7CFF"]}
-              style={styles.fabGradient}
-            >
-              <MaterialIcons name="chat" size={24} color="white" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {showPrompts && (
-            <Animated.View
-              style={[
-                styles.promptSheet,
-                {
-                  transform: [
-                    {
-                      scale: promptAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.8, 1],
-                      }),
-                    },
-                    {
-                      translateY: promptAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [20, 0],
-                      }),
-                    },
-                  ],
-                  opacity: promptAnim,
-                },
-              ]}
-            >
-              <Text style={styles.promptTitle}>Quick starters</Text>
-              <View style={styles.promptGrid}>
-                {presetPrompts.map((prompt, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.promptChip}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.promptText}>{prompt}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </Animated.View>
-          )}
         </View>
-      )}
 
-      {/* Image Viewing Modal */}
-      <ImageViewing
-        images={currentImages.map((uri) => ({ uri }))}
-        imageIndex={initialIndex}
-        visible={isModalVisible}
-        onRequestClose={() => setIsModalVisible(false)}
-      />
-    </LinearGradient>
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
+            {/* Profile Header with Depth */}
+            <View style={styles.profileHeader}>
+              <View style={styles.avatarContainer}>
+                <Image
+                  source={{ uri: userData.profilePicture || "https://via.placeholder.com/150" }}
+                  style={styles.profileImage}
+                />
+                <View style={styles.statusIndicator} />
+              </View>
+              <Text style={styles.nameText}>
+                {userData.name}, {userData.age}
+                <Text style={styles.pronounsText}>
+                  {userData.pronouns && ` (${userData.pronouns})`}
+                </Text>
+              </Text>
+              <View style={styles.moodContainer}>
+                <MaterialIcons name="mood" size={18} color="#6a11cb" />
+                <Text style={styles.moodText}>{userData.moodStatus}</Text>
+              </View>
+            </View>
+
+            {/* Profile Sections with Microinteractions */}
+            <View style={styles.sectionsContainer}>
+              <ProfileSection
+                icon="info"
+                title="About"
+                content={userData.bio}
+                cardStyle={styles.aboutCard}
+              />
+
+              <View style={styles.gridContainer}>
+                <ProfileSection
+                  icon="language"
+                  title="Languages"
+                  content={userData.languages.join(", ")}
+                  cardStyle={styles.gridCard}
+                />
+                <ProfileSection
+                  icon="favorite"
+                  title="Interests"
+                  content={userData.interests.join(", ")}
+                  cardStyle={styles.gridCard}
+                />
+                <ProfileSection
+                  icon="crisis-alert"
+                  title="Goals"
+                  content={userData.goals.join(", ")}
+                  cardStyle={styles.gridCard}
+                />
+              </View>
+
+              {/* Trip Galleries with Conditional Rendering */}
+              {userData.travelHistory && Array.isArray(userData.travelHistory) && userData.travelHistory.length > 1 ? (
+                userData.travelHistory.map((trip, index) => (
+                  <TripGallery
+                    key={index}
+                    trip={trip}
+                    onPhotoPress={handlePhotoPress}
+                  />
+                ))
+              ) : null}
+            </View>
+
+            {/* Subtle Metadata */}
+            <View style={styles.metaContainer}>
+              <Text style={styles.metaText}>
+                <MaterialIcons name="verified" size={14} color="#6a11cb" /> Joined{" "}
+                {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
+              </Text>
+            </View>
+          </Animated.View>
+        </ScrollView>
+
+        {/* Floating Action Container */}
+        {id !== authUser?.uid && (
+          <View style={styles.actionContainer}>
+            <TouchableOpacity
+              style={styles.fab}
+              activeOpacity={0.9}
+              onPress={togglePrompts}
+            >
+              <LinearGradient
+                colors={["#7F5AFF", "#5A7CFF"]}
+                style={styles.fabGradient}
+              >
+                <MaterialIcons name="chat" size={24} color="white" />
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {showPrompts && (
+              <Animated.View
+                style={[
+                  styles.promptSheet,
+                  {
+                    transform: [
+                      {
+                        scale: promptAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: promptAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [20, 0],
+                        }),
+                      },
+                    ],
+                    opacity: promptAnim,
+                  },
+                ]}
+              >
+                <Text style={styles.promptTitle}>Quick starters</Text>
+                <View style={styles.promptGrid}>
+                  {presetPrompts.map((prompt, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.promptChip}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.promptText}>{prompt}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </Animated.View>
+            )}
+          </View>
+        )}
+
+        {/* Image Viewing Modal */}
+        <ImageViewing
+          images={currentImages.map((uri) => ({ uri }))}
+          imageIndex={initialIndex}
+          visible={isModalVisible}
+          onRequestClose={() => setIsModalVisible(false)}
+        />
+      </LinearGradient>
+    </SafeAreaView>
   );
 };
 
@@ -326,27 +345,57 @@ const TripGallery = ({ trip, onPhotoPress }) => (
 );
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   gradient: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
+  },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "#f8f9fa",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  logo: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2F80ED",
+  },
+  topBarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  settingsGradient: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(106,17,203,0.1)",
   },
   scrollContainer: {
     flex: 1,
   },
   scrollContent: {
     padding: 24,
-    paddingTop: 56,
     paddingBottom: 160,
   },
   contentContainer: {
     flex: 1,
   },
   profileHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 32,
   },
   avatarContainer: {
-    position: 'relative',
+    position: "relative",
     marginBottom: 16,
   },
   profileImage: {
@@ -354,35 +403,35 @@ const styles = StyleSheet.create({
     height: 128,
     borderRadius: 64,
     borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: "rgba(255,255,255,0.9)",
   },
   statusIndicator: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 8,
     right: 8,
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#4CAF50',
+    backgroundColor: "#4CAF50",
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: "#fff",
   },
   nameText: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#2D3748',
+    fontWeight: "700",
+    color: "#2D3748",
     marginBottom: 4,
     letterSpacing: -0.5,
   },
   pronounsText: {
     fontSize: 16,
-    color: '#718096',
-    fontWeight: '400',
+    color: "#718096",
+    fontWeight: "400",
   },
   moodContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(106,17,203,0.1)',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(106,17,203,0.1)",
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
@@ -390,18 +439,18 @@ const styles = StyleSheet.create({
   },
   moodText: {
     fontSize: 14,
-    color: '#6a11cb',
+    color: "#6a11cb",
     marginLeft: 8,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   sectionsContainer: {
     flex: 1,
   },
   card: {
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     borderRadius: 20,
     padding: 20,
-    shadowColor: '#6a11cb',
+    shadowColor: "#6a11cb",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
@@ -412,13 +461,13 @@ const styles = StyleSheet.create({
     minHeight: 120,
   },
   gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     gap: 16,
   },
   gridCard: {
-    width: '100%',
+    width: "100%",
     minHeight: 120,
     marginBottom: 12,
   },
@@ -427,33 +476,33 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#2D3748',
+    fontWeight: "600",
+    color: "#2D3748",
     marginBottom: 8,
   },
   cardContent: {
     fontSize: 14,
-    color: '#718096',
+    color: "#718096",
     lineHeight: 22,
   },
   metaContainer: {
     marginTop: 32,
-    alignItems: 'center',
+    alignItems: "center",
   },
   metaText: {
     fontSize: 12,
-    color: '#A0AEC0',
-    fontWeight: '500',
+    color: "#A0AEC0",
+    fontWeight: "500",
   },
   actionContainer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 24,
     right: 24,
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     zIndex: 100,
   },
   fab: {
-    shadowColor: '#6a11cb',
+    shadowColor: "#6a11cb",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
@@ -463,18 +512,18 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   promptSheet: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 72,
     right: 0,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: "rgba(255,255,255,0.98)",
     borderRadius: 28,
     padding: 20,
     width: 240,
-    shadowColor: '#2D3748',
+    shadowColor: "#2D3748",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.15,
     shadowRadius: 24,
@@ -483,68 +532,49 @@ const styles = StyleSheet.create({
   },
   promptTitle: {
     fontSize: 13,
-    color: '#718096',
-    fontWeight: '600',
+    color: "#718096",
+    fontWeight: "600",
     marginBottom: 12,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.8,
   },
   promptGrid: {
     gap: 12,
   },
   promptChip: {
-    backgroundColor: 'rgba(106,17,203,0.05)',
+    backgroundColor: "rgba(106,17,203,0.05)",
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
   promptText: {
     fontSize: 14,
-    color: '#6a11cb',
-    fontWeight: '500',
-  },
-  settingsButton: {
-    position: 'absolute',
-    top: 48,
-    right: 24,
-    zIndex: 100,
-    shadowColor: '#2D3748',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  settingsGradient: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(106,17,203,0.1)',
+    color: "#6a11cb",
+    fontWeight: "500",
   },
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   errorText: {
-    color: '#ff4444',
+    color: "#ff4444",
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: "center",
   },
   noDataText: {
-    color: '#2D3748',
+    color: "#2D3748",
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: "center",
   },
   tripContainer: {
     marginBottom: 32,
-    width: '100%',
+    width: "100%",
   },
   tripTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#2D3748',
+    fontWeight: "600",
+    color: "#2D3748",
     marginBottom: 16,
     paddingHorizontal: 8,
   },
@@ -556,8 +586,8 @@ const styles = StyleSheet.create({
     width: 120,
     height: 160,
     borderRadius: 16,
-    backgroundColor: '#e9ecef',
-    shadowColor: '#2D3748',
+    backgroundColor: "#e9ecef",
+    shadowColor: "#2D3748",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 8,

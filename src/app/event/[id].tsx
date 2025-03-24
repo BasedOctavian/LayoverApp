@@ -3,13 +3,15 @@ import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Ani
 import useEvents from "../../hooks/useEvents";
 import { useEffect, useState } from "react";
 import { LinearGradient } from "expo-linear-gradient";
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import MapView, { Marker } from "react-native-maps";
 import useUsers from "../../hooks/useUsers";
 import useAuth from "../../hooks/auth";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "react-native";
 
 export default function Event() {
   const { id } = useLocalSearchParams();
@@ -26,7 +28,10 @@ export default function Event() {
   const [isSettingLocation, setIsSettingLocation] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const insets = useSafeAreaInsets();
+  const topBarHeight = 50 + insets.top;
 
+  // Existing useEffect hooks remain unchanged
   useEffect(() => {
     if (event && user) {
       setIsAttending(event.attendees?.includes(user.uid));
@@ -71,6 +76,7 @@ export default function Event() {
     }).start();
   }, [fadeAnim]);
 
+  // Existing handler functions remain unchanged
   const formatDateTime = (timestamp: any) => {
     if (!timestamp) return "Not set";
     try {
@@ -245,194 +251,215 @@ export default function Event() {
   );
 
   return (
-    <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
-      <ScrollView
-        style={styles.scrollContainer}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View style={{ opacity: fadeAnim }}>
-          {/* Conditionally render the image container only if event.eventImage exists */}
-          {event.eventImage && (
-            <View style={styles.imageContainer}>
-              <Image source={{ uri: event.eventImage }} style={styles.eventImage} />
-            </View>
-          )}
-
-          {/* Adjust marginTop dynamically based on the presence of an image */}
-          <View
-            style={[
-              styles.detailsCard,
-              { marginTop: event.eventImage ? -40 : 0 },
-            ]}
-          >
-            <Text style={styles.eventTitle}>{event.name}</Text>
-            <View style={styles.categoryChip}>
-              <Text style={styles.eventCategory}>{event.category}</Text>
-            </View>
-            <Text style={styles.eventDescription}>{event.description}</Text>
-
-            <View style={styles.detailsGrid}>
-              <View style={styles.detailItem}>
-                <MaterialIcons name="event" size={20} color="#6a11cb" />
-                <Text style={styles.detailText}>
-                  Created {formatDateTime(event.createdAt)}
-                </Text>
+    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+        {/* Top Bar */}
+        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+          <Text style={styles.logo}>Wingman</Text>
+          <TouchableOpacity onPress={() => router.push(`profile/${user?.uid}`)}>
+            <Ionicons name="person-circle" size={32} color="#2F80ED" />
+          </TouchableOpacity>
+        </View>
+        {/* ScrollView */}
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View style={{ opacity: fadeAnim }}>
+            {event.eventImage && (
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: event.eventImage }} style={styles.eventImage} />
               </View>
-              <View style={styles.detailItem}>
-                <MaterialIcons name="schedule" size={20} color="#6a11cb" />
-                <Text style={styles.detailText}>
-                  Starts {formatDateTime(event.startTime)}
-                  {isOrganizer && (
-                    <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                      <MaterialIcons name="edit" size={16} color="#6a11cb" style={{ marginLeft: 8 }} />
-                    </TouchableOpacity>
-                  )}
-                </Text>
+            )}
+            <View
+              style={[
+                styles.detailsCard,
+                { marginTop: event.eventImage ? -40 : 0 },
+              ]}
+            >
+              <Text style={styles.eventTitle}>{event.name}</Text>
+              <View style={styles.categoryChip}>
+                <Text style={styles.eventCategory}>{event.category}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <MaterialIcons name="people" size={20} color="#6a11cb" />
-                <Text style={styles.detailText}>
-                  {event.attendees?.length || 0} attendees
-                </Text>
+              <Text style={styles.eventDescription}>{event.description}</Text>
+              <View style={styles.detailsGrid}>
+                <View style={styles.detailItem}>
+                  <MaterialIcons name="event" size={20} color="#6a11cb" />
+                  <Text style={styles.detailText}>
+                    Created {formatDateTime(event.createdAt)}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <MaterialIcons name="schedule" size={20} color="#6a11cb" />
+                  <Text style={styles.detailText}>
+                    Starts {formatDateTime(event.startTime)}
+                    {isOrganizer && (
+                      <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+                        <MaterialIcons name="edit" size={16} color="#6a11cb" style={{ marginLeft: 8 }} />
+                      </TouchableOpacity>
+                    )}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <MaterialIcons name="people" size={20} color="#6a11cb" />
+                  <Text style={styles.detailText}>
+                    {event.attendees?.length || 0} attendees
+                  </Text>
+                </View>
               </View>
-            </View>
-
-            {renderOrganizerSection()}
-
-            <View style={styles.mapCard}>
-              <View style={styles.sectionHeader}>
-                <MaterialIcons name="place" size={20} color="#6a11cb" />
-                <Text style={styles.sectionHeaderText}>Event Location</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setFullScreenMap(true)}
-                style={styles.mapButton}
-              >
-                <MapView
-                  style={styles.map}
-                  initialRegion={{
-                    latitude: parseFloat(event.latitude),
-                    longitude: parseFloat(event.longitude),
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
-                  }}
+              {renderOrganizerSection()}
+              <View style={styles.mapCard}>
+                <View style={styles.sectionHeader}>
+                  <MaterialIcons name="place" size={20} color="#6a11cb" />
+                  <Text style={styles.sectionHeaderText}>Event Location</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setFullScreenMap(true)}
+                  style={styles.mapButton}
                 >
-                  <Marker
-                    coordinate={{
+                  <MapView
+                    style={styles.map}
+                    initialRegion={{
                       latitude: parseFloat(event.latitude),
                       longitude: parseFloat(event.longitude),
+                      latitudeDelta: 0.01,
+                      longitudeDelta: 0.01,
                     }}
-                    title={event.name}
-                    description={event.description}
                   >
-                    <MaterialIcons name="place" size={28} color="#6a11cb" />
-                  </Marker>
-                </MapView>
-              </TouchableOpacity>
-              {isOrganizer && (
-                <TouchableOpacity
-                  style={styles.setLocationButton}
-                  onPress={() => {
-                    setFullScreenMap(true);
-                    setIsSettingLocation(true);
-                  }}
-                >
-                  <Text style={styles.setLocationText}>Set Location</Text>
+                    <Marker
+                      coordinate={{
+                        latitude: parseFloat(event.latitude),
+                        longitude: parseFloat(event.longitude),
+                      }}
+                      title={event.name}
+                      description={event.description}
+                    >
+                      <MaterialIcons name="place" size={28} color="#6a11cb" />
+                    </Marker>
+                  </MapView>
                 </TouchableOpacity>
-              )}
+                {isOrganizer && (
+                  <TouchableOpacity
+                    style={styles.setLocationButton}
+                    onPress={() => {
+                      setFullScreenMap(true);
+                      setIsSettingLocation(true);
+                    }}
+                  >
+                    <Text style={styles.setLocationText}>Set Location</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-          </View>
-        </Animated.View>
-      </ScrollView>
-
-      <TouchableOpacity
-        style={styles.attendButton}
-        onPress={handleAttend}
-        activeOpacity={0.9}
-        disabled={loading}
-      >
-        <LinearGradient
-          colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#7F5AFF", "#5A7CFF"]}
-          style={styles.buttonGradient}
+          </Animated.View>
+        </ScrollView>
+        {/* Attend Button */}
+        <TouchableOpacity
+          style={styles.attendButton}
+          onPress={handleAttend}
+          activeOpacity={0.9}
+          disabled={loading}
         >
-          <Feather
-            name={isAttending ? "x-circle" : "check-circle"}
-            size={24}
-            color="#fff"
-          />
-          <Text style={styles.buttonText}>
-            {loading
-              ? "Processing..."
-              : isAttending
-              ? "Remove Participation"
-              : "Attend Event"}
-          </Text>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {fullScreenMap && (
-        <View style={styles.fullScreenMapContainer}>
-          <MapView
-            style={styles.fullScreenMap}
-            initialRegion={{
-              latitude: parseFloat(event.latitude),
-              longitude: parseFloat(event.longitude),
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            onPress={isSettingLocation ? handleMapPress : undefined}
+          <LinearGradient
+            colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#7F5AFF", "#5A7CFF"]}
+            style={styles.buttonGradient}
           >
-            <Marker
-              coordinate={{
+            <Feather
+              name={isAttending ? "x-circle" : "check-circle"}
+              size={24}
+              color="#fff"
+            />
+            <Text style={styles.buttonText}>
+              {loading
+                ? "Processing..."
+                : isAttending
+                ? "Remove Participation"
+                : "Attend Event"}
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
+        {/* Full Screen Map */}
+        {fullScreenMap && (
+          <View style={styles.fullScreenMapContainer}>
+            <MapView
+              style={styles.fullScreenMap}
+              initialRegion={{
                 latitude: parseFloat(event.latitude),
                 longitude: parseFloat(event.longitude),
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
               }}
-              title={event.name}
-              description={event.description}
+              onPress={isSettingLocation ? handleMapPress : undefined}
             >
-              <MaterialIcons name="place" size={24} color="#6a11cb" />
-            </Marker>
-          </MapView>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => {
-              setFullScreenMap(false);
-              setIsSettingLocation(false);
-            }}
-          >
-            <MaterialIcons name="close" size={32} color="#fff" />
-          </TouchableOpacity>
-          {isSettingLocation && (
-            <View style={styles.instructionText}>
-              <Text style={styles.instructionTextContent}>
-                Tap on the map to set the location
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      <DateTimePickerModal
-        isVisible={showDatePicker}
-        mode="datetime"
-        onConfirm={handleConfirmDate}
-        onCancel={() => setShowDatePicker(false)}
-      />
-    </LinearGradient>
+              <Marker
+                coordinate={{
+                  latitude: parseFloat(event.latitude),
+                  longitude: parseFloat(event.longitude),
+                }}
+                title={event.name}
+                description={event.description}
+              >
+                <MaterialIcons name="place" size={24} color="#6a11cb" />
+              </Marker>
+            </MapView>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => {
+                setFullScreenMap(false);
+                setIsSettingLocation(false);
+              }}
+            >
+              <MaterialIcons name="close" size={32} color="#fff" />
+            </TouchableOpacity>
+            {isSettingLocation && (
+              <View style={styles.instructionText}>
+                <Text style={styles.instructionTextContent}>
+                  Tap on the map to set the location
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+        {/* Date Picker */}
+        <DateTimePickerModal
+          isVisible={showDatePicker}
+          mode="datetime"
+          onConfirm={handleConfirmDate}
+          onCancel={() => setShowDatePicker(false)}
+        />
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   gradient: {
     flex: 1,
+  },
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "#f8f9fa", // Matches gradient start color
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  logo: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2F80ED",
   },
   scrollContainer: {
     flex: 1,
   },
   scrollContent: {
     padding: 24,
-    paddingTop: 64,
     paddingBottom: 160,
   },
   imageContainer: {
