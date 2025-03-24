@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
+import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated } from "react-native";
 import useEvents from "../../hooks/useEvents";
 import { useEffect, useState } from "react";
 import { LinearGradient } from "expo-linear-gradient";
@@ -24,15 +24,14 @@ export default function Event() {
   const router = useRouter();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isSettingLocation, setIsSettingLocation] = useState(false);
-  const [showOrganizerConfirmation, setShowOrganizerConfirmation] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const fadeAnim = useState(new Animated.Value(0))[0];
 
   useEffect(() => {
     if (event && user) {
       setIsAttending(event.attendees?.includes(user.uid));
     }
   }, [event, user]);
-
-  const [authUser, setAuthUser] = useState<User | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -45,7 +44,7 @@ export default function Event() {
             const organizerData = await getUser(organizerID);
             setOrganizer(organizerData?.name || "Unknown");
           } else {
-            setOrganizer(null); // Auto-created events have null organizer
+            setOrganizer(null);
           }
         }
       })();
@@ -63,6 +62,14 @@ export default function Event() {
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
   const formatDateTime = (timestamp: any) => {
     if (!timestamp) return "Not set";
@@ -110,9 +117,9 @@ export default function Event() {
     if (!user?.uid || event.organizer !== null) return;
     setLoading(true);
     try {
-      await updateEvent(event.id, { 
+      await updateEvent(event.id, {
         organizer: user.uid,
-        organizedAt: new Date().toISOString() 
+        organizedAt: new Date().toISOString(),
       });
       const updatedEvent = await getEvent(id);
       setEvent(updatedEvent);
@@ -132,7 +139,6 @@ export default function Event() {
       console.error("Error becoming organizer:", error);
     } finally {
       setLoading(false);
-      setShowOrganizerConfirmation(false);
     }
   };
 
@@ -142,7 +148,7 @@ export default function Event() {
       "By claiming organization, you'll be responsible for managing this event. Continue?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Confirm", onPress: handleBecomeOrganizer }
+        { text: "Confirm", onPress: handleBecomeOrganizer },
       ]
     );
   };
@@ -187,8 +193,8 @@ export default function Event() {
 
   if (!event) {
     return (
-      <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
-        <View style={styles.container}>
+      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
+        <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Loading event...</Text>
         </View>
       </LinearGradient>
@@ -199,31 +205,28 @@ export default function Event() {
 
   const renderOrganizerSection = () => (
     <View style={styles.organizerContainer}>
-      <LinearGradient
-        colors={event.organizer ? ["rgba(255,255,255,0.2)", "rgba(255,255,255,0.1)"] : ["#ff9a9e", "#fad0c4"]}
-        style={[styles.organizerBadge, !event.organizer && styles.unclaimedBadge]}
-      >
-        <MaterialIcons 
-          name={event.organizer ? "person" : "group-add"} 
-          size={20} 
-          color={event.organizer ? "#fff" : "#4a4a4a"} 
+      <View style={styles.organizerBadge}>
+        <MaterialIcons
+          name={event.organizer ? "person" : "group-add"}
+          size={20}
+          color="#6a11cb"
         />
-        <Text style={[styles.organizerText, !event.organizer && styles.unclaimedText]}>
-          {event.organizer 
+        <Text style={styles.organizerText}>
+          {event.organizer
             ? `Organized by ${organizer || "Unknown"}`
             : "This event needs an organizer!"}
         </Text>
-      </LinearGradient>
+      </View>
 
       {event.organizer === null && (
         <TouchableOpacity
-          style={[styles.becomeOrganizerButton, loading && styles.disabledButton]}
+          style={styles.becomeOrganizerButton}
           onPress={confirmOrganizerTakeover}
           disabled={loading}
         >
           <LinearGradient
-            colors={["#7F00FF", "#E100FF"]}
-            style={styles.organizerButtonGradient}
+            colors={["#7F5AFF", "#5A7CFF"]}
+            style={styles.buttonGradient}
           >
             <Feather name="star" size={20} color="#fff" />
             <Text style={styles.buttonText}>
@@ -242,96 +245,105 @@ export default function Event() {
   );
 
   return (
-    <LinearGradient colors={["#6a11cb", "#2575fc"]} style={styles.gradient}>
+    <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
       <ScrollView
-        contentContainerStyle={styles.container}
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.imageContainer}>
-          <Image source={{ uri: event.eventImage }} style={styles.eventImage} />
-          <View style={styles.imageOverlay} />
-        </View>
-
-        <View style={styles.detailsContainer}>
-          <Text style={styles.eventTitle}>{event.name}</Text>
-          <View style={styles.categoryChip}>
-            <Text style={styles.eventCategory}>{event.category}</Text>
-          </View>
-          <Text style={styles.eventDescription}>{event.description}</Text>
-
-          <View style={styles.detailsGrid}>
-            <View style={styles.detailItem}>
-              <Feather name="plus-circle" size={20} color="#fff" />
-              <Text style={styles.detailText}>
-                Created {formatDateTime(event.createdAt)}
-              </Text>
+        <Animated.View style={{ opacity: fadeAnim }}>
+          {/* Conditionally render the image container only if event.eventImage exists */}
+          {event.eventImage && (
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: event.eventImage }} style={styles.eventImage} />
             </View>
-            <View style={styles.detailItem}>
-              <Feather name="clock" size={20} color="#fff" />
-              <Text style={styles.detailText}>
-                Starts {formatDateTime(event.startTime)}
-                {isOrganizer && (
-                  <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                    <Feather name="edit" size={16} color="#fff" style={{ marginLeft: 8 }} />
-                  </TouchableOpacity>
-                )}
-              </Text>
-            </View>
-            <View style={styles.detailItem}>
-              <Feather name="users" size={20} color="#fff" />
-              <Text style={styles.detailText}>
-                {event.attendees?.length || 0} attendees
-              </Text>
-            </View>
-          </View>
+          )}
 
-          {renderOrganizerSection()}
-
-          <View style={styles.mapContainer}>
-            <View style={styles.sectionHeader}>
-              <Feather name="map-pin" size={20} color="#fff" />
-              <Text style={styles.sectionHeaderText}>Event Location</Text>
+          {/* Adjust marginTop dynamically based on the presence of an image */}
+          <View
+            style={[
+              styles.detailsCard,
+              { marginTop: event.eventImage ? -40 : 0 },
+            ]}
+          >
+            <Text style={styles.eventTitle}>{event.name}</Text>
+            <View style={styles.categoryChip}>
+              <Text style={styles.eventCategory}>{event.category}</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => setFullScreenMap(true)}
-              style={styles.mapButton}
-            >
-              <MapView
-                style={styles.map}
-                initialRegion={{
-                  latitude: parseFloat(event.latitude),
-                  longitude: parseFloat(event.longitude),
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
-                }}
+            <Text style={styles.eventDescription}>{event.description}</Text>
+
+            <View style={styles.detailsGrid}>
+              <View style={styles.detailItem}>
+                <MaterialIcons name="event" size={20} color="#6a11cb" />
+                <Text style={styles.detailText}>
+                  Created {formatDateTime(event.createdAt)}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <MaterialIcons name="schedule" size={20} color="#6a11cb" />
+                <Text style={styles.detailText}>
+                  Starts {formatDateTime(event.startTime)}
+                  {isOrganizer && (
+                    <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+                      <MaterialIcons name="edit" size={16} color="#6a11cb" style={{ marginLeft: 8 }} />
+                    </TouchableOpacity>
+                  )}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <MaterialIcons name="people" size={20} color="#6a11cb" />
+                <Text style={styles.detailText}>
+                  {event.attendees?.length || 0} attendees
+                </Text>
+              </View>
+            </View>
+
+            {renderOrganizerSection()}
+
+            <View style={styles.mapCard}>
+              <View style={styles.sectionHeader}>
+                <MaterialIcons name="place" size={20} color="#6a11cb" />
+                <Text style={styles.sectionHeaderText}>Event Location</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setFullScreenMap(true)}
+                style={styles.mapButton}
               >
-                <Marker
-                  coordinate={{
+                <MapView
+                  style={styles.map}
+                  initialRegion={{
                     latitude: parseFloat(event.latitude),
                     longitude: parseFloat(event.longitude),
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
                   }}
-                  title={event.name}
-                  description={event.description}
                 >
-                  <View style={styles.marker}>
-                    <Feather name="map-pin" size={28} color="#6a11cb" />
-                  </View>
-                </Marker>
-              </MapView>
-            </TouchableOpacity>
-            {isOrganizer && (
-              <TouchableOpacity
-                style={styles.setLocationButton}
-                onPress={() => {
-                  setFullScreenMap(true);
-                  setIsSettingLocation(true);
-                }}
-              >
-                <Text style={styles.buttonText}>Set Location</Text>
+                  <Marker
+                    coordinate={{
+                      latitude: parseFloat(event.latitude),
+                      longitude: parseFloat(event.longitude),
+                    }}
+                    title={event.name}
+                    description={event.description}
+                  >
+                    <MaterialIcons name="place" size={28} color="#6a11cb" />
+                  </Marker>
+                </MapView>
               </TouchableOpacity>
-            )}
+              {isOrganizer && (
+                <TouchableOpacity
+                  style={styles.setLocationButton}
+                  onPress={() => {
+                    setFullScreenMap(true);
+                    setIsSettingLocation(true);
+                  }}
+                >
+                  <Text style={styles.setLocationText}>Set Location</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        </View>
+        </Animated.View>
       </ScrollView>
 
       <TouchableOpacity
@@ -341,7 +353,7 @@ export default function Event() {
         disabled={loading}
       >
         <LinearGradient
-          colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#ff6b6b", "#ff4757"]}
+          colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#7F5AFF", "#5A7CFF"]}
           style={styles.buttonGradient}
         >
           <Feather
@@ -412,26 +424,45 @@ export default function Event() {
 }
 
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
-  container: { flexGrow: 1, paddingBottom: 100 },
-  imageContainer: { position: "relative", marginTop: 0 },
-  eventImage: { width: "100%", height: 300, resizeMode: "cover" },
-  imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.3)",
+  gradient: {
+    flex: 1,
   },
-  detailsContainer: { padding: 24, marginTop: -40 },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 24,
+    paddingTop: 64,
+    paddingBottom: 160,
+  },
+  imageContainer: {
+    position: "relative",
+  },
+  eventImage: {
+    width: "100%",
+    height: 300,
+    resizeMode: "cover",
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  detailsCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#6a11cb",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 3,
+  },
   eventTitle: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#fff",
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#2D3748",
     marginBottom: 12,
-    textShadowColor: "rgba(0,0,0,0.3)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 4,
   },
   categoryChip: {
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(106,17,203,0.1)",
     borderRadius: 20,
     paddingVertical: 6,
     paddingHorizontal: 16,
@@ -440,126 +471,126 @@ const styles = StyleSheet.create({
   },
   eventCategory: {
     fontSize: 14,
-    color: "#fff",
+    color: "#6a11cb",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 1,
   },
   eventDescription: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.9)",
-    lineHeight: 24,
+    fontSize: 14,
+    color: "#718096",
+    lineHeight: 22,
     marginBottom: 25,
-    fontWeight: "500",
   },
   detailsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 16,
     marginBottom: 25,
   },
   detailItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    gap: 8,
+    marginBottom: 12,
+    gap: 12,
   },
-  detailText: { fontSize: 14, color: "#fff", fontWeight: "500" },
-  organizerContainer: { marginBottom: 30 },
+  detailText: {
+    fontSize: 14,
+    color: "#718096",
+    fontWeight: "500",
+  },
+  organizerContainer: {
+    marginBottom: 30,
+  },
   organizerBadge: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: "rgba(106,17,203,0.1)",
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     gap: 12,
   },
-  unclaimedBadge: {
-    borderColor: "#ff9a9e",
-    borderWidth: 1,
+  organizerText: {
+    fontSize: 15,
+    color: "#6a11cb",
+    fontWeight: "600",
   },
-  unclaimedText: {
-    color: "#4a4a4a",
-    fontWeight: "700",
-  },
-  organizerText: { fontSize: 15, color: "#fff", fontWeight: "600" },
   becomeOrganizerButton: {
-    borderRadius: 12,
     marginTop: 12,
-    overflow: 'hidden'
-  },
-  organizerButtonGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
     borderRadius: 12,
-  },
-  organizedTimestamp: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 12,
-    marginTop: 8,
-    alignSelf: 'flex-end'
-  },
-  disabledButton: {
-    opacity: 0.6
-  },
-  setLocationButton: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    marginTop: 12,
-    alignItems: "center",
-  },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  mapContainer: { marginBottom: 20 },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 18,
-  },
-  sectionHeaderText: { fontSize: 20, fontWeight: "700", color: "#fff" },
-  mapButton: {
-    borderRadius: 20,
     overflow: "hidden",
-    elevation: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-  },
-  map: { width: "100%", height: 220 },
-  marker: {
-    backgroundColor: "#fff",
-    padding: 6,
-    borderRadius: 20,
-    elevation: 6,
-  },
-  attendButton: {
-    position: "absolute",
-    bottom: 30,
-    left: 20,
-    right: 20,
-    zIndex: 100,
   },
   buttonGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
-    paddingVertical: 18,
-    borderRadius: 16,
-    elevation: 8,
-    shadowColor: "#000",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  organizedTimestamp: {
+    fontSize: 12,
+    color: "#718096",
+    marginTop: 8,
+    alignSelf: "flex-end",
+  },
+  mapCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#6a11cb",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 3,
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    gap: 12,
+  },
+  sectionHeaderText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#2D3748",
+  },
+  mapButton: {
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  map: {
+    width: "100%",
+    height: 220,
+  },
+  setLocationButton: {
+    marginTop: 12,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: "rgba(106,17,203,0.1)",
+    alignItems: "center",
+  },
+  setLocationText: {
+    color: "#6a11cb",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  attendButton: {
+    position: "absolute",
+    bottom: 24,
+    left: 20,
+    right: 20,
+    shadowColor: "#6a11cb",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 6,
   },
   fullScreenMapContainer: {
     position: "absolute",
@@ -570,7 +601,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.9)",
     zIndex: 1000,
   },
-  fullScreenMap: { width: "100%", height: "100%" },
+  fullScreenMap: {
+    width: "100%",
+    height: "100%",
+  },
   closeButton: {
     position: "absolute",
     top: 50,
@@ -591,5 +625,14 @@ const styles = StyleSheet.create({
     color: "#fff",
     padding: 10,
     borderRadius: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#2D3748",
   },
 });
