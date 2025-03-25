@@ -31,7 +31,7 @@ export default function Event() {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
 
-  // Existing useEffect hooks remain unchanged
+  // Existing useEffect hooks
   useEffect(() => {
     if (event && user) {
       setIsAttending(event.attendees?.includes(user.uid));
@@ -76,7 +76,7 @@ export default function Event() {
     }).start();
   }, [fadeAnim]);
 
-  // Existing handler functions remain unchanged
+  // Existing handler functions
   const formatDateTime = (timestamp: any) => {
     if (!timestamp) return "Not set";
     try {
@@ -355,31 +355,44 @@ export default function Event() {
             </View>
           </Animated.View>
         </ScrollView>
-        {/* Attend Button */}
-        <TouchableOpacity
-          style={styles.attendButton}
-          onPress={handleAttend}
-          activeOpacity={0.9}
-          disabled={loading}
-        >
-          <LinearGradient
-            colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#7F5AFF", "#5A7CFF"]}
-            style={styles.buttonGradient}
+        {/* Bottom Buttons */}
+        <View style={styles.bottomButtons}>
+          <TouchableOpacity
+            style={styles.buttonContainer}
+            onPress={() => router.push(`event/eventChat/${id}`)}
+            accessibilityLabel="Event Chat"
+            accessibilityHint="Navigate to event discussion"
           >
-            <Feather
-              name={isAttending ? "x-circle" : "check-circle"}
-              size={24}
-              color="#fff"
-            />
-            <Text style={styles.buttonText}>
-              {loading
-                ? "Processing..."
-                : isAttending
-                ? "Remove Participation"
-                : "Attend Event"}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient colors={["#7F5AFF", "#5A7CFF"]} style={styles.buttonGradient}>
+              <Ionicons name="chatbubbles" size={24} color="#fff" />
+              <Text style={styles.buttonText}>Event Chat</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.buttonContainer}
+            onPress={handleAttend}
+            activeOpacity={0.9}
+            disabled={loading}
+          >
+            <LinearGradient
+              colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#7F5AFF", "#5A7CFF"]}
+              style={styles.buttonGradient}
+            >
+              <Feather
+                name={isAttending ? "x-circle" : "check-circle"}
+                size={24}
+                color="#fff"
+              />
+              <Text style={styles.buttonText}>
+                {loading
+                  ? "Processing..."
+                  : isAttending
+                  ? "Remove Participation"
+                  : "Attend Event"}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
         {/* Full Screen Map */}
         {fullScreenMap && (
           <View style={styles.fullScreenMapContainer}>
@@ -607,6 +620,22 @@ const styles = StyleSheet.create({
     color: "#6a11cb",
     fontSize: 16,
     fontWeight: "600",
+  },
+  bottomButtons: {
+    position: "absolute",
+    bottom: 24,
+    left: 20,
+    right: 20,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  buttonContainer: {
+    width: "48%",
+    shadowColor: "#6a11cb",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 6,
   },
   attendButton: {
     position: "absolute",

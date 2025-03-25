@@ -79,6 +79,13 @@ export default function RootLayout() {
           headerShown: false,
         }}
       />
+      {/* Event Chat Screen */}
+      <Stack.Screen
+        name="event/eventChat/[id]"
+        options={{
+          headerShown: false,
+        }}
+      />
       {/* Sport Event Screen */}
       <Stack.Screen
         name="sport/[id]"
