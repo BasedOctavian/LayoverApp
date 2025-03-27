@@ -6,12 +6,13 @@ import {
   StyleSheet,
   FlatList,
   TextInput,
-  Modal,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
   StatusBar,
+  Modal,
 } from "react-native";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -69,7 +70,8 @@ export default function Dashboard() {
   const { getSportEvents } = useSportEvents();
   const [allSportEvents, setAllSportEvents] = useState<any[]>([]);
   const [matchingEvents, setMatchingEvents] = useState<any[]>([]);
-  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showStatusSheet, setShowStatusSheet] = useState(false);
+  const sheetAnim = useState(new Animated.Value(0))[0];
   const [customStatus, setCustomStatus] = useState("");
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,10 +91,10 @@ export default function Dashboard() {
   });
 
   const presetStatuses = [
-    { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#FFFFFF" /> },
-    { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#FFFFFF" /> },
-    { label: "Work Mode", icon: <Feather name="briefcase" size={18} color="#FFFFFF" /> },
-    { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#FFFFFF" /> },
+    { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#6a11cb" /> },
+    { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#6a11cb" /> },
+    { label: "Work Mode", icon: <Feather name="briefcase" size={18} color="#6a11cb" /> },
+    { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#6a11cb" /> },
   ];
 
   const nearbyUsers: NearbyUser[] = [
@@ -125,6 +127,15 @@ export default function Dashboard() {
     } finally {
       setUpdatingMood(false);
     }
+  };
+
+  const toggleStatusSheet = () => {
+    Animated.spring(sheetAnim, {
+      toValue: showStatusSheet ? 0 : 1,
+      useNativeDriver: true,
+      bounciness: 8,
+    }).start();
+    setShowStatusSheet(!showStatusSheet);
   };
 
   useEffect(() => {
@@ -211,7 +222,6 @@ export default function Dashboard() {
     { icon: <Feather name="plus" size={24} color="#2F80ED" />, title: "Create Event", screen: "eventCreation" },
     { icon: <MaterialIcons name="event" size={24} color="#2F80ED" />, title: "Events", screen: "home" },
     { icon: <MaterialIcons name="message" size={24} color="#2F80ED" />, title: "Messages", screen: "chat/chatInbox" },
-    { icon: <Feather name="edit" size={24} color="#2F80ED" />, title: "Status", screen: "locked/lockedScreen" },
     { icon: <Feather name="user" size={24} color="#2F80ED" />, title: "Profile", screen: userId ? `profile/${userId}` : "profile" },
     { icon: <Ionicons name="settings" size={24} color="#2F80ED" />, title: "Settings", screen: "settings/settings" },
   ];
@@ -255,9 +265,9 @@ export default function Dashboard() {
       : allEvents.filter((event) => event.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const dashboardData = useMemo(() => [
-    { type: 'section', id: 'users', data: nearbyUsers },
-    { type: 'section', id: 'events', data: allEvents },
-    ...features.map((feature, index) => ({ type: 'feature', id: index.toString(), data: feature }))
+    { type: "section", id: "users", data: nearbyUsers },
+    { type: "section", id: "events", data: allEvents },
+    ...features.map((feature, index) => ({ type: "feature", id: index.toString(), data: feature })),
   ], [nearbyUsers, allEvents, features]);
 
   return (
@@ -327,191 +337,207 @@ export default function Dashboard() {
       )}
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <FlatList
-              style={{ flex: 1 }}
-              data={showSearch ? filteredResults : dashboardData}
-              keyExtractor={(item, index) => showSearch ? index.toString() : item.id}
-              renderItem={({ item }) => {
-                if (showSearch) {
-                  return (
-                    <TouchableOpacity
-                      style={styles.resultItem}
-                      activeOpacity={0.9}
-                      onPress={() => {
-                        if (searchType === "airports") {
-                          setSelectedAirport(item);
-                          setShowSearch(false);
-                        } else {
-                          const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
-                          router.push(route);
-                        }
-                      }}
-                    >
-                      <View style={searchType === "events" && item.organizer !== null ? styles.organizedResultItemView : styles.resultItemView}>
-                        <Feather
-                          name={searchType === "airports" ? "airplay" : "calendar"}
-                          size={20}
-                          color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#2F80ED"}
-                          style={styles.resultIcon}
-                        />
-                        <Text style={searchType === "events" && item.organizer !== null ? styles.organizedResultText : styles.resultText}>
-                          {item.name}
-                        </Text>
-                        <Feather
-                          name="chevron-right"
-                          size={18}
-                          color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#CBD5E1"}
-                        />
-                      </View>
-                    </TouchableOpacity>
-                  );
-                } else if (item.type === 'section') {
-                  if (item.id === 'users') {
+          <View style={{ flex: 1, position: "relative" }}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <FlatList
+                style={{ flex: 1 }}
+                data={showSearch ? filteredResults : dashboardData}
+                keyExtractor={(item, index) => (showSearch ? index.toString() : item.id)}
+                renderItem={({ item }) => {
+                  if (showSearch) {
                     return (
-                      <View style={styles.section}>
-                        <View style={styles.headerRow}>
-                          <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
-                          <Text style={styles.sectionHeader}>Nearby Users</Text>
-                        </View>
-                        {item.data.length > 0 ? (
-                          <FlatList
-                            horizontal
-                            data={item.data}
-                            keyExtractor={(user) => user.id}
-                            renderItem={({ item: user }) => (
-                              <TouchableOpacity
-                                style={styles.userCard}
-                                activeOpacity={0.8}
-                                onPress={() => router.push(`profile/${user.id}`)}
-                              >
-                                <View style={styles.avatar}>
-                                  <FontAwesome5 name="user" size={24} color="#2F80ED" />
-                                </View>
-                                <Text style={styles.userName}>{user.name}</Text>
-                                <Text style={styles.userStatus}>{user.status}</Text>
-                              </TouchableOpacity>
-                            )}
-                            showsHorizontalScrollIndicator={false}
+                      <TouchableOpacity
+                        style={styles.resultItem}
+                        activeOpacity={0.9}
+                        onPress={() => {
+                          if (searchType === "airports") {
+                            setSelectedAirport(item);
+                            setShowSearch(false);
+                          } else {
+                            const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
+                            router.push(route);
+                          }
+                        }}
+                      >
+                        <View style={searchType === "events" && item.organizer !== null ? styles.organizedResultItemView : styles.resultItemView}>
+                          <Feather
+                            name={searchType === "airports" ? "airplay" : "calendar"}
+                            size={20}
+                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#2F80ED"}
+                            style={styles.resultIcon}
                           />
-                        ) : (
-                          <Text style={styles.noDataText}>No nearby users found.</Text>
-                        )}
-                      </View>
-                    );
-                  } else if (item.id === 'events') {
-                    return (
-                      <View style={styles.section}>
-                        <View style={styles.headerRow}>
-                          <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
-                          <Text style={styles.sectionHeader}>
-                            Events at {selectedAirport ? selectedAirport.name : "Your Location"}
+                          <Text style={searchType === "events" && item.organizer !== null ? styles.organizedResultText : styles.resultText}>
+                            {item.name}
                           </Text>
-                        </View>
-                        {item.data.length > 0 ? (
-                          <FlatList
-                            horizontal
-                            data={item.data}
-                            keyExtractor={(event) => `${event.type}-${event.id}`}
-                            renderItem={({ item: event }) => (
-                              <TouchableOpacity
-                                style={event.organizer !== null ? styles.organizedEventCard : styles.eventCard}
-                                activeOpacity={0.8}
-                                onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
-                              >
-                                <Text style={event.organizer !== null ? styles.organizedEventName : styles.eventName}>
-                                  {event.name}
-                                </Text>
-                                <Text style={event.organizer !== null ? styles.organizedEventDescription : styles.eventDescription}>
-                                  {event.description}
-                                </Text>
-                              </TouchableOpacity>
-                            )}
-                            showsHorizontalScrollIndicator={false}
+                          <Feather
+                            name="chevron-right"
+                            size={18}
+                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#CBD5E1"}
                           />
-                        ) : (
-                          <Text style={styles.noDataText}>No events at this airport.</Text>
-                        )}
-                      </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  } else if (item.type === "section") {
+                    if (item.id === "users") {
+                      return (
+                        <View style={styles.section}>
+                          <View style={styles.headerRow}>
+                            <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
+                            <Text style={styles.sectionHeader}>Nearby Users</Text>
+                          </View>
+                          {item.data.length > 0 ? (
+                            <FlatList
+                              horizontal
+                              data={item.data}
+                              keyExtractor={(user) => user.id}
+                              renderItem={({ item: user }) => (
+                                <TouchableOpacity
+                                  style={styles.userCard}
+                                  activeOpacity={0.8}
+                                  onPress={() => router.push(`profile/${user.id}`)}
+                                >
+                                  <View style={styles.avatar}>
+                                    <FontAwesome5 name="user" size={24} color="#2F80ED" />
+                                  </View>
+                                  <Text style={styles.userName}>{user.name}</Text>
+                                  <Text style={styles.userStatus}>{user.status}</Text>
+                                </TouchableOpacity>
+                              )}
+                              showsHorizontalScrollIndicator={false}
+                            />
+                          ) : (
+                            <Text style={styles.noDataText}>No nearby users found.</Text>
+                          )}
+                        </View>
+                      );
+                    } else if (item.id === "events") {
+                      return (
+                        <View style={styles.section}>
+                          <View style={styles.headerRow}>
+                            <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
+                            <Text style={styles.sectionHeader}>
+                              Events at {selectedAirport ? selectedAirport.name : "Your Location"}
+                            </Text>
+                          </View>
+                          {item.data.length > 0 ? (
+                            <FlatList
+                              horizontal
+                              data={item.data}
+                              keyExtractor={(event) => `${event.type}-${event.id}`}
+                              renderItem={({ item: event }) => (
+                                <TouchableOpacity
+                                  style={event.organizer !== null ? styles.organizedEventCard : styles.eventCard}
+                                  activeOpacity={0.8}
+                                  onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
+                                >
+                                  <Text style={event.organizer !== null ? styles.organizedEventName : styles.eventName}>
+                                    {event.name}
+                                  </Text>
+                                  <Text style={event.organizer !== null ? styles.organizedEventDescription : styles.eventDescription}>
+                                    {event.description}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                              showsHorizontalScrollIndicator={false}
+                            />
+                          ) : (
+                            <Text style={styles.noDataText}>No events at this airport.</Text>
+                          )}
+                        </View>
+                      );
+                    }
+                  } else if (item.type === "feature") {
+                    return (
+                      <TouchableOpacity
+                        style={styles.featureItem}
+                        activeOpacity={0.8}
+                        onPress={() => router.push(item.data.screen)}
+                      >
+                        <View style={styles.featureItemContent}>
+                          {item.data.icon}
+                          <Text style={styles.featureItemText}>{item.data.title}</Text>
+                        </View>
+                        <Feather name="chevron-right" size={18} color="#CBD5E1" />
+                      </TouchableOpacity>
                     );
                   }
-                } else if (item.type === 'feature') {
-                  return (
+                  return null;
+                }}
+                ListHeaderComponent={
+                  showSearch ? <View style={{ height: searchHeaderHeight }} /> : <View style={{ height: defaultSearchHeight }} />
+                }
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+              />
+            </TouchableWithoutFeedback>
+            {/* Floating Action Button */}
+            <TouchableOpacity style={styles.fab} onPress={toggleStatusSheet}>
+              <Feather name="edit" size={24} color="#FFF" />
+            </TouchableOpacity>
+            {/* Status Sheet */}
+            {showStatusSheet && (
+              <Animated.View
+                style={[
+                  styles.statusSheet,
+                  {
+                    transform: [
+                      {
+                        scale: sheetAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: sheetAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [20, 0],
+                        }),
+                      },
+                    ],
+                    opacity: sheetAnim,
+                  },
+                ]}
+              >
+                <Text style={styles.statusTitle}>Update Status</Text>
+                <View style={styles.statusGrid}>
+                  {presetStatuses.map((status, index) => (
                     <TouchableOpacity
-                      style={styles.featureItem}
-                      activeOpacity={0.8}
+                      key={index}
+                      style={styles.statusChip}
                       onPress={() => {
-                        if (item.data.title === "Status") setShowStatusModal(true);
-                        else router.push(item.data.screen);
+                        handleUpdateMoodStatus(status.label);
+                        toggleStatusSheet();
                       }}
                     >
-                      <View style={styles.featureItemContent}>
-                        {item.data.icon}
-                        <Text style={styles.featureItemText}>{item.data.title}</Text>
+                      <View style={styles.statusChipContent}>
+                        {status.icon}
+                        <Text style={styles.statusText}>{status.label}</Text>
                       </View>
-                      <Feather name="chevron-right" size={18} color="#CBD5E1" />
                     </TouchableOpacity>
-                  );
-                }
-                return null;
-              }}
-              ListHeaderComponent={
-                showSearch ? <View style={{ height: searchHeaderHeight }} /> : <View style={{ height: defaultSearchHeight }} />
-              }
-              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
-            />
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-      <Modal visible={showStatusModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalHeader}>Update Your Status</Text>
-            <View style={styles.modalSeparator} />
-            <View style={styles.statusOptions}>
-              {presetStatuses.map((status, index) => (
+                  ))}
+                </View>
+                <Text style={styles.customStatusLabel}>Custom Status</Text>
+                <TextInput
+                  style={styles.customStatusInput}
+                  value={customStatus}
+                  onChangeText={setCustomStatus}
+                  placeholder="Enter your status..."
+                  placeholderTextColor="#718096"
+                />
                 <TouchableOpacity
-                  key={index}
-                  style={styles.statusOptionButton}
+                  style={styles.submitButton}
                   onPress={() => {
-                    handleUpdateMoodStatus(status.label);
-                    setShowStatusModal(false);
+                    handleUpdateMoodStatus(customStatus);
+                    toggleStatusSheet();
                   }}
                 >
-                  <View style={styles.statusOptionContent}>
-                    {status.icon}
-                    <Text style={styles.statusOptionText}>{status.label}</Text>
-                  </View>
+                  <Text style={styles.submitButtonText}>Submit</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.customStatusLabel}>Or enter a custom status</Text>
-            <TextInput
-              style={styles.customStatusInput}
-              value={customStatus}
-              onChangeText={setCustomStatus}
-              placeholder="Type your status here..."
-              placeholderTextColor="#999"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalActionButton}
-                onPress={() => {
-                  handleUpdateMoodStatus(customStatus);
-                  setShowStatusModal(false);
-                }}
-              >
-                <Feather name="check" size={18} color="#FFFFFF" style={styles.modalActionIcon} />
-                <Text style={styles.modalActionButtonText}>Submit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalActionButton, styles.modalCancelButton]} onPress={() => setShowStatusModal(false)}>
-                <Feather name="x" size={18} color="#2F80ED" style={styles.modalActionIcon} />
-                <Text style={[styles.modalActionButtonText, styles.modalCancelButtonText]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+              </Animated.View>
+            )}
           </View>
-        </View>
-      </Modal>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+      {/* Popup Modal */}
       {popupData.visible && (
         <Modal transparent animationType="fade">
           <View style={styles.popupOverlay}>
@@ -771,102 +797,92 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#FFFFFF",
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    justifyContent: "center",
+  fab: {
+    position: "absolute",
+    bottom: 30,
+    right: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#2F80ED",
     alignItems: "center",
+    justifyContent: "center",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
-  modalContainer: {
-    width: "85%",
-    backgroundColor: "#fff",
-    borderRadius: 12,
+  statusSheet: {
+    position: "absolute",
+    bottom: 72,
+    right: 0,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderRadius: 28,
     padding: 20,
+    width: 240,
+    shadowColor: "#2D3748",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 10,
+    zIndex: 101,
   },
-  modalHeader: {
-    fontSize: 20,
+  statusTitle: {
+    fontSize: 13,
+    color: "#718096",
     fontWeight: "600",
     marginBottom: 12,
-    textAlign: "center",
-    color: "#1E293B",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
-  modalSeparator: {
-    height: 1,
-    backgroundColor: "#e0e0e0",
-    width: "100%",
-    marginBottom: 15,
+  statusGrid: {
+    gap: 12,
   },
-  statusOptions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 15,
-  },
-  statusOptionButton: {
-    width: "48%",
-    backgroundColor: "#2F80ED",
-    marginVertical: 4,
+  statusChip: {
+    backgroundColor: "rgba(106,17,203,0.05)",
+    borderRadius: 16,
     paddingVertical: 12,
-    borderRadius: 8,
-    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  statusChipContent: {
+    flexDirection: "row",
     alignItems: "center",
   },
-  statusOptionContent: {
-    alignItems: "center",
-  },
-  statusOptionText: {
-    color: "#fff",
+  statusText: {
     fontSize: 14,
+    color: "#6a11cb",
     fontWeight: "500",
-    marginTop: 5,
+    marginLeft: 8,
   },
   customStatusLabel: {
-    fontSize: 14,
-    color: "#333",
+    fontSize: 13,
+    color: "#718096",
+    fontWeight: "600",
+    marginTop: 12,
     marginBottom: 8,
-    marginTop: 15,
-    textAlign: "center",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
   customStatusInput: {
-    width: "100%",
-    borderWidth: 1,
-    borderColor: "#2F80ED",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 15,
+    backgroundColor: "rgba(106,17,203,0.05)",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     fontSize: 14,
-    color: "#1E293B",
+    color: "#6a11cb",
+    marginBottom: 12,
   },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  modalActionButton: {
-    flex: 1,
-    backgroundColor: "#2F80ED",
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginHorizontal: 4,
-    flexDirection: "row",
-    justifyContent: "center",
+  submitButton: {
+    backgroundColor: "#6a11cb",
+    borderRadius: 16,
+    paddingVertical: 12,
     alignItems: "center",
   },
-  modalActionIcon: {
-    marginRight: 8,
-  },
-  modalActionButtonText: {
-    color: "#fff",
+  submitButtonText: {
     fontSize: 14,
+    color: "#FFFFFF",
     fontWeight: "500",
-  },
-  modalCancelButton: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#2F80ED",
-  },
-  modalCancelButtonText: {
-    color: "#2F80ED",
   },
   popupOverlay: {
     flex: 1,
