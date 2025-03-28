@@ -216,11 +216,16 @@ export default function Dashboard() {
     }
   }, [nearestAirports.closest, selectedAirport]);
 
-  // Update user's airportCode and lastLogin only once on initial load
+  // Note: In development, due to hot reloading, this effect may run multiple times as the component remounts.
+  // In a production build, this effect will run only once per app launch when the component mounts.
   useEffect(() => {
+    
     if (userId && nearestAirports.closest && !hasUpdatedRef.current) {
       hasUpdatedRef.current = true; // Mark as updated to prevent re-runs
       updateUserLocationAndLogin(userId, nearestAirports.closest.airportCode);
+      console.log('Updated user location and login');
+    } else {
+      
     }
   }, [userId, nearestAirports.closest, updateUserLocationAndLogin]);
 
