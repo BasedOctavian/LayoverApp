@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -63,7 +63,7 @@ export default function Dashboard() {
   const [searchType, setSearchType] = useState<"airports" | "events">("airports");
   const { getEvents } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
-  const { updateUser } = useUsers();
+  const { updateUser, updateUserLocationAndLogin } = useUsers();
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
@@ -89,6 +89,8 @@ export default function Dashboard() {
     message: "",
     type: "success",
   });
+
+  const hasUpdatedRef = useRef(false); // Tracks if the Firestore update has run
 
   const presetStatuses = [
     { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#6a11cb" /> },
@@ -142,6 +144,7 @@ export default function Dashboard() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setAuthUser(user);
+        setUserId(user.uid); // Set userId here
       } else {
         router.replace("login/login");
       }
@@ -213,9 +216,13 @@ export default function Dashboard() {
     }
   }, [nearestAirports.closest, selectedAirport]);
 
+  // Update user's airportCode and lastLogin only once on initial load
   useEffect(() => {
-    if (user) setUserId(user.uid);
-  }, [user]);
+    if (userId && nearestAirports.closest && !hasUpdatedRef.current) {
+      hasUpdatedRef.current = true; // Mark as updated to prevent re-runs
+      updateUserLocationAndLogin(userId, nearestAirports.closest.airportCode);
+    }
+  }, [userId, nearestAirports.closest, updateUserLocationAndLogin]);
 
   const features: FeatureButton[] = [
     { icon: <FontAwesome5 name="user-friends" size={24} color="#2F80ED" />, title: "Nearby Users", screen: "locked/lockedScreen" },

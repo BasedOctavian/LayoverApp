@@ -12,8 +12,8 @@ export type Airport = {
 type NearestAirportsResult = {
   closest: Airport | null;
   tenClosest: Airport[];
-};
 
+  
 // Extended list of airports (major and regional)
 const airports: Airport[] = [
   // Major Airports

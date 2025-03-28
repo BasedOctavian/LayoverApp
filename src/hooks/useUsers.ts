@@ -1,6 +1,5 @@
-// hooks/useUsers.ts
 import { useEffect, useState } from "react";
-import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 const useUsers = () => {
@@ -18,6 +17,7 @@ const useUsers = () => {
     } catch (error) {
       setError("Failed to fetch users.");
       console.error(error);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -30,7 +30,7 @@ const useUsers = () => {
       const userDoc = doc(db, "users", uid);
       const snapshot = await getDoc(userDoc);
       if (snapshot.exists()) {
-        return { id: snapshot.id, ...snapshot.data() }; // Return the user document with the ID
+        return { id: snapshot.id, ...snapshot.data() };
       } else {
         setError("User not found.");
         return null;
@@ -38,6 +38,7 @@ const useUsers = () => {
     } catch (error) {
       setError("Failed to fetch user.");
       console.error(error);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -49,10 +50,11 @@ const useUsers = () => {
     try {
       const usersCollection = collection(db, "users");
       const docRef = await addDoc(usersCollection, userData);
-      return docRef.id; // Return the ID of the newly created user
+      return docRef.id;
     } catch (error) {
       setError("Failed to add user.");
       console.error(error);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -86,7 +88,56 @@ const useUsers = () => {
     }
   };
 
-  return { getUsers, getUser, addUser, updateUser, deleteUser, loading, error };
+  // Update user's airport code and last login timestamp
+  const updateUserLocationAndLogin = async (userId: string, airportCode: string) => {
+    setLoading(true);
+    try {
+      const userDoc = doc(db, "users", userId);
+      await updateDoc(userDoc, {
+        airportCode,
+        lastLogin: serverTimestamp(),
+      });
+    } catch (error) {
+      setError("Failed to update user location and login.");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // New function to get nearby users
+  const getNearbyUsers = async (airportCode: string, fortyMinutesAgo: Date) => {
+    setLoading(true);
+    try {
+      const usersCollection = collection(db, "users");
+      const q = query(
+        usersCollection,
+        where("airportCode", "==", airportCode),
+        where("lastLogin", ">=", fortyMinutesAgo)
+      );
+      const snapshot = await getDocs(q);
+      const users = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      return users;
+    } catch (error) {
+      setError("Failed to fetch nearby users.");
+      console.error(error);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { 
+    getUsers, 
+    getUser, 
+    addUser, 
+    updateUser, 
+    deleteUser, 
+    updateUserLocationAndLogin,
+    getNearbyUsers, // Add the new function to the returned object
+    loading, 
+    error 
+  };
 };
 
 export default useUsers;
