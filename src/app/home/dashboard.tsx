@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -27,6 +27,9 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNearestAirports } from "../../hooks/useNearestAirports";
+import { useFilteredEvents } from "../../hooks/useFilteredEvents";
+import StatusSheet from "../../components/StatusSheet";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -69,7 +72,6 @@ export default function Dashboard() {
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
   const { getSportEvents } = useSportEvents();
   const [allSportEvents, setAllSportEvents] = useState<any[]>([]);
-  const [matchingEvents, setMatchingEvents] = useState<any[]>([]);
   const [showStatusSheet, setShowStatusSheet] = useState(false);
   const sheetAnim = useState(new Animated.Value(0))[0];
   const [customStatus, setCustomStatus] = useState("");
@@ -91,13 +93,6 @@ export default function Dashboard() {
   });
 
   const hasUpdatedRef = useRef(false); // Tracks if the Firestore update has run
-
-  const presetStatuses = [
-    { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#6a11cb" /> },
-    { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#6a11cb" /> },
-    { label: "Work Mode", icon: <Feather name="briefcase" size={18} color="#6a11cb" /> },
-    { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#6a11cb" /> },
-  ];
 
   const nearbyUsers: NearbyUser[] = [
     { id: "1", name: "Alex Johnson", status: "Down to Chat" },
@@ -193,22 +188,7 @@ export default function Dashboard() {
     fetchAirports();
   }, [getAirports]);
 
-  const [nearestAirports, setNearestAirports] = useState<{
-    closest: Airport | null;
-    tenClosest: Airport[];
-  }>({ closest: null, tenClosest: [] });
-  useEffect(() => {
-    if (!userLocation || allAirports.length === 0) return;
-    const airportsWithDistance = allAirports.map((airport) => ({
-      ...airport,
-      distance: haversineDistance(userLocation.lat, userLocation.long, airport.lat, airport.long),
-    }));
-    airportsWithDistance.sort((a, b) => a.distance! - b.distance!);
-    setNearestAirports({
-      closest: airportsWithDistance[0] || null,
-      tenClosest: airportsWithDistance.slice(0, 10),
-    });
-  }, [userLocation, allAirports]);
+  const nearestAirports = useNearestAirports(userLocation, allAirports);
 
   useEffect(() => {
     if (!selectedAirport && nearestAirports.closest) {
@@ -216,18 +196,16 @@ export default function Dashboard() {
     }
   }, [nearestAirports.closest, selectedAirport]);
 
-  // Note: In development, due to hot reloading, this effect may run multiple times as the component remounts.
-  // In a production build, this effect will run only once per app launch when the component mounts.
   useEffect(() => {
-    
     if (userId && nearestAirports.closest && !hasUpdatedRef.current) {
       hasUpdatedRef.current = true; // Mark as updated to prevent re-runs
       updateUserLocationAndLogin(userId, nearestAirports.closest.airportCode);
-      console.log('Updated user location and login');
-    } else {
-      
+      console.log("Updated user location and login");
     }
   }, [userId, nearestAirports.closest, updateUserLocationAndLogin]);
+
+  const { filteredRegularEvents, matchingSportEvents } = useFilteredEvents(selectedAirport, events, allSportEvents);
+  const allEvents = [...matchingSportEvents, ...filteredRegularEvents];
 
   const features: FeatureButton[] = [
     { icon: <FontAwesome5 name="user-friends" size={24} color="#2F80ED" />, title: "Nearby Users", screen: "locked/lockedScreen" },
@@ -238,49 +216,16 @@ export default function Dashboard() {
     { icon: <Ionicons name="settings" size={24} color="#2F80ED" />, title: "Settings", screen: "settings/settings" },
   ];
 
-  const filteredRegularEvents = useMemo(() => {
-    if (!selectedAirport) return [];
-    return events.filter((event) => event.airportCode === selectedAirport.airportCode).map((event) => ({
-      id: event.id,
-      name: event.name,
-      description: event.description || "No description",
-      type: "regular",
-      organizer: event.organizer,
-    }));
-  }, [selectedAirport, events]);
-
-  useEffect(() => {
-    if (!selectedAirport) {
-      setMatchingEvents([]);
-      return;
-    }
-    const airportCity = selectedAirport.location.split(",")[0].trim().toLowerCase();
-    const filteredSportEvents = allSportEvents.filter((event) => {
-      const awayTeam = event.awayTeam ? event.awayTeam.toLowerCase() : "";
-      const homeTeam = event.homeTeam ? event.homeTeam.toLowerCase() : "";
-      return awayTeam.includes(airportCity) || homeTeam.includes(airportCity);
-    }).map((event) => ({
-      id: event.eventUID,
-      name: `${event.awayTeam} vs. ${event.homeTeam}`,
-      description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
-      type: "sport",
-      organizer: null,
-    }));
-    setMatchingEvents(filteredSportEvents);
-  }, [selectedAirport, allSportEvents]);
-
-  const allEvents = [...matchingEvents, ...filteredRegularEvents];
-
   const filteredResults =
     searchType === "airports"
       ? nearestAirports.tenClosest.filter((airport) => airport.name.toLowerCase().includes(searchQuery.toLowerCase()))
       : allEvents.filter((event) => event.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const dashboardData = useMemo(() => [
+  const dashboardData = [
     { type: "section", id: "users", data: nearbyUsers },
     { type: "section", id: "events", data: allEvents },
     ...features.map((feature, index) => ({ type: "feature", id: index.toString(), data: feature })),
-  ], [nearbyUsers, allEvents, features]);
+  ];
 
   return (
     <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
@@ -485,67 +430,15 @@ export default function Dashboard() {
             <TouchableOpacity style={styles.fab} onPress={toggleStatusSheet}>
               <Feather name="edit" size={24} color="#FFF" />
             </TouchableOpacity>
-            {/* Status Sheet */}
-            {showStatusSheet && (
-              <Animated.View
-                style={[
-                  styles.statusSheet,
-                  {
-                    transform: [
-                      {
-                        scale: sheetAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.8, 1],
-                        }),
-                      },
-                      {
-                        translateY: sheetAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [20, 0],
-                        }),
-                      },
-                    ],
-                    opacity: sheetAnim,
-                  },
-                ]}
-              >
-                <Text style={styles.statusTitle}>Update Status</Text>
-                <View style={styles.statusGrid}>
-                  {presetStatuses.map((status, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.statusChip}
-                      onPress={() => {
-                        handleUpdateMoodStatus(status.label);
-                        toggleStatusSheet();
-                      }}
-                    >
-                      <View style={styles.statusChipContent}>
-                        {status.icon}
-                        <Text style={styles.statusText}>{status.label}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={styles.customStatusLabel}>Custom Status</Text>
-                <TextInput
-                  style={styles.customStatusInput}
-                  value={customStatus}
-                  onChangeText={setCustomStatus}
-                  placeholder="Enter your status..."
-                  placeholderTextColor="#718096"
-                />
-                <TouchableOpacity
-                  style={styles.submitButton}
-                  onPress={() => {
-                    handleUpdateMoodStatus(customStatus);
-                    toggleStatusSheet();
-                  }}
-                >
-                  <Text style={styles.submitButtonText}>Submit</Text>
-                </TouchableOpacity>
-              </Animated.View>
-            )}
+            {/* Status Sheet Component */}
+            <StatusSheet
+              showStatusSheet={showStatusSheet}
+              sheetAnim={sheetAnim}
+              customStatus={customStatus}
+              setCustomStatus={setCustomStatus}
+              handleUpdateMoodStatus={handleUpdateMoodStatus}
+              toggleStatusSheet={toggleStatusSheet}
+            />
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -824,77 +717,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
-  },
-  statusSheet: {
-    position: "absolute",
-    bottom: 72,
-    right: 0,
-    backgroundColor: "rgba(255,255,255,0.98)",
-    borderRadius: 28,
-    padding: 20,
-    width: 240,
-    shadowColor: "#2D3748",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
-    zIndex: 101,
-  },
-  statusTitle: {
-    fontSize: 13,
-    color: "#718096",
-    fontWeight: "600",
-    marginBottom: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  statusGrid: {
-    gap: 12,
-  },
-  statusChip: {
-    backgroundColor: "rgba(106,17,203,0.05)",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  statusChipContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statusText: {
-    fontSize: 14,
-    color: "#6a11cb",
-    fontWeight: "500",
-    marginLeft: 8,
-  },
-  customStatusLabel: {
-    fontSize: 13,
-    color: "#718096",
-    fontWeight: "600",
-    marginTop: 12,
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  customStatusInput: {
-    backgroundColor: "rgba(106,17,203,0.05)",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    fontSize: 14,
-    color: "#6a11cb",
-    marginBottom: 12,
-  },
-  submitButton: {
-    backgroundColor: "#6a11cb",
-    borderRadius: 16,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  submitButtonText: {
-    fontSize: 14,
-    color: "#FFFFFF",
-    fontWeight: "500",
   },
   popupOverlay: {
     flex: 1,
