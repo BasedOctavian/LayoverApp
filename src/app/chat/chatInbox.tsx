@@ -20,6 +20,7 @@ import { auth } from "../../../firebaseConfig";
 import useAuth from "../../hooks/auth";
 import useChats from "../../hooks/useChats";
 import useUsers from "../../hooks/useUsers";
+import TopBar from "../../components/TopBar";
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
@@ -134,13 +135,7 @@ export default function ChatInbox() {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-        {/* Top Bar */}
-        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${user?.uid}`)}>
-            <Ionicons name="person-circle" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+        <TopBar />
 
         <View style={styles.container}>
           {/* Optional Search Input */}

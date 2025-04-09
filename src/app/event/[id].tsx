@@ -12,6 +12,7 @@ import { auth } from "../../../firebaseConfig";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "react-native";
+import TopBar from "../../components/TopBar";
 
 export default function Event() {
   const { id } = useLocalSearchParams();
@@ -254,13 +255,7 @@ export default function Event() {
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
-        {/* Top Bar */}
-        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${user?.uid}`)}>
-            <Ionicons name="person-circle" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+        <TopBar />
         {/* ScrollView */}
         <ScrollView
           style={styles.scrollContainer}

@@ -220,13 +220,7 @@ const EventCreation: React.FC = () => {
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-        {/* Global Top Bar */}
-        <View style={styles.topBar}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${authUser?.uid}`)}>
-            <Feather name="user" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+       <TopBar />
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : "height"}

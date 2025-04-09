@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import useAuth from '../../../hooks/auth';
 import useChat from '../../../hooks/useChat';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import TopBar from '../../../components/TopBar';
 
 export default function EventChat() {
   const { id } = useLocalSearchParams(); // Event ID from navigation params
@@ -64,13 +65,7 @@ export default function EventChat() {
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
-        {/* Top Bar matching Event Screen */}
-        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${user?.uid}`)}>
-            <Ionicons name="person-circle" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+        <TopBar />
         {loading ? (
           <View style={styles.loadingContainer}>
             <Text style={styles.loadingText}>Loading chat...</Text>

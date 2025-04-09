@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Animated, // Added for animation
+  Easing,   // Added for easing function
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -59,13 +61,26 @@ const UserOnboarding = () => {
   const { user, signup, loading } = useAuth();
   const router = useRouter();
   const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(1)); // Animation state for fade effect
 
+  // Check authentication status
   useEffect(() => {
     if (user !== undefined) {
       setIsAuthChecked(true);
       if (user) router.replace("/home/dashboard");
     }
   }, [user]);
+
+  // Animate content fade-in when step changes
+  useEffect(() => {
+    fadeAnim.setValue(0); // Start with opacity 0
+    Animated.timing(fadeAnim, {
+      toValue: 1, // Animate to opacity 1
+      duration: 300, // 300ms duration
+      easing: Easing.inOut(Easing.ease), // Smooth easing
+      useNativeDriver: true, // Use native driver for performance
+    }).start();
+  }, [stepIndex]);
 
   const steps: Step[] = [
     {
@@ -303,7 +318,7 @@ const UserOnboarding = () => {
           keyboardShouldPersistTaps="handled"
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.contentContainer}>
+            <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
               {!isAuthChecked ? (
                 <ActivityIndicator size="large" color="#6366F1" />
               ) : (
@@ -358,7 +373,7 @@ const UserOnboarding = () => {
                   )}
                 </>
               )}
-            </View>
+            </Animated.View>
           </TouchableWithoutFeedback>
         </ScrollView>
       </KeyboardAvoidingView>

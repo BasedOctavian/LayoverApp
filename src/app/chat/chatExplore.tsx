@@ -24,6 +24,7 @@ import { db } from "../../../firebaseConfig";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
+import TopBar from "../../components/TopBar";
 
 export default function ChatExplore() {
   const { user } = useAuth();
@@ -155,13 +156,7 @@ export default function ChatExplore() {
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-        {/* Global Top Bar */}
-        <View style={styles.topBar}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${authUser?.uid}`)}>
-            <Ionicons name="person-circle" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+       <TopBar />
         <View style={styles.container}>
           <TextInput
             style={styles.searchInput}

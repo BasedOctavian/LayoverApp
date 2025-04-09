@@ -19,6 +19,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import useAuth from "../hooks/auth";
 import { router } from "expo-router";
 import { db } from "../../firebaseConfig";
+import TopBar from "../components/TopBar";
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
@@ -260,12 +261,7 @@ const Swipe = () => {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
-            <Ionicons name="person-circle" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+        <TopBar />
         <View style={{ flex: 1 }}>
           {showSwiper && users.length > 0 ? (
             <Swiper

@@ -23,6 +23,7 @@ import { auth } from "../../../firebaseConfig";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import TopBar from "../../components/TopBar";
 
 export default function Chat() {
   // Get chat ID from params
@@ -169,13 +170,7 @@ export default function Chat() {
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-        {/* Global Top Bar */}
-        <View style={[styles.topBar, { paddingTop: insets.top, height: globalTopBarHeight }]}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${authUser?.uid}`)}>
-            <Ionicons name="person-circle" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+        <TopBar />
 
         {/* Chat Header Top Bar */}
         <TouchableOpacity onPress={() => router.push(`/profile/${partner.id}`)}>

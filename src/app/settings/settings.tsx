@@ -18,6 +18,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../../ThemeContext";
+import TopBar from "../../components/TopBar";
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -98,17 +99,11 @@ export default function Settings() {
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#E6F0FA", "#F8FAFC"] : ["#1E293B", "#2D3748"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        {/* Global Top Bar */}
-        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-          <Text style={styles.logo}>Wingman</Text>
-          <TouchableOpacity onPress={() => router.push(`profile/${userId}`)}>
-            <Ionicons name="person-circle" size={32} color="#2F80ED" />
-          </TouchableOpacity>
-        </View>
+        <TopBar />
         {/* Settings Content */}
         <ScrollView contentContainerStyle={styles.settingsContainer}>
           {/* Header with Settings Title */}
-          <View style={[styles.header, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748" }]}>
+          <View style={[styles.header, { backgroundColor: theme === "light" ? "#F8FAFC" : "#F8FAFC" }]}>
             <Text style={[styles.headerTitle, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
               Settings
             </Text>
@@ -261,7 +256,7 @@ const styles = StyleSheet.create({
   header: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: "#F8FAFC",
     marginBottom: 16,
   },
   headerTitle: {
@@ -322,7 +317,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F8FAFC",
     justifyContent: "center",
     marginLeft: "auto",
     position: "relative",

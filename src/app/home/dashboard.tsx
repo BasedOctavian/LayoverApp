@@ -30,6 +30,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useNearestAirports } from "../../hooks/useNearestAirports";
 import { useFilteredEvents } from "../../hooks/useFilteredEvents";
 import StatusSheet from "../../components/StatusSheet";
+import TopBar from "../../components/TopBar";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -134,6 +135,7 @@ export default function Dashboard() {
     }).start();
     setShowStatusSheet(!showStatusSheet);
   };
+  
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -229,13 +231,7 @@ export default function Dashboard() {
 
   return (
     <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
-      <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-        <Text style={styles.logo}>Wingman</Text>
-        <TouchableOpacity onPress={() => router.push(`profile/${userId}`)}>
-          <Ionicons name="person-circle" size={32} color="#2F80ED" />
-        </TouchableOpacity>
-      </View>
+      <TopBar />
       {showSearch && (
         <View
           style={[styles.searchHeader, { top: topBarHeight }]}

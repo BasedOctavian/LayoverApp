@@ -20,6 +20,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import ImageViewing from "react-native-image-viewing";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import TopBar from "../../components/TopBar";
 
 const Profile = () => {
   const [userData, setUserData] = useState<any>(null);
@@ -147,27 +148,9 @@ const Profile = () => {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
+      <LinearGradient colors={["#E6F0FA", "#E6F0FA"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
-        {/* Top Bar */}
-        <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-          <Text style={styles.logo}>Wingman</Text>
-          <View style={styles.topBarRight}>
-            {id === authUser?.uid && (
-              <TouchableOpacity onPress={() => router.push("profile/editProfile")}>
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.05)"]}
-                  style={styles.settingsGradient}
-                >
-                  <MaterialIcons name="tune" size={22} color="#6a11cb" />
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={() => router.push(`profile/${authUser?.uid}`)}>
-              <Ionicons name="person-circle" size={32} color="#2F80ED" />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <TopBar />
 
         <ScrollView
           style={styles.scrollContainer}

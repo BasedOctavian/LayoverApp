@@ -22,6 +22,7 @@ import useUsers from "../../hooks/useUsers";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../firebaseConfig";
 import { useRouter } from "expo-router";
+import TopBar from "../../components/TopBar";
 
 interface Trip {
   id: string;
@@ -306,7 +307,8 @@ const EditProfile = () => {
   }
 
   return (
-    <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
+    <LinearGradient colors={["#E6F0FA", "#E6F0FA"]} style={styles.gradient}>
+      <TopBar />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* Profile Header */}
