@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   SafeAreaView,
+  ActivityIndicator,
 } from "react-native";
 import MapView, { Circle, Marker } from "react-native-maps";
 import { LinearGradient } from "expo-linear-gradient";
@@ -16,6 +17,8 @@ import { useRouter } from "expo-router";
 import useEvents from "../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
 import * as Location from "expo-location";
+import LoadingSpinner from "../components/LoadingSpinner";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Haversine formula for distance calculation
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -37,6 +40,9 @@ export default function EventCreation() {
   const { getEvents } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [locationLoading, setLocationLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
   // Request current location on mount
   useEffect(() => {
@@ -44,6 +50,7 @@ export default function EventCreation() {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Permission to access location was denied");
+        setLocationLoading(false);
         return;
       }
       let location = await Location.getCurrentPositionAsync({});
@@ -51,33 +58,42 @@ export default function EventCreation() {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
+      setLocationLoading(false);
     })();
   }, []);
 
   // Fetch events and add organizer names
   useEffect(() => {
     const fetchEvents = async () => {
-      const fetchedEvents = await getEvents();
-      if (fetchedEvents) {
-        const eventsWithOrganizerNames = await Promise.all(
-          fetchedEvents.map(async (event: any) => {
-            const organizer = await getUser(event.organizer);
-            return {
-              id: event.id,
-              name: event.name,
-              description: event.description,
-              latitude: parseFloat(event.latitude),
-              longitude: parseFloat(event.longitude),
-              eventImage: event.eventImage,
-              createdAt: event.createdAt.toDate(),
-              startTime: new Date(event.startTime),
-              organizer: event.organizer,
-              organizerName: organizer?.name || "Auto Generated",
-              attendees: event.attendees || [],
-            };
-          })
-        );
-        setEvents(eventsWithOrganizerNames);
+      setIsLoading(true);
+      try {
+        const fetchedEvents = await getEvents();
+        if (fetchedEvents) {
+          const eventsWithOrganizerNames = await Promise.all(
+            fetchedEvents.map(async (event: any) => {
+              const organizer = await getUser(event.organizer);
+              return {
+                id: event.id,
+                name: event.name,
+                description: event.description,
+                latitude: parseFloat(event.latitude),
+                longitude: parseFloat(event.longitude),
+                eventImage: event.eventImage,
+                createdAt: event.createdAt.toDate(),
+                startTime: new Date(event.startTime),
+                organizer: event.organizer,
+                organizerName: organizer && 'name' in organizer ? organizer.name : "Auto Generated",
+                attendees: event.attendees || [],
+              };
+            })
+          );
+          setEvents(eventsWithOrganizerNames);
+        }
+      } catch (error) {
+        console.error("Error fetching events:", error);
+        Alert.alert("Error", "Failed to load events. Please try again.");
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchEvents();
@@ -155,11 +171,39 @@ export default function EventCreation() {
     router.push("locked/lockedScreen");
   };
 
+  // Show loading state
+  if (isLoading || locationLoading) {
+    return (
+      <SafeAreaView style={styles.flex}>
+        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
+          <View style={[styles.topBar, { paddingTop: insets.top }]}>
+            <Text style={styles.logo}>Wingman</Text>
+            <TouchableOpacity onPress={() => router.push("profile")}>
+              <Feather name="user" size={32} color="#2F80ED" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.loadingContainer}>
+            <LoadingSpinner 
+              size={120}
+              color="#2F80ED"
+              customTexts={[
+                "Finding events near you...",
+                "Discovering exciting activities...",
+                "Loading your travel companions...",
+                "Preparing your next adventure..."
+              ]}
+            />
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+    <SafeAreaView style={styles.flex}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
         {/* Global Top Bar */}
-        <View style={styles.topBar}>
+        <View style={[styles.topBar, { paddingTop: insets.top }]}>
           <Text style={styles.logo}>Wingman</Text>
           <TouchableOpacity onPress={() => router.push("profile")}>
             <Feather name="user" size={32} color="#2F80ED" />
@@ -361,6 +405,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 10,
     fontWeight: "500",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

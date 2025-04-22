@@ -16,11 +16,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "../../../firebaseConfig";
+import { db, storage } from "../../../config/firebaseConfig";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../firebaseConfig";
+import { auth } from "../../../config/firebaseConfig";
 import { useRouter } from "expo-router";
 import TopBar from "../../components/TopBar";
 

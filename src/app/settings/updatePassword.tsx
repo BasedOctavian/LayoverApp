@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import { getAuth, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
-import { ThemeContext } from "../../ThemeContext"; // Import ThemeContext
+import { ThemeContext } from "../../context/ThemeContext"; // Import ThemeContext
 
 export default function UpdatePassword() {
   const { changePassword } = useAuth();

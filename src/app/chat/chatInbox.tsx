@@ -16,7 +16,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../firebaseConfig";
+import { auth } from "../../../config/firebaseConfig";
 import useAuth from "../../hooks/auth";
 import useChats from "../../hooks/useChats";
 import useUsers from "../../hooks/useUsers";

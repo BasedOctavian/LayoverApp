@@ -24,7 +24,7 @@ import useSportEvents from "../../hooks/useSportEvents";
 import useUsers from "../../hooks/useUsers";
 import { serverTimestamp } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../firebaseConfig";
+import { auth } from "../../../config/firebaseConfig";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNearestAirports } from "../../hooks/useNearestAirports";
@@ -210,7 +210,7 @@ export default function Dashboard() {
   const allEvents = [...matchingSportEvents, ...filteredRegularEvents];
 
   const features: FeatureButton[] = [
-    { icon: <FontAwesome5 name="user-friends" size={24} color="#2F80ED" />, title: "Nearby Users", screen: "locked/lockedScreen" },
+    { icon: <FontAwesome5 name="user-friends" size={24} color="#2F80ED" />, title: "Nearby Users", screen: "swipe" },
     { icon: <Feather name="plus" size={24} color="#2F80ED" />, title: "Create Event", screen: "eventCreation" },
     { icon: <MaterialIcons name="event" size={24} color="#2F80ED" />, title: "Events", screen: "home" },
     { icon: <MaterialIcons name="message" size={24} color="#2F80ED" />, title: "Messages", screen: "chat/chatInbox" },
@@ -231,7 +231,7 @@ export default function Dashboard() {
 
   return (
     <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-      <TopBar />
+      <TopBar onProfilePress={() => router.push(`profile/${authUser?.uid}`)} />
       {showSearch && (
         <View
           style={[styles.searchHeader, { top: topBarHeight }]}

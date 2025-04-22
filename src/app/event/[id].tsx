@@ -8,7 +8,7 @@ import MapView, { Marker } from "react-native-maps";
 import useUsers from "../../hooks/useUsers";
 import useAuth from "../../hooks/auth";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../firebaseConfig";
+import { auth } from "../../../config/firebaseConfig";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "react-native";

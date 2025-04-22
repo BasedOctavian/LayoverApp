@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
-import { db } from "../../firebaseConfig";
+import { db } from "../../config/firebaseConfig";
 
 const useUsers = () => {
   const [loading, setLoading] = useState<boolean>(false);

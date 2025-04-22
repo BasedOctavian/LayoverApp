@@ -9,7 +9,7 @@ import {
   updateDoc,
   deleteDoc,
 } from "firebase/firestore";
-import { db } from "../../firebaseConfig";
+import { db } from "../../config/firebaseConfig";
 
 // Define the Airport type.
 // You may extend this type with more fields as needed.

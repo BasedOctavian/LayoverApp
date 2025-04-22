@@ -13,11 +13,11 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../../firebaseConfig";
+import { db } from "../../../config/firebaseConfig";
 import useAuth from "../../hooks/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../firebaseConfig";
+import { auth } from "../../../config/firebaseConfig";
 import ImageViewing from "react-native-image-viewing";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import TopBar from "../../components/TopBar";

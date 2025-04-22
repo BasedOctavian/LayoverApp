@@ -25,8 +25,10 @@ import useAirports, { Airport } from '../hooks/useAirports';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '../../firebaseConfig';
+import { auth } from '../../config/firebaseConfig';
 import { useRouter } from 'expo-router';
+import TopBar from '../components/TopBar';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const categories = ['Wellness', 'Food & Drink', 'Entertainment', 'Travel Tips', 'Activity', 'Misc'];
 
@@ -217,10 +219,34 @@ const EventCreation: React.FC = () => {
     }
   };
 
+  // Show loading state
+  if (authLoading || loading) {
+    return (
+      <SafeAreaView style={styles.flex}>
+        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
+          <TopBar onProfilePress={() => {}} />
+          <View style={styles.loadingContainer}>
+            <LoadingSpinner 
+              size={120}
+              color="#2F80ED"
+              customTexts={[
+                "Creating your event...",
+                "Setting up the details...",
+                "Almost ready...",
+                "Preparing for takeoff..."
+              ]}
+            />
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+    <>
+    <TopBar onProfilePress={() => {}} />
+    <SafeAreaView style={styles.flex}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-       <TopBar />
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -420,7 +446,7 @@ const EventCreation: React.FC = () => {
             colors={['rgba(255,255,255,0.98)', 'rgba(241,245,249,0.98)']}
             style={styles.searchModal}
           >
-            <View style={styles.searchHeader}>
+            <View style={styles.searchModalHeader}>
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search airports..."
@@ -433,13 +459,13 @@ const EventCreation: React.FC = () => {
                 style={styles.cancelButton}
                 onPress={() => setShowSearch(false)}
               >
-                <Feather name="x" size={24} color="#2F80ED" />
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             </View>
             <ScrollView>
-              {filteredAirports.map((airport, index) => (
+              {filteredAirports.map((airport) => (
                 <TouchableOpacity
-                  key={index}
+                  key={airport.airportCode}
                   style={styles.airportItem}
                   onPress={() => handleSelectAirport(airport)}
                 >
@@ -452,6 +478,7 @@ const EventCreation: React.FC = () => {
         )}
       </LinearGradient>
     </SafeAreaView>
+    </>
   );
 };
 
@@ -617,6 +644,13 @@ const styles = StyleSheet.create({
     padding: 16,
     marginTop: 35,
   },
+  searchModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
   searchInput: {
     flex: 1,
     backgroundColor: '#F8FAFC',
@@ -626,6 +660,10 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     padding: 8,
+  },
+  cancelButtonText: {
+    color: '#2F80ED',
+    fontSize: 16,
   },
   airportItem: {
     padding: 16,
@@ -662,6 +700,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

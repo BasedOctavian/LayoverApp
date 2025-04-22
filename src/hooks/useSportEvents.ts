@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { collection, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { db, storage } from "../../firebaseConfig";
+import { db, storage } from "../../config/firebaseConfig";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 const useSportEvents = () => {

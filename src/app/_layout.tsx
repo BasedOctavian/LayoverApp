@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import { TouchableOpacity, View } from "react-native";
 import { AntDesign, MaterialIcons } from "@expo/vector-icons"; // Import the required icons
 import "../../global.css";
-import { ThemeProvider } from "../ThemeContext";
+import { ThemeProvider } from "../context/ThemeContext";
 
 export default function RootLayout() {
   return (

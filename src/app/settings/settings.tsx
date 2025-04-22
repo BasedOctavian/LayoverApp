@@ -15,9 +15,9 @@ import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../firebaseConfig";
+import { auth } from "../../../config/firebaseConfig";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { ThemeContext } from "../../ThemeContext";
+import { ThemeContext } from "../../context/ThemeContext";
 import TopBar from "../../components/TopBar";
 
 export default function Settings() {

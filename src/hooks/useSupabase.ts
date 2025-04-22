@@ -1,6 +1,6 @@
 // useSupabase.ts
 import { useState } from 'react';
-import { supabase } from './../../supabaseClient';
+import { supabase } from '../../config/supabaseClient';
 
 // Hook for uploading profile pictures
 export const useUploadProfilePic = () => {

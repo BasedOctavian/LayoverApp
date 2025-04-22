@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import useSportEvents from "../../hooks/useSportEvents";
 import { onAuthStateChanged, User } from "firebase/auth"; // Added auth imports
-import { auth } from "../../../firebaseConfig"; // Adjust path as needed
+import { auth } from "../../../config/firebaseConfig"; // Adjust path as needed
 import useAuth from "../../hooks/auth";
 import { router } from "expo-router"; // Added router import
 

@@ -1,7 +1,7 @@
 // hooks/useEvents.ts
 import { useEffect, useState } from "react";
 import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db, storage } from "../../firebaseConfig";
+import { db, storage } from "../../config/firebaseConfig";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 const useEvents = () => {

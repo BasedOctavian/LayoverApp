@@ -21,6 +21,7 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import useAuth from "../hooks/auth";
 import { useRouter } from "expo-router";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 const avatarSize = 100; // Fixed size for better control
 
@@ -306,6 +307,26 @@ const UserOnboarding = () => {
     }
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
+          <LoadingSpinner 
+            size={120}
+            color="#2F80ED"
+            customTexts={[
+              "Creating your profile...",
+              "Setting up your account...",
+              "Almost ready to take off...",
+              "Preparing your journey..."
+            ]}
+          />
+        </LinearGradient>
+      </View>
+    );
+  }
+
   return (
     <LinearGradient colors={["#F8FAFF", "#EFF2FF"]} style={styles.gradient}>
       <KeyboardAvoidingView
@@ -532,6 +553,14 @@ const styles = StyleSheet.create({
     fontFamily: "Inter-Medium",
     fontSize: 14,
     marginTop: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  flex: {
+    flex: 1,
   },
 });
 

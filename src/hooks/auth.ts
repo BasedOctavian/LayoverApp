@@ -11,7 +11,7 @@ import {
   sendEmailVerification,
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db, storage } from "../../firebaseConfig";
+import { auth, db, storage } from "../../config/firebaseConfig";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 interface UserData {

@@ -9,41 +9,111 @@ import {
   TouchableOpacity,
   Alert,
   Animated,
+  Easing,
 } from "react-native";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import Swiper from "react-native-deck-swiper";
 import useUsers from "./../hooks/useUsers";
 import { arrayUnion, doc, onSnapshot } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import useAuth from "../hooks/auth";
 import { router } from "expo-router";
-import { db } from "../../firebaseConfig";
+import { db } from "../../config/firebaseConfig";
 import TopBar from "../components/TopBar";
+import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import useChats from "../hooks/useChats";
+import LoadingSpinner from "../components/LoadingSpinner";
+
+interface User {
+  id: string;
+  name: string;
+  age?: number;
+  profilePicture?: string;
+  bio?: string;
+  languages?: string[];
+  interests?: string[];
+  goals?: string[];
+  travelHistory?: string[];
+  moodStatus?: string;
+  likedUsers?: string[];
+  dislikedUsers?: string[];
+}
+
+interface Connection {
+  user1: string;
+  user2: string;
+}
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
 const CARD_HEIGHT = height * 0.80;
 
 const Swipe = () => {
-  const [users, setUsers] = useState([]);
-  const [connections, setConnections] = useState([]);
-  const [currentUserData, setCurrentUserData] = useState(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const { getUsers, updateUser, loading, error } = useUsers();
   const { user } = useAuth();
-  const currentUserUID = user?.uid || "some-uid"; // Step 1: Store authenticated user's ID
+  const { addMessage } = useChats();
+  const currentUserUID = user?.uid || "some-uid";
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSwiper, setShowSwiper] = useState(false);
+  const [showQuickMessage, setShowQuickMessage] = useState(false);
+  const [matchedUser, setMatchedUser] = useState<User | null>(null);
+  const [chatId, setChatId] = useState<string | null>(null);
   const buttonScale = useRef(new Animated.Value(1)).current;
-  const insets = useSafeAreaInsets();
-  const topBarHeight = 50 + insets.top;
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showMessageOptions, setShowMessageOptions] = useState(false);
+
+  const presetMessages = [
+    "Hey! Great to match with you! 👋",
+    "Would love to chat more! 💬",
+    "Let's connect! ✨",
+  ];
+
+  const sendQuickMessage = async (message: string, userId: string) => {
+    try {
+      // Check if a chat already exists with this user
+      let existingChatId = chatId;
+      
+      if (!existingChatId) {
+        // Create a new chat if one doesn't exist
+        const chatData = {
+          participants: [currentUserUID, userId],
+          createdAt: new Date(),
+          lastMessage: null,
+        };
+        
+        const chatsCollection = collection(db, "chats");
+        const docRef = await addDoc(chatsCollection, chatData);
+        existingChatId = docRef.id;
+        setChatId(docRef.id);
+      }
+      
+      // Send the message
+      await addMessage(existingChatId, {
+        content: message,
+        date: new Date(),
+        sender: currentUserUID,
+        receiver: userId,
+      });
+      
+      Alert.alert("Message sent!", "Check your chats to continue the conversation.");
+      setShowMessageOptions(false);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      Alert.alert("Error", "Failed to send message. Please try again.");
+    }
+  };
 
   // Step 5: Set up listener for array updates
   useEffect(() => {
     const userDocRef = doc(db, "users", currentUserUID);
     const unsubscribe = onSnapshot(userDocRef, (doc) => {
       if (doc.exists()) {
-        setCurrentUserData({ id: doc.id, ...doc.data() });
+        const userData = doc.data() as Omit<User, 'id'>;
+        setCurrentUserData({ id: doc.id, ...userData });
       } else {
         console.error("User document not found.");
       }
@@ -64,12 +134,11 @@ const Swipe = () => {
   /** Fetch users and filter based on likedUsers and dislikedUsers */
   const fetchUsers = async () => {
     try {
-      const fetchedUsers = await getUsers(); // Step 2: Loop through users collection (handled by getUsers)
+      const fetchedUsers = await getUsers() as User[];
       const likedAndDisliked = [
         ...(currentUserData?.likedUsers || []),
         ...(currentUserData?.dislikedUsers || []),
       ];
-      // Steps 3 & 4: Filter users based on likedUsers and dislikedUsers
       const filteredUsers = fetchedUsers.filter(
         (user) => user.id !== currentUserUID && !likedAndDisliked.includes(user.id)
       );
@@ -82,7 +151,7 @@ const Swipe = () => {
   };
 
   /** Handle right swipe (like) */
-  const onSwipedRight = async (index) => {
+  const onSwipedRight = async (index: number) => {
     if (!users?.[index] || isProcessing) return;
     setIsProcessing(true);
 
@@ -105,9 +174,23 @@ const Swipe = () => {
             ...prev,
             { user1: currentUserUID, user2: swipedUserUID },
           ]);
-          setTimeout(() => {
-            Alert.alert("It's a match!", `You and ${swipedUser.name} liked each other!`);
-          }, 500);
+          
+          // Create a new chat when there's a match
+          const chatData = {
+            participants: [currentUserUID, swipedUserUID],
+            createdAt: new Date(),
+            lastMessage: null,
+          };
+          
+          try {
+            const chatsCollection = collection(db, "chats");
+            const docRef = await addDoc(chatsCollection, chatData);
+            setChatId(docRef.id);
+            setMatchedUser(swipedUser);
+            setShowQuickMessage(true);
+          } catch (error) {
+            console.error("Error creating chat:", error);
+          }
         }
       }
     } catch (err) {
@@ -118,8 +201,8 @@ const Swipe = () => {
     }
   };
 
-  /** Handle left swipe (dislike) - Step 6: Add to dislikedUsers */
-  const onSwipedLeft = async (index) => {
+  /** Handle left swipe (dislike) */
+  const onSwipedLeft = async (index: number) => {
     if (!users?.[index] || isProcessing) return;
     setIsProcessing(true);
 
@@ -139,8 +222,14 @@ const Swipe = () => {
     }
   };
 
+  /** Handle showing message options */
+  const handleShowMessageOptions = (user: User) => {
+    setSelectedUser(user);
+    setShowMessageOptions(true);
+  };
+
   /** Render individual user card */
-  const renderCard = (user) => {
+  const renderCard = (user: User) => {
     if (!user) return null;
 
     return (
@@ -165,10 +254,10 @@ const Swipe = () => {
           </View>
 
           <View style={styles.contentContainer}>
-            {renderSection("person-outline", user.bio)}
+            {renderSection("person", user.bio)}
             {renderSection("translate", user.languages)}
-            {renderSection("favorite-border", user.interests)}
-            {renderSection("work-outline", user.goals)}
+            {renderSection("favorite", user.interests)}
+            {renderSection("work", user.goals)}
             {renderSection("flight-takeoff", user.travelHistory)}
           </View>
         </View>
@@ -177,7 +266,7 @@ const Swipe = () => {
   };
 
   /** Render profile section with icon and content */
-  const renderSection = (iconName, content) => {
+  const renderSection = (iconName: keyof typeof MaterialIcons.glyphMap, content?: string | string[]) => {
     if (!content || (Array.isArray(content) && !content.length)) return null;
 
     return (
@@ -198,15 +287,18 @@ const Swipe = () => {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-          <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-            <Text style={styles.logo}>Wingman</Text>
-            <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
-              <Ionicons name="person-circle" size={32} color="#2F80ED" />
-            </TouchableOpacity>
-          </View>
+          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
-            <ActivityIndicator size="large" color="#2F80ED" />
-            <Text style={styles.loadingText}>Loading profiles...</Text>
+            <LoadingSpinner 
+              size={120}
+              color="#2F80ED"
+              customTexts={[
+                "Finding travelers near you...",
+                "Discovering exciting connections...",
+                "Matching you with fellow adventurers...",
+                "Preparing your next journey..."
+              ]}
+            />
           </View>
         </LinearGradient>
       </SafeAreaView>
@@ -218,12 +310,7 @@ const Swipe = () => {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-          <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-            <Text style={styles.logo}>Wingman</Text>
-            <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
-              <Ionicons name="person-circle" size={32} color="#2F80ED" />
-            </TouchableOpacity>
-          </View>
+          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
@@ -240,12 +327,7 @@ const Swipe = () => {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-          <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
-            <Text style={styles.logo}>Wingman</Text>
-            <TouchableOpacity onPress={() => router.push(`profile/${currentUserUID}`)}>
-              <Ionicons name="person-circle" size={32} color="#2F80ED" />
-            </TouchableOpacity>
-          </View>
+          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
             <Text style={styles.emptyStateText}>No users found nearby.</Text>
             <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
@@ -261,51 +343,159 @@ const Swipe = () => {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
       <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-        <TopBar />
+        <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
         <View style={{ flex: 1 }}>
           {showSwiper && users.length > 0 ? (
-            <Swiper
-              cards={users}
-              renderCard={renderCard}
-              onSwipedLeft={onSwipedLeft}
-              onSwipedRight={onSwipedRight}
-              cardIndex={0}
-              backgroundColor="transparent"
-              stackSize={3}
-              verticalSwipe={false}
-              animateCardOpacity
-              overlayLabels={{
-                left: {
-                  element: <Text style={{ color: "#FF3B30", fontSize: 24, fontWeight: "800" }}>NOPE</Text>,
-                  style: {
-                    wrapper: {
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: 60,
+            <>
+              <Swiper
+                cards={users}
+                renderCard={renderCard}
+                onSwipedLeft={onSwipedLeft}
+                onSwipedRight={onSwipedRight}
+                cardIndex={0}
+                backgroundColor="transparent"
+                stackSize={3}
+                verticalSwipe={false}
+                animateCardOpacity
+                overlayLabels={{
+                  left: {
+                    element: <Text style={{ color: "#FF3B30", fontSize: 24, fontWeight: "800" }}>NOPE</Text>,
+                    style: {
+                      wrapper: {
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginTop: 60,
+                      },
                     },
                   },
-                },
-                right: {
-                  element: <Text style={{ color: "#4CD964", fontSize: 24, fontWeight: "800" }}>LIKE</Text>,
-                  style: {
-                    wrapper: {
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: 60,
+                  right: {
+                    element: <Text style={{ color: "#4CD964", fontSize: 24, fontWeight: "800" }}>LIKE</Text>,
+                    style: {
+                      wrapper: {
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginTop: 60,
+                      },
                     },
                   },
-                },
-              }}
-              onSwipedAll={() => {
-                setShowSwiper(false);
-                fetchUsers().then(() => setShowSwiper(true));
-              }}
-            />
+                }}
+                onSwipedAll={() => {
+                  setShowSwiper(false);
+                  fetchUsers().then(() => setShowSwiper(true));
+                }}
+              />
+              
+              {/* Quick Message Button */}
+              <View style={styles.quickMessageButtonContainer}>
+                <TouchableOpacity 
+                  style={styles.quickMessageButton}
+                  onPress={() => {
+                    if (users.length > 0) {
+                      handleShowMessageOptions(users[0]);
+                    }
+                  }}
+                >
+                  <MaterialIcons name="message" size={24} color="#FFF" />
+                  <Text style={styles.quickMessageButtonText}>Send Quick Message</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           ) : (
             <View style={styles.loadingFallback}>
               <ActivityIndicator size="large" color="#2F80ED" />
+            </View>
+          )}
+          
+          {/* Message Options Modal */}
+          {showMessageOptions && selectedUser && (
+            <View style={styles.messageOptionsContainer}>
+              <View style={styles.messageOptionsContent}>
+                <View style={styles.messageOptionsHeader}>
+                  <Text style={styles.messageOptionsTitle}>Quick Messages</Text>
+                  <Text style={styles.messageOptionsSubtitle}>Send a message to {selectedUser.name}</Text>
+                  <TouchableOpacity 
+                    style={styles.closeButton}
+                    onPress={() => setShowMessageOptions(false)}
+                  >
+                    <MaterialIcons name="close" size={20} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.messagesContainer}>
+                  <View style={styles.messageSection}>
+                    <Text style={styles.messageSectionTitle}>Preset Messages</Text>
+                    {presetMessages.map((message, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.presetMessageButton}
+                        onPress={() => {
+                          sendQuickMessage(message, selectedUser.id);
+                        }}
+                      >
+                        <Text style={styles.presetMessageText}>{message}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  
+                  <View style={styles.messageSection}>
+                    <Text style={styles.messageSectionTitle}>Chat Options</Text>
+                    <TouchableOpacity
+                      style={[styles.presetMessageButton, styles.chatButton]}
+                      onPress={() => {
+                        const findOrCreateChat = async () => {
+                          try {
+                            // First check if a chat already exists between these users
+                            const chatsCollection = collection(db, "chats");
+                            const q = query(
+                              chatsCollection, 
+                              where("participants", "array-contains", currentUserUID)
+                            );
+                            
+                            const querySnapshot = await getDocs(q);
+                            let existingChatId = null;
+                            
+                            // Check each chat to see if it contains both users
+                            for (const doc of querySnapshot.docs) {
+                              const chatData = doc.data();
+                              if (chatData.participants.includes(selectedUser.id)) {
+                                existingChatId = doc.id;
+                                break;
+                              }
+                            }
+                            
+                            if (existingChatId) {
+                              // Use the existing chat
+                              router.push(`/chat/${existingChatId}`);
+                            } else {
+                              // Create a new chat if none exists
+                              const chatData = {
+                                participants: [currentUserUID, selectedUser.id],
+                                createdAt: new Date(),
+                                lastMessage: null,
+                              };
+                              
+                              const docRef = await addDoc(chatsCollection, chatData);
+                              router.push(`/chat/${docRef.id}`);
+                            }
+                            
+                            setShowMessageOptions(false);
+                          } catch (error) {
+                            console.error("Error finding or creating chat:", error);
+                            Alert.alert("Error", "Failed to open chat. Please try again.");
+                          }
+                        };
+                        
+                        findOrCreateChat();
+                      }}
+                    >
+                      <MaterialIcons name="chat" size={20} color="#FFF" />
+                      <Text style={[styles.presetMessageText, { color: '#FFF' }]}>Open Chat</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
             </View>
           )}
         </View>
@@ -316,20 +506,14 @@ const Swipe = () => {
 
 /** Styles */
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    backgroundColor: "#E6F0FA",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    marginBottom: -50,
-  },
   logo: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#2F80ED",
+  },
+  cardTouchable: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
   },
   cardContainer: {
     width: CARD_WIDTH,
@@ -337,6 +521,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
     marginLeft: 10,
+    marginTop: -40,
+    backfaceVisibility: 'hidden',
   },
   cardShadow: {
     shadowColor: "#000",
@@ -345,17 +531,31 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  cardFace: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backfaceVisibility: 'hidden',
+  },
+  cardBack: {
+    transform: [{ rotateY: '180deg' }],
+  },
   cardContent: {
     flex: 1,
     backgroundColor: "#FFFFFF",
     padding: 20,
   },
+  profileHeader: {
+    flexDirection: "column",
+    alignItems: "center",
+    marginBottom: 16,
+  },
   imageContainer: {
     width: CARD_WIDTH - 40,
-    height: CARD_HEIGHT * 0.4,
+    height: CARD_HEIGHT * 0.35,
     borderRadius: 16,
     overflow: "hidden",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   profileImage: {
     width: "100%",
@@ -364,27 +564,33 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     alignItems: "center",
-    marginBottom: 16,
+    width: "100%",
+    marginBottom: 12,
   },
   nameText: {
     fontSize: 24,
     fontWeight: "600",
     color: "#1E293B",
+    textAlign: "center",
   },
   moodContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 8,
+    justifyContent: "center",
+    width: "100%",
   },
   moodText: {
     fontSize: 16,
     color: "#64748B",
     marginLeft: 8,
     fontWeight: "500",
+    flexShrink: 1,
   },
   contentContainer: {
     flex: 1,
     paddingHorizontal: 8,
+    paddingBottom: 16,
   },
   section: {
     marginBottom: 16,
@@ -434,15 +640,145 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: "#64748B",
-  },
   loadingFallback: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  backHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  backTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#2F80ED',
+    marginBottom: 8,
+  },
+  backSubtitle: {
+    fontSize: 16,
+    color: '#64748B',
+  },
+  messageOptionsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  messageOptionsContent: {
+    width: '90%',
+    maxHeight: '80%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  messageOptionsHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    position: 'relative',
+    backgroundColor: '#F8FAFC',
+  },
+  messageOptionsTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#2F80ED',
+    textAlign: 'center',
+  },
+  messageOptionsSubtitle: {
+    fontSize: 16,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messagesContainer: {
+    padding: 20,
+  },
+  presetMessageButton: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  presetMessageText: {
+    fontSize: 16,
+    color: '#1E293B',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  chatButton: {
+    backgroundColor: '#2F80ED',
+    marginTop: 8,
+    borderColor: '#2F80ED',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickMessageButtonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  quickMessageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2F80ED',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  quickMessageButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  messageSection: {
+    marginBottom: 20,
+  },
+  messageSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2F80ED',
+    marginBottom: 8,
   },
 });
 

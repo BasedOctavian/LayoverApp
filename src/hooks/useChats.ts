@@ -11,7 +11,7 @@ import {
   where,
   onSnapshot,
 } from "firebase/firestore";
-import { db } from "../../firebaseConfig";
+import { db } from "../../config/firebaseConfig";
 
 const useChats = () => {
   const [loading, setLoading] = useState(false);

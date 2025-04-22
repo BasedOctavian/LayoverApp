@@ -1,7 +1,7 @@
 // hooks/useChat.ts
 import { useEffect, useState } from 'react';
 import { collection, addDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db } from '../../firebaseConfig';
+import { db } from '../../config/firebaseConfig';
 
 interface Message {
   id: string;

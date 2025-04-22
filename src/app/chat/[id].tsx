@@ -19,7 +19,7 @@ import useChats from "../../hooks/useChats";
 import useAuth from "../../hooks/auth";
 import { router, useLocalSearchParams } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../firebaseConfig";
+import { auth } from "../../../config/firebaseConfig";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
