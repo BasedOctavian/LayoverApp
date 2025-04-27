@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -22,10 +22,14 @@ const TopBar: React.FC<TopBarProps> = ({ onProfilePress }) => {
   return (
     <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
       <TouchableOpacity onPress={handleLogoPress}>
-        <Text style={styles.logo}>Wingman</Text>
+        <Image
+          source={require('../../assets/adaptive-icon-black-removebg-preview.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
       </TouchableOpacity>
       <TouchableOpacity onPress={onProfilePress}>
-        <Ionicons name="person-circle" size={32} color="#2F80ED" />
+        <Ionicons name="person-circle" size={32} color="#1F5B6F" />
       </TouchableOpacity>
     </View>
   );
@@ -43,9 +47,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E2E8F0',
   },
   logo: {
-    fontSize: 18,
-    fontWeight: 'bold' as const,
-    color: '#2F80ED',
+    width: 85,
+    height: 85,
   },
 });
 

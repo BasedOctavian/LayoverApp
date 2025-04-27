@@ -210,12 +210,12 @@ export default function Dashboard() {
   const allEvents = [...matchingSportEvents, ...filteredRegularEvents];
 
   const features: FeatureButton[] = [
-    { icon: <FontAwesome5 name="user-friends" size={24} color="#2F80ED" />, title: "Nearby Users", screen: "swipe" },
-    { icon: <Feather name="plus" size={24} color="#2F80ED" />, title: "Create Event", screen: "eventCreation" },
-    { icon: <MaterialIcons name="event" size={24} color="#2F80ED" />, title: "Events", screen: "home" },
-    { icon: <MaterialIcons name="message" size={24} color="#2F80ED" />, title: "Messages", screen: "chat/chatInbox" },
-    { icon: <Feather name="user" size={24} color="#2F80ED" />, title: "Profile", screen: userId ? `profile/${userId}` : "profile" },
-    { icon: <Ionicons name="settings" size={24} color="#2F80ED" />, title: "Settings", screen: "settings/settings" },
+    { icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, title: "Nearby Users", screen: "swipe" },
+    { icon: <Feather name="plus" size={24} color="#38a5c9" />, title: "Create Event", screen: "eventCreation" },
+    { icon: <MaterialIcons name="event" size={24} color="#38a5c9" />, title: "Events", screen: "home" },
+    { icon: <MaterialIcons name="message" size={24} color="#38a5c9" />, title: "Messages", screen: "chat/chatInbox" },
+    { icon: <Feather name="user" size={24} color="#38a5c9" />, title: "Profile", screen: userId ? `profile/${userId}` : "profile" },
+    { icon: <Ionicons name="settings" size={24} color="#38a5c9" />, title: "Settings", screen: "settings/settings" },
   ];
 
   const filteredResults =
@@ -250,18 +250,18 @@ export default function Dashboard() {
               autoFocus
             />
             <TouchableOpacity style={styles.cancelButton} onPress={() => setShowSearch(false)}>
-              <Feather name="x" size={24} color="#2F80ED" />
+              <Feather name="x" size={24} color="#38a5c9" />
             </TouchableOpacity>
           </View>
           <View style={styles.filterContainer}>
             <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("airports")}>
-              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "airports" ? "#2F80ED" : "#F1F5F9" }]}>
+              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "airports" ? "#38a5c9" : "#F1F5F9" }]}>
                 <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : "#64748B"} />
                 <Text style={[styles.filterText, { color: searchType === "airports" ? "#FFFFFF" : "#64748B" }]}>Airports</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("events")}>
-              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "events" ? "#2F80ED" : "#F1F5F9" }]}>
+              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "events" ? "#38a5c9" : "#F1F5F9" }]}>
                 <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : "#64748B"} />
                 <Text style={[styles.filterText, { color: searchType === "events" ? "#FFFFFF" : "#64748B" }]}>Events</Text>
               </View>
@@ -316,7 +316,7 @@ export default function Dashboard() {
                           <Feather
                             name={searchType === "airports" ? "airplay" : "calendar"}
                             size={20}
-                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#2F80ED"}
+                            color={searchType === "events" && item.organizer !== null ? "#FFFFFF" : "#38a5c9"}
                             style={styles.resultIcon}
                           />
                           <Text style={searchType === "events" && item.organizer !== null ? styles.organizedResultText : styles.resultText}>
@@ -335,7 +335,7 @@ export default function Dashboard() {
                       return (
                         <View style={styles.section}>
                           <View style={styles.headerRow}>
-                            <FontAwesome5 name="users" size={20} color="#2F80ED" style={styles.headerIcon} />
+                            <FontAwesome5 name="users" size={20} color="#38a5c9" style={styles.headerIcon} />
                             <Text style={styles.sectionHeader}>Nearby Users</Text>
                           </View>
                           {item.data.length > 0 ? (
@@ -350,7 +350,7 @@ export default function Dashboard() {
                                   onPress={() => router.push(`profile/${user.id}`)}
                                 >
                                   <View style={styles.avatar}>
-                                    <FontAwesome5 name="user" size={24} color="#2F80ED" />
+                                    <FontAwesome5 name="user" size={24} color="#38a5c9" />
                                   </View>
                                   <Text style={styles.userName}>{user.name}</Text>
                                   <Text style={styles.userStatus}>{user.status}</Text>
@@ -367,7 +367,7 @@ export default function Dashboard() {
                       return (
                         <View style={styles.section}>
                           <View style={styles.headerRow}>
-                            <MaterialIcons name="event" size={20} color="#2F80ED" style={styles.headerIcon} />
+                            <MaterialIcons name="event" size={20} color="#38a5c9" style={styles.headerIcon} />
                             <Text style={styles.sectionHeader}>
                               Events at {selectedAirport ? selectedAirport.name : "Your Location"}
                             </Text>
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#2F80ED",
+    color: "#38a5c9",
   },
   section: {
     marginBottom: 24,
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
   },
   organizedEventCard: {
     width: 200,
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
     borderRadius: 12,
     padding: 16,
     marginRight: 12,
@@ -683,7 +683,7 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
   },
   resultIcon: {
     marginRight: 12,
@@ -705,7 +705,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#1F5B6F",
     alignItems: "center",
     justifyContent: "center",
     elevation: 4,
