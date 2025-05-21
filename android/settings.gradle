@@ -21,7 +21,7 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   }
 }
 
-rootProject.name = 'Layover'
+rootProject.name = 'Wingman'
 
 dependencyResolutionManagement {
   versionCatalogs {

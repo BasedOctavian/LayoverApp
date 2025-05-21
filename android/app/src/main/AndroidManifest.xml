@@ -29,6 +29,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="mylayover"/>
         <data android:scheme="com.mattryan7201.Layover"/>
+        <data android:scheme="exp+layover"/>
       </intent-filter>
     </activity>
   </application>

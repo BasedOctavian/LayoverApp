@@ -1,8 +1,15 @@
-// Learn more https://docs.expo.io/guides/customizing-metro
-const { getDefaultConfig } = require('expo/metro-config');
-const { withNativeWind} = require('nativewind/metro');
+// metro.config.js
+const { getDefaultConfig } = require("expo/metro-config");
 
-/** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-module.exports = withNativeWind(config, { input: "./global.css"});
+// Allow .cjs files
+config.resolver.sourceExts = config.resolver.sourceExts || [];
+if (!config.resolver.sourceExts.includes("cjs")) {
+  config.resolver.sourceExts.push("cjs");
+}
+
+// Work around stricter package.json "exports" behavior in Metro
+config.resolver.unstable_enablePackageExports = false;
+
+module.exports = config;
