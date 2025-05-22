@@ -8,8 +8,10 @@ import {
   StyleSheet,
   ViewStyle,
   TextStyle,
+  Platform,
 } from "react-native";
 import { Feather, FontAwesome5, MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Define the interface for preset status items
 interface PresetStatus {
@@ -44,6 +46,8 @@ export default function StatusSheet({
   handleUpdateMoodStatus,
   toggleStatusSheet,
 }: StatusSheetProps) {
+  const insets = useSafeAreaInsets();
+  
   return (
     showStatusSheet && (
       <Animated.View
@@ -65,6 +69,7 @@ export default function StatusSheet({
               },
             ],
             opacity: sheetAnim,
+            paddingBottom: insets.bottom + 24,
           },
         ]}
       >
@@ -112,73 +117,79 @@ export default function StatusSheet({
 const styles = StyleSheet.create({
   statusSheet: {
     position: "absolute",
-    bottom: 72,
+    bottom: 0,
     right: 0,
+    left: 0,
     backgroundColor: "rgba(255,255,255,0.98)",
-    borderRadius: 28,
-    padding: 20,
-    width: 240,
-    shadowColor: "#2D3748",
-    shadowOffset: { width: 0, height: 12 },
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    shadowColor: "#2F80ED",
+    shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
     shadowRadius: 24,
     elevation: 10,
     zIndex: 101,
   } as ViewStyle,
   statusTitle: {
-    fontSize: 13,
-    color: "#718096",
+    fontSize: 14,
+    color: "#64748B",
     fontWeight: "600",
-    marginBottom: 12,
+    marginBottom: 16,
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 1,
   } as TextStyle,
   statusGrid: {
-    gap: 12,
+    gap: 14,
   } as ViewStyle,
   statusChip: {
-    backgroundColor: "rgba(106,17,203,0.05)",
+    backgroundColor: "rgba(47,128,237,0.08)",
     borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
   } as ViewStyle,
   statusChipContent: {
     flexDirection: "row",
     alignItems: "center",
   } as ViewStyle,
   statusText: {
-    fontSize: 14,
-    color: "#6a11cb",
-    fontWeight: "500",
-    marginLeft: 8,
+    fontSize: 15,
+    color: "#2F80ED",
+    fontWeight: "600",
+    marginLeft: 10,
   } as TextStyle,
   customStatusLabel: {
-    fontSize: 13,
-    color: "#718096",
+    fontSize: 14,
+    color: "#64748B",
     fontWeight: "600",
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 16,
+    marginBottom: 10,
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 1,
   } as TextStyle,
   customStatusInput: {
-    backgroundColor: "rgba(106,17,203,0.05)",
+    backgroundColor: "rgba(47,128,237,0.08)",
     borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    fontSize: 14,
-    color: "#6a11cb",
-    marginBottom: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    fontSize: 15,
+    color: "#2F80ED",
+    marginBottom: 16,
   } as TextStyle,
   submitButton: {
-    backgroundColor: "#6a11cb",
+    backgroundColor: "#2F80ED",
     borderRadius: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: "center",
+    shadowColor: "#2F80ED",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   } as ViewStyle,
   submitButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#FFFFFF",
-    fontWeight: "500",
+    fontWeight: "600",
   } as TextStyle,
 });
