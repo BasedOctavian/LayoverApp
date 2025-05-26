@@ -15,7 +15,6 @@ import {
   Alert,
   SafeAreaView,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons } from '@expo/vector-icons';
@@ -28,7 +27,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
 import { useRouter } from 'expo-router';
 import TopBar from '../components/TopBar';
-import LoadingSpinner from '../components/LoadingSpinner';
+import LoadingScreen from '../components/LoadingScreen';
 
 const categories = ['Wellness', 'Food & Drink', 'Entertainment', 'Travel Tips', 'Activity', 'Misc'];
 
@@ -54,14 +53,7 @@ const EventCreation: React.FC = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
-  const [eventCoords, setEventCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [region, setRegion] = useState({
-    latitude: 40.6895,
-    longitude: -74.1745,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
 
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -136,33 +128,15 @@ const EventCreation: React.FC = () => {
     airport.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const mapRegion = selectedAirport ? {
-    latitude: selectedAirport.lat,
-    longitude: selectedAirport.long,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  } : null;
-
-  const handleMapPress = (e: any) => {
-    const { latitude, longitude } = e.nativeEvent.coordinate;
-    setEventCoords({ lat: latitude, lng: longitude });
-  };
-
-  const handleMarkerDragEnd = (e: any) => {
-    const { latitude, longitude } = e.nativeEvent.coordinate;
-    setEventCoords({ lat: latitude, lng: longitude });
-  };
-
   const handleSelectAirport = (airport: Airport) => {
     setSelectedAirport(airport);
-    setEventData(prev => ({ ...prev, airportCode: airport.airportCode }));
+    setEventData(prev => ({ 
+      ...prev, 
+      airportCode: airport.airportCode,
+      latitude: airport.lat.toString(),
+      longitude: airport.long.toString()
+    }));
     setShowSearch(false);
-    setRegion({
-      latitude: airport.lat,
-      longitude: airport.long,
-      latitudeDelta: 0.0922,
-      longitudeDelta: 0.0421,
-    });
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -198,15 +172,13 @@ const EventCreation: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!eventCoords || !selectedAirport) {
-      Alert.alert('Error', 'Please select an airport and event location');
+    if (!selectedAirport) {
+      Alert.alert('Error', 'Please select an airport');
       return;
     }
     try {
       const newEvent = {
         ...eventData,
-        latitude: eventCoords.lat.toString(),
-        longitude: eventCoords.lng.toString(),
         startTime: eventData.startTime.toISOString(),
         createdAt: new Date(),
         organizer: user?.uid || '',
@@ -221,32 +193,14 @@ const EventCreation: React.FC = () => {
 
   // Show loading state
   if (authLoading || loading) {
-    return (
-      <SafeAreaView style={styles.flex}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-          <TopBar onProfilePress={() => {}} />
-          <View style={styles.loadingContainer}>
-            <LoadingSpinner 
-              size={120}
-              color="#2F80ED"
-              customTexts={[
-                "Creating your event...",
-                "Setting up the details...",
-                "Almost ready...",
-                "Preparing for takeoff..."
-              ]}
-            />
-          </View>
-        </LinearGradient>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Creating your event..." />;
   }
 
   return (
     <>
     <TopBar onProfilePress={() => {}} />
     <SafeAreaView style={styles.flex}>
-      <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -254,7 +208,7 @@ const EventCreation: React.FC = () => {
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <ScrollView contentContainerStyle={styles.contentContainer}>
               <LinearGradient
-                colors={['#F8FAFC', '#FFFFFF']}
+                colors={['#1a1a1a', '#000000']}
                 style={styles.backgroundGradient}
               >
                 {/* Select Airport Section */}
@@ -265,56 +219,15 @@ const EventCreation: React.FC = () => {
                     onPress={() => setShowSearch(true)}
                   >
                     <LinearGradient
-                      colors={['#FFFFFF', '#F1F5F9']}
+                      colors={['#1a1a1a', '#000000']}
                       style={styles.searchInputGradient}
                     >
                       <Text style={styles.searchPlaceholder}>
                         {selectedAirport?.name || 'Search airports...'}
                       </Text>
-                      <Feather name="search" size={20} color="#64748B" />
+                      <Feather name="search" size={20} color="#38a5c9" />
                     </LinearGradient>
                   </TouchableOpacity>
-                </View>
-
-                {/* Event Location Section */}
-                <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionTitle}>Event Location</Text>
-                  <View style={styles.mapContainer}>
-                    <MapView
-                      style={styles.map}
-                      region={mapRegion || {
-                        latitude: 0,
-                        longitude: 0,
-                        latitudeDelta: 0.0922,
-                        longitudeDelta: 0.0421,
-                      }}
-                      onLongPress={handleMapPress}
-                    >
-                      {selectedAirport && (
-                        <Marker
-                          coordinate={{
-                            latitude: selectedAirport.lat,
-                            longitude: selectedAirport.long,
-                          }}
-                          title="Selected Airport"
-                          pinColor="#2F80ED"
-                        />
-                      )}
-                      {eventCoords && (
-                        <Marker
-                          coordinate={{
-                            latitude: eventCoords.lat,
-                            longitude: eventCoords.lng,
-                          }}
-                          title="Event Location"
-                          pinColor="#ff6b6b"
-                          draggable
-                          onDragEnd={handleMarkerDragEnd}
-                        />
-                      )}
-                    </MapView>
-                    <Text style={styles.mapHelperText}>Hold on the map to place a pin</Text>
-                  </View>
                 </View>
 
                 {/* Event Details Section */}
@@ -347,7 +260,7 @@ const EventCreation: React.FC = () => {
                       <Text style={styles.dateText}>
                         {eventData.eventImage ? "Image selected" : "Select an image"}
                       </Text>
-                      <Feather name="image" size={18} color="#64748B" />
+                      <Feather name="image" size={18} color="#38a5c9" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -365,7 +278,10 @@ const EventCreation: React.FC = () => {
                         ]}
                         onPress={() => setEventData({ ...eventData, category })}
                       >
-                        <Text style={styles.categoryText}>{category}</Text>
+                        <Text style={[
+                          styles.categoryText,
+                          eventData.category === category && styles.selectedCategoryText
+                        ]}>{category}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -381,7 +297,7 @@ const EventCreation: React.FC = () => {
                     <Text style={styles.dateText}>
                       {eventData.startTime.toLocaleString()}
                     </Text>
-                    <Feather name="clock" size={18} color="#64748B" />
+                    <Feather name="clock" size={18} color="#38a5c9" />
                   </TouchableOpacity>
                   {showDatePicker && (
                     <DateTimePicker
@@ -401,7 +317,7 @@ const EventCreation: React.FC = () => {
                       <MaterialIcons 
                         name={eventData.private ? 'lock' : 'public'} 
                         size={24} 
-                        color="#2F80ED" 
+                        color="#38a5c9" 
                       />
                       <Text style={styles.privacyText}>
                         {eventData.private ? 'Private Event' : 'Public Event'}
@@ -410,40 +326,36 @@ const EventCreation: React.FC = () => {
                     <Switch
                       value={eventData.private}
                       onValueChange={(value) => setEventData({ ...eventData, private: value })}
-                      trackColor={{ false: '#CBD5E1', true: '#2F80ED' }}
+                      trackColor={{ false: '#1a1a1a', true: '#38a5c9' }}
                       thumbColor="#FFFFFF"
                     />
                   </View>
                 </View>
               </LinearGradient>
+
+              {/* Create Button */}
+              <LinearGradient
+                colors={['#38a5c9', '#2F80ED']}
+                style={styles.createButton}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <TouchableOpacity 
+                  onPress={handleSubmit}
+                  disabled={loading}
+                  style={styles.buttonInner}
+                >
+                  <Text style={styles.createButtonText}>Create Event</Text>
+                </TouchableOpacity>
+              </LinearGradient>
             </ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
 
-        {/* Create Button */}
-        <LinearGradient
-          colors={['#2F80ED', '#1A5FB4']}
-          style={styles.createButton}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <TouchableOpacity 
-            onPress={handleSubmit}
-            disabled={loading}
-            style={styles.buttonInner}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.createButtonText}>Create Event</Text>
-            )}
-          </TouchableOpacity>
-        </LinearGradient>
-
         {/* Airport Search Modal */}
         {showSearch && (
           <LinearGradient
-            colors={['rgba(255,255,255,0.98)', 'rgba(241,245,249,0.98)']}
+            colors={['#1a1a1a', '#000000']}
             style={styles.searchModal}
           >
             <View style={styles.searchModalHeader}>
@@ -485,22 +397,21 @@ const EventCreation: React.FC = () => {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: "#E6F0FA",
+    backgroundColor: "#000000",
   },
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    backgroundColor: "#E6F0FA",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    height: 50,
+    backgroundColor: "transparent",
+    borderBottomWidth: 0,
   },
   logo: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#2F80ED",
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#e4fbfe",
+    letterSpacing: 0.5,
   },
   container: {
     flex: 1,
@@ -510,7 +421,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 16,
     marginVertical: 20,
-    shadowColor: '#2F80ED',
+    shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
@@ -521,18 +432,20 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   sectionContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1a1a1a',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
     elevation: 5,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   sectionTitle: {
-    color: '#1E293B',
+    color: '#e4fbfe',
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
@@ -548,47 +461,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   searchPlaceholder: {
-    color: '#64748B',
+    color: '#e4fbfe',
     fontSize: 14,
-  },
-  mapContainer: {
-    height: 300,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  map: {
-    flex: 1,
-  },
-  mapHelperText: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    right: 10,
-    textAlign: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    padding: 4,
-    borderRadius: 8,
-    fontSize: 12,
-    color: '#1E293B',
   },
   inputGroup: {
     marginBottom: 16,
   },
   label: {
-    color: '#64748B',
+    color: '#e4fbfe',
     fontSize: 14,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#1a1a1a',
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   multilineInput: {
     height: 100,
@@ -603,17 +499,22 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   selectedCategory: {
-    backgroundColor: '#2F80ED',
+    backgroundColor: '#38a5c9',
   },
   categoryText: {
-    color: '#1E293B',
+    color: '#e4fbfe',
     fontSize: 14,
   },
+  selectedCategoryText: {
+    color: '#000000',
+  },
   dateText: {
-    color: '#1E293B',
+    color: '#e4fbfe',
     fontSize: 14,
   },
   privacyContainer: {
@@ -622,7 +523,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   switchContainer: {
     flexDirection: 'row',
@@ -630,7 +533,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   privacyText: {
-    color: '#1E293B',
+    color: '#e4fbfe',
     fontSize: 16,
   },
   searchModal: {
@@ -639,7 +542,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: '#1a1a1a',
     zIndex: 1000,
     padding: 16,
     marginTop: 35,
@@ -649,43 +552,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: '#38a5c9',
   },
   searchInput: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#1a1a1a',
     borderRadius: 12,
     padding: 12,
     marginRight: 8,
+    color: '#e4fbfe',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   cancelButton: {
     padding: 8,
   },
   cancelButtonText: {
-    color: '#2F80ED',
+    color: '#38a5c9',
     fontSize: 16,
   },
   airportItem: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#38a5c9',
   },
   airportName: {
-    color: '#1E293B',
+    color: '#e4fbfe',
     fontSize: 16,
   },
   airportCode: {
-    color: '#64748B',
+    color: '#38a5c9',
     fontSize: 14,
   },
   createButton: {
-    position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
+    marginHorizontal: 16,
+    marginTop: 24,
+    marginBottom: 32,
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#2F80ED',
+    shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -700,11 +605,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });
 

@@ -20,7 +20,7 @@ import { db } from "../../config/firebaseConfig";
 import TopBar from "../components/TopBar";
 import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import useChats from "../hooks/useChats";
-import LoadingSpinner from "../components/LoadingSpinner";
+import LoadingScreen from "../components/LoadingScreen";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -335,7 +335,7 @@ const Swipe = () => {
                 {user.name}, {user.age || ""}
               </Text>
               <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={20} color="#2F80ED" />
+                <MaterialIcons name="mood" size={20} color="#38a5c9" />
                 <Text style={styles.moodText}>{user.moodStatus || "Exploring the world 🌍"}</Text>
               </View>
             </View>
@@ -360,7 +360,7 @@ const Swipe = () => {
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <MaterialIcons name={iconName} size={20} color="#2F80ED" />
+          <MaterialIcons name={iconName} size={20} color="#38a5c9" />
           <Text style={styles.sectionContent}>
             {Array.isArray(content) ? content.join(" • ") : content}
           </Text>
@@ -387,32 +387,14 @@ const Swipe = () => {
 
   /** Loading state */
   if (loading) {
-    return (
-      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
-          <View style={styles.stateContainer}>
-            <LoadingSpinner 
-              size={120}
-              color="#2F80ED"
-              customTexts={[
-                "Finding travelers near you...",
-                "Discovering exciting connections...",
-                "Matching you with fellow adventurers...",
-                "Preparing your next journey..."
-              ]}
-            />
-          </View>
-        </LinearGradient>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Finding travelers near you..." />;
   }
 
   /** Error state */
   if (error) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+        <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
           <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
             <Text style={styles.errorText}>{error}</Text>
@@ -429,7 +411,7 @@ const Swipe = () => {
   if (!users.length) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+        <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
           <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
             <Text style={styles.emptyStateText}>No users found nearby.</Text>
@@ -445,7 +427,7 @@ const Swipe = () => {
   /** Main Swiper view */
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
         <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
         <View style={{ flex: 1 }}>
           {showSwiper && users.length > 0 ? (
@@ -478,9 +460,7 @@ const Swipe = () => {
               </View>
             </>
           ) : (
-            <View style={styles.loadingFallback}>
-              <ActivityIndicator size="large" color="#2F80ED" />
-            </View>
+            <LoadingScreen message="Loading user profiles..." />
           )}
           
           {/* Message Options Modal */}
@@ -494,7 +474,7 @@ const Swipe = () => {
                     style={styles.closeButton}
                     onPress={() => setShowMessageOptions(false)}
                   >
-                    <MaterialIcons name="close" size={20} color="#64748B" />
+                    <MaterialIcons name="close" size={20} color="#e4fbfe" />
                   </TouchableOpacity>
                 </View>
                 
@@ -584,7 +564,7 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#2F80ED",
+    color: "#38a5c9",
   },
   cardTouchable: {
     width: CARD_WIDTH,
@@ -600,7 +580,7 @@ const styles = StyleSheet.create({
     backfaceVisibility: 'hidden',
   },
   cardShadow: {
-    shadowColor: "#000",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -617,8 +597,10 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     padding: 20,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   profileHeader: {
     flexDirection: "column",
@@ -631,6 +613,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   profileImage: {
     width: "100%",
@@ -645,7 +629,7 @@ const styles = StyleSheet.create({
   nameText: {
     fontSize: 24,
     fontWeight: "600",
-    color: "#1E293B",
+    color: "#e4fbfe",
     textAlign: "center",
   },
   moodContainer: {
@@ -657,7 +641,7 @@ const styles = StyleSheet.create({
   },
   moodText: {
     fontSize: 16,
-    color: "#64748B",
+    color: "#38a5c9",
     marginLeft: 8,
     fontWeight: "500",
     flexShrink: 1,
@@ -677,15 +661,16 @@ const styles = StyleSheet.create({
   },
   sectionContent: {
     fontSize: 16,
-    color: "#1E293B",
+    color: "#e4fbfe",
     marginLeft: 12,
     flex: 1,
     lineHeight: 22,
   },
   divider: {
     height: 1,
-    backgroundColor: "#E2E8F0",
+    backgroundColor: "#38a5c9",
     marginVertical: 8,
+    opacity: 0.3,
   },
   stateContainer: {
     flex: 1,
@@ -700,15 +685,17 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 18,
-    color: "#64748B",
+    color: "#38a5c9",
     textAlign: "center",
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   retryButtonText: {
     color: "#FFF",
@@ -727,12 +714,12 @@ const styles = StyleSheet.create({
   backTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#2F80ED',
+    color: '#38a5c9',
     marginBottom: 8,
   },
   backSubtitle: {
     fontSize: 16,
-    color: '#64748B',
+    color: '#e4fbfe',
   },
   messageOptionsContainer: {
     position: 'absolute',
@@ -740,7 +727,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 20,
@@ -748,31 +735,33 @@ const styles = StyleSheet.create({
   messageOptionsContent: {
     width: '90%',
     maxHeight: '80%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1a1a1a',
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#000',
+    shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   messageOptionsHeader: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: '#38a5c9',
     position: 'relative',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#1a1a1a',
   },
   messageOptionsTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#2F80ED',
+    color: '#38a5c9',
     textAlign: 'center',
   },
   messageOptionsSubtitle: {
     fontSize: 16,
-    color: '#64748B',
+    color: '#e4fbfe',
     textAlign: 'center',
     marginTop: 8,
   },
@@ -783,21 +772,23 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#1a1a1a',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   messagesContainer: {
     padding: 20,
   },
   presetMessageButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1a1a1a',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
+    borderColor: '#38a5c9',
+    shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -805,14 +796,14 @@ const styles = StyleSheet.create({
   },
   presetMessageText: {
     fontSize: 16,
-    color: '#1E293B',
+    color: '#e4fbfe',
     textAlign: 'center',
     lineHeight: 22,
   },
   chatButton: {
-    backgroundColor: '#2F80ED',
+    backgroundColor: '#38a5c9',
     marginTop: 8,
-    borderColor: '#2F80ED',
+    borderColor: '#38a5c9',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -830,15 +821,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2F80ED',
+    backgroundColor: '#38a5c9',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 30,
-    shadowColor: '#000',
+    shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   quickMessageButtonText: {
     color: '#FFF',
@@ -852,7 +845,7 @@ const styles = StyleSheet.create({
   messageSectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#2F80ED',
+    color: '#38a5c9',
     marginBottom: 8,
   },
   cardsContainer: {

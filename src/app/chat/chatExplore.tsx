@@ -25,6 +25,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
+import LoadingScreen from "../../components/LoadingScreen";
 
 export default function ChatExplore() {
   const { user } = useAuth();
@@ -155,8 +156,8 @@ export default function ChatExplore() {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-       <TopBar />
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+        <TopBar />
         <View style={styles.container}>
           <TextInput
             style={styles.searchInput}
@@ -166,7 +167,7 @@ export default function ChatExplore() {
             onChangeText={setSearchQuery}
           />
           {usersLoading || chatLoading ? (
-            <Text style={styles.loadingText}>Loading users...</Text>
+            <LoadingScreen message="Finding users to chat with..." />
           ) : usersError || chatError ? (
             <Text style={styles.errorText}>{usersError || chatError}</Text>
           ) : (
@@ -208,32 +209,36 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   searchInput: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 25,
     paddingHorizontal: 20,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#1E293B",
+    color: "#e4fbfe",
     marginBottom: 16,
     marginTop: 20,
-    shadowColor: "#000",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   userCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   profileImage: {
     width: 50,
@@ -247,12 +252,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#1E293B",
+    color: "#e4fbfe",
     marginBottom: 4,
   },
   userBio: {
     fontSize: 14,
-    color: "#64748B",
+    color: "#38a5c9",
   },
   loadingText: {
     color: "#1E293B",

@@ -44,7 +44,7 @@ const Login = () => {
   };
 
   return (
-    <LinearGradient colors={["#F8FAFF", "#EFF2FF"]} style={styles.gradient}>
+    <LinearGradient colors={["#070707", "#38a5c9"]} style={styles.gradient}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardAvoidingView}
@@ -56,19 +56,19 @@ const Login = () => {
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.contentContainer}>
               {isAuthLoading ? (
-                <ActivityIndicator size="large" color="#6366F1" />
+                <ActivityIndicator size="large" color="#e4fbfe" />
               ) : (
                 <>
-                  <Text style={styles.title}>Welcome Back!</Text>
+                  <Text style={styles.title}>Welcome Back! ✈️</Text>
 
                   <View style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>Email</Text>
                     <View style={styles.inputContainer}>
-                      <Feather name="mail" size={20} color="#64748B" />
+                      <Feather name="mail" size={20} color="#38a5c9" />
                       <TextInput
                         style={styles.input}
                         placeholder="flyer@skyconnect.com"
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor="#38a5c9"
                         value={email}
                         onChangeText={setEmail}
                         keyboardType="email-address"
@@ -80,11 +80,11 @@ const Login = () => {
                   <View style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>Password</Text>
                     <View style={styles.inputContainer}>
-                      <Feather name="lock" size={20} color="#64748B" />
+                      <Feather name="lock" size={20} color="#38a5c9" />
                       <TextInput
                         style={styles.input}
                         placeholder="••••••••"
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor="#38a5c9"
                         value={password}
                         onChangeText={setPassword}
                         secureTextEntry
@@ -98,11 +98,11 @@ const Login = () => {
                     disabled={isLoggingIn}
                   >
                     <LinearGradient
-                      colors={["#6366F1", "#4F46E5"]}
+                      colors={["#070707", "#070707"]}
                       style={styles.buttonGradient}
                     >
                       {isLoggingIn ? (
-                        <ActivityIndicator color="white" />
+                        <ActivityIndicator color="#e4fbfe" />
                       ) : (
                         <Text style={styles.buttonText}>Login</Text>
                       )}
@@ -132,7 +132,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    alignItems: "center",
   },
   contentContainer: {
     width: "100%",
@@ -143,16 +142,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontFamily: "Inter-Bold",
-    color: "#1E293B",
+    color: "#e4fbfe",
     textAlign: "center",
-    marginBottom: 40,
+    marginBottom: 32,
   },
   fieldContainer: {
     marginBottom: 24,
     width: "100%",
   },
   fieldLabel: {
-    color: "#64748B",
+    color: "#e4fbfe",
     fontFamily: "Inter-Medium",
     marginBottom: 8,
     fontSize: 14,
@@ -160,20 +159,18 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(228, 251, 254, 0.1)",
     borderRadius: 12,
     padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    minHeight: 56,
   },
   input: {
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
-    color: "#1E293B",
+    color: "#e4fbfe",
     fontFamily: "Inter-Regular",
   },
   loginButton: {
@@ -181,18 +178,20 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: "100%",
     marginTop: 20,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   buttonGradient: {
     paddingVertical: 18,
     alignItems: "center",
   },
   buttonText: {
-    color: "#fff",
+    color: "#e4fbfe",
     fontFamily: "Inter-Bold",
     fontSize: 16,
   },
   signUpText: {
-    color: "#4F46E5",
+    color: "#e4fbfe",
     fontFamily: "Inter-Medium",
     fontSize: 14,
     marginTop: 20,

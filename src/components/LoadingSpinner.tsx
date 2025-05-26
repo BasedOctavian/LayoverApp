@@ -191,8 +191,10 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
 
 const styles = StyleSheet.create({
   loadingContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
   loadingSpinnerContainer: {
     justifyContent: 'center',
@@ -201,16 +203,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+    width: '100%',
   },
   loadingSpinner: {
     justifyContent: 'center',
     alignItems: 'center',
+    width: '100%',
   },
   loadingText: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
     textAlign: 'center',
+    width: '100%',
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Medium',
   },
   loadingDotsContainer: {
     flexDirection: 'row',

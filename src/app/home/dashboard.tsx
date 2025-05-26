@@ -31,6 +31,7 @@ import { useNearestAirports } from "../../hooks/useNearestAirports";
 import { useFilteredEvents } from "../../hooks/useFilteredEvents";
 import StatusSheet from "../../components/StatusSheet";
 import TopBar from "../../components/TopBar";
+import LoadingScreen from "../../components/LoadingScreen";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -78,6 +79,7 @@ export default function Dashboard() {
   const [customStatus, setCustomStatus] = useState("");
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [updatingMood, setUpdatingMood] = useState(false);
   const [searchHeaderHeight, setSearchHeaderHeight] = useState(0);
   const [defaultSearchHeight, setDefaultSearchHeight] = useState(0);
@@ -93,7 +95,7 @@ export default function Dashboard() {
     type: "success",
   });
 
-  const hasUpdatedRef = useRef(false); // Tracks if the Firestore update has run
+  const hasUpdatedRef = useRef(false);
 
   const nearbyUsers: NearbyUser[] = [
     { id: "1", name: "Alex Johnson", status: "Down to Chat" },
@@ -141,14 +143,54 @@ export default function Dashboard() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setAuthUser(user);
-        setUserId(user.uid); // Set userId here
+        setUserId(user.uid);
       } else {
         router.replace("login/login");
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const initializeDashboard = async () => {
+      try {
+        // Request location permission and get location
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const location = await Location.getCurrentPositionAsync({});
+          setUserLocation({
+            lat: location.coords.latitude,
+            long: location.coords.longitude,
+          });
+        }
+
+        // Load events and sport events in parallel
+        const [eventsData, sportEventsData] = await Promise.all([
+          getEvents(),
+          getSportEvents(),
+        ]);
+
+        if (eventsData) setEvents(eventsData);
+        if (sportEventsData) setAllSportEvents(sportEventsData);
+
+        // Load airports
+        const fetchedAirports = await getAirports();
+        if (fetchedAirports) setAllAirports(fetchedAirports);
+
+        // Set initial load complete
+        setInitialLoadComplete(true);
+      } catch (error) {
+        console.error("Error initializing dashboard:", error);
+        showPopup("Error", "Failed to load dashboard data", "error");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (userId) {
+      initializeDashboard();
+    }
+  }, [userId]);
 
   useEffect(() => {
     const loadEvents = async () => {
@@ -220,74 +262,29 @@ export default function Dashboard() {
 
   const filteredResults =
     searchType === "airports"
-      ? nearestAirports.tenClosest.filter((airport) => airport.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      ? nearestAirports.tenClosest.filter((airport: Airport) => airport.name.toLowerCase().includes(searchQuery.toLowerCase()))
       : allEvents.filter((event) => event.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const dashboardData = [
     { type: "section", id: "users", data: nearbyUsers },
     { type: "section", id: "events", data: allEvents },
+    { type: "spacer", id: "spacer1" },
     ...features.map((feature, index) => ({ type: "feature", id: index.toString(), data: feature })),
   ];
 
+  // Show black screen during auth check
+  if (!userId) {
+    return <View style={{ flex: 1, backgroundColor: '#000000' }} />;
+  }
+
+  // Show loading screen only during data loading
+  if (loading || !initialLoadComplete) {
+    return <LoadingScreen message="Loading your dashboard..." />;
+  }
+
   return (
-    <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
-      <TopBar onProfilePress={() => router.push(`profile/${authUser?.uid}`)} />
-      {showSearch && (
-        <View
-          style={[styles.searchHeader, { top: topBarHeight }]}
-          onLayout={(event) => {
-            const { height } = event.nativeEvent.layout;
-            setSearchHeaderHeight(height);
-          }}
-        >
-          <View style={styles.searchInputContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder={`Search ${searchType}...`}
-              placeholderTextColor="#64748B"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
-            />
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowSearch(false)}>
-              <Feather name="x" size={24} color="#38a5c9" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.filterContainer}>
-            <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("airports")}>
-              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "airports" ? "#38a5c9" : "#F1F5F9" }]}>
-                <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : "#64748B"} />
-                <Text style={[styles.filterText, { color: searchType === "airports" ? "#FFFFFF" : "#64748B" }]}>Airports</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("events")}>
-              <View style={[styles.filterButtonInner, { backgroundColor: searchType === "events" ? "#38a5c9" : "#F1F5F9" }]}>
-                <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : "#64748B"} />
-                <Text style={[styles.filterText, { color: searchType === "events" ? "#FFFFFF" : "#64748B" }]}>Events</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-      {!showSearch && (
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => setShowSearch(true)}
-          style={[styles.defaultSearchContainer, { top: topBarHeight }]}
-          onLayout={(event) => {
-            const { height } = event.nativeEvent.layout;
-            setDefaultSearchHeight(height);
-          }}
-        >
-          <View style={styles.searchContainer}>
-            <Feather name="search" size={18} color="#64748B" />
-            <Text style={styles.searchPlaceholder}>
-              {selectedAirport ? selectedAirport.name : "Select an airport"}
-            </Text>
-            <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
-          </View>
-        </TouchableOpacity>
-      )}
+    <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+      <TopBar onProfilePress={() => router.push(`profile/${authUser?.uid}`)}  />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <View style={{ flex: 1, position: "relative" }}>
@@ -296,6 +293,65 @@ export default function Dashboard() {
                 style={{ flex: 1 }}
                 data={showSearch ? filteredResults : dashboardData}
                 keyExtractor={(item, index) => (showSearch ? index.toString() : item.id)}
+                ListHeaderComponent={
+                  <View>
+                    {showSearch ? (
+                      <View
+                        style={styles.searchHeader}
+                        onLayout={(event) => {
+                          const { height } = event.nativeEvent.layout;
+                          setSearchHeaderHeight(height);
+                        }}
+                      >
+                        <View style={styles.searchInputContainer}>
+                          <TextInput
+                            style={styles.searchInput}
+                            placeholder={`Search ${searchType}...`}
+                            placeholderTextColor="#64748B"
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            autoFocus
+                          />
+                          <TouchableOpacity style={styles.cancelButton} onPress={() => setShowSearch(false)}>
+                            <Feather name="x" size={24} color="#38a5c9" />
+                          </TouchableOpacity>
+                        </View>
+                        <View style={styles.filterContainer}>
+                          <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("airports")}>
+                            <View style={[styles.filterButtonInner, { backgroundColor: searchType === "airports" ? "#38a5c9" : "#F1F5F9" }]}>
+                              <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : "#64748B"} />
+                              <Text style={[styles.filterText, { color: searchType === "airports" ? "#FFFFFF" : "#64748B" }]}>Airports</Text>
+                            </View>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("events")}>
+                            <View style={[styles.filterButtonInner, { backgroundColor: searchType === "events" ? "#38a5c9" : "#F1F5F9" }]}>
+                              <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : "#64748B"} />
+                              <Text style={[styles.filterText, { color: searchType === "events" ? "#FFFFFF" : "#64748B" }]}>Events</Text>
+                            </View>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => setShowSearch(true)}
+                        style={styles.defaultSearchContainer}
+                        onLayout={(event) => {
+                          const { height } = event.nativeEvent.layout;
+                          setDefaultSearchHeight(height);
+                        }}
+                      >
+                        <View style={styles.searchContainer}>
+                          <Feather name="search" size={18} color="#64748B" />
+                          <Text style={styles.searchPlaceholder}>
+                            {selectedAirport ? selectedAirport.name : "Select an airport"}
+                          </Text>
+                          <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                }
                 renderItem={({ item }) => {
                   if (showSearch) {
                     return (
@@ -365,11 +421,11 @@ export default function Dashboard() {
                       );
                     } else if (item.id === "events") {
                       return (
-                        <View style={styles.section}>
+                        <View style={styles.section} >
                           <View style={styles.headerRow}>
                             <MaterialIcons name="event" size={20} color="#38a5c9" style={styles.headerIcon} />
                             <Text style={styles.sectionHeader}>
-                              Events at {selectedAirport ? selectedAirport.name : "Your Location"}
+                              Nearby Events
                             </Text>
                           </View>
                           {item.data.length > 0 ? (
@@ -413,12 +469,11 @@ export default function Dashboard() {
                         <Feather name="chevron-right" size={18} color="#CBD5E1" />
                       </TouchableOpacity>
                     );
+                  } else if (item.type === "spacer") {
+                    return <View style={styles.spacer} />;
                   }
                   return null;
                 }}
-                ListHeaderComponent={
-                  showSearch ? <View style={{ height: searchHeaderHeight }} /> : <View style={{ height: defaultSearchHeight }} />
-                }
                 contentContainerStyle={{ 
                   paddingHorizontal: 16, 
                   paddingBottom: Platform.OS === 'ios' ? 100 : 80 
@@ -468,11 +523,12 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#2F80ED",
+    color: "#e4fbfe",
     letterSpacing: 0.5,
   },
   section: {
-    marginBottom: 28,
+    marginBottom: 0,
+    marginTop: 20,
   },
   headerRow: {
     flexDirection: "row",
@@ -486,66 +542,70 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#1E293B",
+    color: "#e4fbfe",
     marginTop: 20,
     letterSpacing: 0.3,
   },
   userCard: {
     width: 160,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     padding: 16,
     marginRight: 16,
     alignItems: "center",
     elevation: 4,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   avatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#E6F0FA",
+    backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: "#2F80ED",
+    borderColor: "#38a5c9",
   },
   userName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1E293B",
+    color: "#e4fbfe",
     textAlign: "center",
     marginBottom: 4,
   },
   userStatus: {
     fontSize: 14,
-    color: "#64748B",
+    color: "#38a5c9",
     textAlign: "center",
   },
   eventCard: {
     width: 220,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     padding: 20,
     marginRight: 16,
     elevation: 4,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   organizedEventCard: {
     width: 220,
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
     borderRadius: 16,
     padding: 20,
     marginRight: 16,
     elevation: 4,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -553,43 +613,45 @@ const styles = StyleSheet.create({
   eventName: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#1E293B",
+    color: "#e4fbfe",
     marginBottom: 6,
   },
   organizedEventName: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: "#000000",
     marginBottom: 6,
   },
   eventDescription: {
     fontSize: 14,
-    color: "#64748B",
+    color: "#38a5c9",
     lineHeight: 20,
   },
   organizedEventDescription: {
     fontSize: 14,
-    color: "#FFFFFF",
+    color: "#000000",
     lineHeight: 20,
   },
   noDataText: {
     fontSize: 15,
-    color: "#64748B",
+    color: "#38a5c9",
     textAlign: "center",
     marginVertical: 20,
   },
   featureItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     elevation: 3,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   featureItemContent: {
     flex: 1,
@@ -599,22 +661,22 @@ const styles = StyleSheet.create({
   featureItemText: {
     marginLeft: 14,
     fontSize: 16,
-    color: "#1E293B",
+    color: "#e4fbfe",
     fontWeight: "600",
   },
   searchHeader: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    zIndex: 2,
-    backgroundColor: "#FFFFFF",
+    marginHorizontal: 20,
+    marginTop: 20,
+    backgroundColor: "#1a1a1a",
     borderRadius: 20,
     padding: 16,
     elevation: 6,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   searchInputContainer: {
     flexDirection: "row",
@@ -623,7 +685,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: "#1E293B",
+    color: "#e4fbfe",
     paddingVertical: 10,
   },
   cancelButton: {
@@ -651,10 +713,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   defaultSearchContainer: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    zIndex: 2,
+    marginHorizontal: 20,
+    marginTop: 20,
   },
   searchContainer: {
     borderRadius: 16,
@@ -662,17 +722,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     elevation: 6,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   searchPlaceholder: {
     flex: 1,
     fontSize: 15,
-    color: "#64748B",
+    color: "#38a5c9",
     marginLeft: 10,
   },
   searchIcon: {
@@ -687,13 +749,15 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#1a1a1a",
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   organizedResultItemView: {
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
   },
   resultIcon: {
     marginRight: 14,
@@ -701,13 +765,13 @@ const styles = StyleSheet.create({
   resultText: {
     flex: 1,
     fontSize: 15,
-    color: "#1E293B",
+    color: "#e4fbfe",
     fontWeight: "500",
   },
   organizedResultText: {
     flex: 1,
     fontSize: 15,
-    color: "#FFFFFF",
+    color: "#000000",
     fontWeight: "500",
   },
   fab: {
@@ -717,11 +781,11 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
     alignItems: "center",
     justifyContent: "center",
     elevation: 6,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -733,37 +797,42 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.4)",
   },
   popupContainer: {
-    backgroundColor: "#fff",
+    backgroundColor: "#1a1a1a",
     borderRadius: 20,
     padding: 24,
     minWidth: "80%",
     marginBottom: 650,
     elevation: 8,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   popupTitle: {
     fontSize: 20,
     fontWeight: "700",
     marginBottom: 12,
     textAlign: "center",
-    color: "#1E293B",
+    color: "#e4fbfe",
   },
   popupMessage: {
     fontSize: 16,
     textAlign: "center",
-    color: "#64748B",
+    color: "#38a5c9",
     lineHeight: 24,
   },
   popupSuccess: {
     borderLeftWidth: 6,
-    borderLeftColor: "#2F80ED",
+    borderLeftColor: "#38a5c9",
   },
   popupError: {
     borderLeftWidth: 6,
     borderLeftColor: "#FF5A5F",
+  },
+  spacer: {
+    height: 18,
   },
 });
 

@@ -13,6 +13,7 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "react-native";
 import TopBar from "../../components/TopBar";
+import LoadingScreen from "../../components/LoadingScreen";
 
 export default function Event() {
   const { id } = useLocalSearchParams();
@@ -199,13 +200,7 @@ export default function Event() {
   };
 
   if (!event) {
-    return (
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading event...</Text>
-        </View>
-      </LinearGradient>
-    );
+    return <LoadingScreen message="Loading event details..." />;
   }
 
   const isOrganizer = user?.uid === event.organizer;
@@ -216,7 +211,7 @@ export default function Event() {
         <MaterialIcons
           name={event.organizer ? "person" : "group-add"}
           size={20}
-          color="#6a11cb"
+          color="#38a5c9"
         />
         <Text style={styles.organizerText}>
           {event.organizer
@@ -232,7 +227,7 @@ export default function Event() {
           disabled={loading}
         >
           <LinearGradient
-            colors={["#7F5AFF", "#5A7CFF"]}
+            colors={["#38a5c9", "#2F80ED"]}
             style={styles.buttonGradient}
           >
             <Feather name="star" size={20} color="#fff" />
@@ -253,8 +248,8 @@ export default function Event() {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
         <TopBar />
         {/* ScrollView */}
         <ScrollView
@@ -281,24 +276,24 @@ export default function Event() {
               <Text style={styles.eventDescription}>{event.description}</Text>
               <View style={styles.detailsGrid}>
                 <View style={styles.detailItem}>
-                  <MaterialIcons name="event" size={20} color="#6a11cb" />
+                  <MaterialIcons name="event" size={20} color="#38a5c9" />
                   <Text style={styles.detailText}>
                     Created {formatDateTime(event.createdAt)}
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <MaterialIcons name="schedule" size={20} color="#6a11cb" />
+                  <MaterialIcons name="schedule" size={20} color="#38a5c9" />
                   <Text style={styles.detailText}>
                     Starts {formatDateTime(event.startTime)}
                     {isOrganizer && (
                       <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                        <MaterialIcons name="edit" size={16} color="#6a11cb" style={{ marginLeft: 8 }} />
+                        <MaterialIcons name="edit" size={16} color="#38a5c9" style={{ marginLeft: 8 }} />
                       </TouchableOpacity>
                     )}
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <MaterialIcons name="people" size={20} color="#6a11cb" />
+                  <MaterialIcons name="people" size={20} color="#38a5c9" />
                   <Text style={styles.detailText}>
                     {event.attendees?.length || 0} attendees
                   </Text>
@@ -307,7 +302,7 @@ export default function Event() {
               {renderOrganizerSection()}
               <View style={styles.mapCard}>
                 <View style={styles.sectionHeader}>
-                  <MaterialIcons name="place" size={20} color="#6a11cb" />
+                  <MaterialIcons name="place" size={20} color="#38a5c9" />
                   <Text style={styles.sectionHeaderText}>Event Location</Text>
                 </View>
                 <TouchableOpacity
@@ -331,7 +326,7 @@ export default function Event() {
                       title={event.name}
                       description={event.description}
                     >
-                      <MaterialIcons name="place" size={28} color="#6a11cb" />
+                      <MaterialIcons name="place" size={28} color="#38a5c9" />
                     </Marker>
                   </MapView>
                 </TouchableOpacity>
@@ -358,7 +353,7 @@ export default function Event() {
             accessibilityLabel="Event Chat"
             accessibilityHint="Navigate to event discussion"
           >
-            <LinearGradient colors={["#7F5AFF", "#5A7CFF"]} style={styles.buttonGradient}>
+            <LinearGradient colors={["#38a5c9", "#2F80ED"]} style={styles.buttonGradient}>
               <Ionicons name="chatbubbles" size={24} color="#fff" />
               <Text style={styles.buttonText}>Event Chat</Text>
             </LinearGradient>
@@ -370,7 +365,7 @@ export default function Event() {
             disabled={loading}
           >
             <LinearGradient
-              colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#7F5AFF", "#5A7CFF"]}
+              colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#38a5c9", "#2F80ED"]}
               style={styles.buttonGradient}
             >
               <Feather
@@ -409,7 +404,7 @@ export default function Event() {
                 title={event.name}
                 description={event.description}
               >
-                <MaterialIcons name="place" size={24} color="#6a11cb" />
+                <MaterialIcons name="place" size={24} color="#38a5c9" />
               </Marker>
             </MapView>
             <TouchableOpacity
@@ -449,20 +444,6 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    backgroundColor: "#f8f9fa", // Matches gradient start color
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-  logo: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#2F80ED",
-  },
   scrollContainer: {
     flex: 1,
   },
@@ -481,39 +462,43 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
   },
   detailsCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#1a1a1a",
     borderRadius: 20,
     padding: 20,
-    shadowColor: "#6a11cb",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   eventTitle: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#2D3748",
+    color: "#e4fbfe",
     marginBottom: 12,
   },
   categoryChip: {
-    backgroundColor: "rgba(106,17,203,0.1)",
+    backgroundColor: "rgba(56,165,201,0.1)",
     borderRadius: 20,
     paddingVertical: 6,
     paddingHorizontal: 16,
     alignSelf: "flex-start",
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   eventCategory: {
     fontSize: 14,
-    color: "#6a11cb",
+    color: "#38a5c9",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 1,
   },
   eventDescription: {
     fontSize: 14,
-    color: "#718096",
+    color: "#e4fbfe",
     lineHeight: 22,
     marginBottom: 25,
   },
@@ -528,7 +513,7 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 14,
-    color: "#718096",
+    color: "#e4fbfe",
     fontWeight: "500",
   },
   organizerContainer: {
@@ -537,15 +522,17 @@ const styles = StyleSheet.create({
   organizerBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(106,17,203,0.1)",
+    backgroundColor: "rgba(56,165,201,0.1)",
     borderRadius: 20,
     paddingVertical: 12,
     paddingHorizontal: 16,
     gap: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   organizerText: {
     fontSize: 15,
-    color: "#6a11cb",
+    color: "#38a5c9",
     fontWeight: "600",
   },
   becomeOrganizerButton: {
@@ -569,20 +556,22 @@ const styles = StyleSheet.create({
   },
   organizedTimestamp: {
     fontSize: 12,
-    color: "#718096",
+    color: "#38a5c9",
     marginTop: 8,
     alignSelf: "flex-end",
   },
   mapCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#1a1a1a",
     borderRadius: 20,
     padding: 20,
-    shadowColor: "#6a11cb",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 3,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   sectionHeader: {
     flexDirection: "row",
@@ -593,7 +582,7 @@ const styles = StyleSheet.create({
   sectionHeaderText: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#2D3748",
+    color: "#e4fbfe",
   },
   mapButton: {
     borderRadius: 20,
@@ -608,11 +597,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    backgroundColor: "rgba(106,17,203,0.1)",
+    backgroundColor: "rgba(56,165,201,0.1)",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   setLocationText: {
-    color: "#6a11cb",
+    color: "#38a5c9",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -626,18 +617,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     width: "48%",
-    shadowColor: "#6a11cb",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  attendButton: {
-    position: "absolute",
-    bottom: 24,
-    left: 20,
-    right: 20,
-    shadowColor: "#6a11cb",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
@@ -684,6 +664,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: "#2D3748",
+    color: "#e4fbfe",
   },
 });

@@ -21,6 +21,7 @@ import useAuth from "../../hooks/auth";
 import useChats from "../../hooks/useChats";
 import useUsers from "../../hooks/useUsers";
 import TopBar from "../../components/TopBar";
+import LoadingScreen from "../../components/LoadingScreen";
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
@@ -134,11 +135,10 @@ export default function ChatInbox() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={{ flex: 1 }}>
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
         <TopBar />
 
         <View style={styles.container}>
-          {/* Optional Search Input */}
           <TextInput
             style={styles.searchInput}
             placeholder="Search chats..."
@@ -148,15 +148,9 @@ export default function ChatInbox() {
           />
 
           {loading ? (
-            <View style={styles.stateContainer}>
-              <ActivityIndicator size="large" color="#2F80ED" />
-              <Text style={styles.loadingText}>Loading...</Text>
-            </View>
+            <LoadingScreen message="Loading your chats..." />
           ) : chatsLoading ? (
-            <View style={styles.stateContainer}>
-              <ActivityIndicator size="large" color="#2F80ED" />
-              <Text style={styles.loadingText}>Loading chats...</Text>
-            </View>
+            <LoadingScreen message="Loading chat history..." />
           ) : chatsError ? (
             <View style={styles.stateContainer}>
               <Text style={styles.errorText}>{chatsError}</Text>
@@ -173,7 +167,6 @@ export default function ChatInbox() {
             />
           )}
 
-          {/* Floating Action Button */}
           <TouchableOpacity
             style={styles.fab}
             onPress={() => router.push("chat/chatExplore")}
@@ -207,31 +200,35 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   searchInput: {
-    backgroundColor: "#FFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 25,
     paddingHorizontal: 20,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#1E293B",
+    color: "#e4fbfe",
     marginBottom: 16,
-    shadowColor: "#000",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   chatCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   profileImage: {
     width: 50,
@@ -245,16 +242,16 @@ const styles = StyleSheet.create({
   chatName: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#1E293B",
+    color: "#e4fbfe",
   },
   chatLastMessage: {
     fontSize: 14,
-    color: "#64748B",
+    color: "#38a5c9",
     marginTop: 4,
   },
   chatText: {
     fontSize: 18,
-    color: "#1E293B",
+    color: "#e4fbfe",
   },
   stateContainer: {
     flex: 1,

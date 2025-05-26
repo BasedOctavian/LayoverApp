@@ -24,6 +24,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
+import LoadingScreen from "../../components/LoadingScreen";
 
 export default function Chat() {
   // Get chat ID from params
@@ -138,19 +139,13 @@ export default function Chat() {
   };
 
   if (loading || loadingChat) {
-    return (
-      <SafeAreaView style={styles.centerContainer} edges={["bottom"]}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-          <ActivityIndicator size="large" color="#2F80ED" />
-        </LinearGradient>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading chat..." />;
   }
 
   if (error || errorChat) {
     return (
       <SafeAreaView style={styles.centerContainer} edges={["bottom"]}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
+        <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
           <Text style={styles.errorText}>Error: {error || errorChat}</Text>
         </LinearGradient>
       </SafeAreaView>
@@ -158,13 +153,7 @@ export default function Chat() {
   }
 
   if (!partner) {
-    return (
-      <SafeAreaView style={styles.centerContainer} edges={["bottom"]}>
-        <LinearGradient colors={["#E6F0FA", "#F8FAFC"]} style={styles.flex}>
-          <Text style={styles.infoText}>User not found</Text>
-        </LinearGradient>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading user profile..." />;
   }
 
   return (

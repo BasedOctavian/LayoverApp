@@ -68,16 +68,6 @@ const useAuth = () => {
       // Create the user using Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-  
-      // Send verification email
-      try {
-        await sendEmailVerification(user);
-        console.log("Verification email sent");
-      } catch (emailError) {
-        console.error("Failed to send verification email:", emailError);
-        // Continue signup even if email fails, as verification can be resent later
-      }
-  
       const userId = user.uid;
   
       // If a profile picture URI is provided, upload the image using the UID as the filename
@@ -92,15 +82,20 @@ const useAuth = () => {
   
       // Create a Firestore user document with the UID and profile picture URL
       const userDocRef = doc(db, "users", userId);
-      await setDoc(userDocRef, {
+      const userDocData = {
         ...userData,
         profilePicture: profilePicUrl,
         userId,
         email: userCredential.user.email,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+        lastLogin: serverTimestamp(),
+        airportCode: "", // Add default empty airport code
+      };
+      
+      await setDoc(userDocRef, userDocData);
   
+      // Ensure user state is set before returning
       setUser(userCredential.user);
       return userCredential;
     } catch (error) {
