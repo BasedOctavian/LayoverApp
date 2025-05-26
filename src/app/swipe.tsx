@@ -56,8 +56,8 @@ interface Connection {
 }
 
 const { width, height } = Dimensions.get("window");
-const CARD_WIDTH = width * 0.85;
-const CARD_HEIGHT = height * 0.80;
+const CARD_WIDTH = width * 0.9;
+const CARD_HEIGHT = height * 0.67;
 
 const Swipe = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -75,6 +75,7 @@ const Swipe = () => {
   const buttonScale = useSharedValue(1);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showMessageOptions, setShowMessageOptions] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -222,6 +223,7 @@ const Swipe = () => {
   /** Fetch users and filter based on likedUsers and dislikedUsers */
   const fetchUsers = async () => {
     try {
+      setIsLoadingUsers(true);
       const fetchedUsers = await getUsers() as User[];
       const likedAndDisliked = [
         ...(currentUserData?.likedUsers || []),
@@ -235,6 +237,8 @@ const Swipe = () => {
     } catch (err) {
       Alert.alert("Error", "Failed to fetch users. Please try again later.");
       console.error("Error fetching users:", err);
+    } finally {
+      setIsLoadingUsers(false);
     }
   };
 
@@ -386,7 +390,7 @@ const Swipe = () => {
   };
 
   /** Loading state */
-  if (loading) {
+  if (loading || isLoadingUsers) {
     return <LoadingScreen message="Finding travelers near you..." />;
   }
 
@@ -573,10 +577,10 @@ const styles = StyleSheet.create({
   cardContainer: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: "hidden",
-    marginLeft: 10,
-    marginTop: -40,
+    marginHorizontal: 'auto',
+    marginBottom: 80,
     backfaceVisibility: 'hidden',
   },
   cardShadow: {
@@ -598,21 +602,22 @@ const styles = StyleSheet.create({
   cardContent: {
     flex: 1,
     backgroundColor: "#1a1a1a",
-    padding: 20,
+    padding: 16,
     borderWidth: 1,
     borderColor: "#38a5c9",
+    borderRadius: 16,
   },
   profileHeader: {
     flexDirection: "column",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   imageContainer: {
-    width: CARD_WIDTH - 40,
-    height: CARD_HEIGHT * 0.35,
-    borderRadius: 16,
+    width: CARD_WIDTH - 32,
+    height: CARD_HEIGHT * 0.4,
+    borderRadius: 12,
     overflow: "hidden",
-    marginBottom: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#38a5c9",
   },
@@ -624,10 +629,10 @@ const styles = StyleSheet.create({
   profileInfo: {
     alignItems: "center",
     width: "100%",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   nameText: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "600",
     color: "#e4fbfe",
     textAlign: "center",
@@ -635,41 +640,41 @@ const styles = StyleSheet.create({
   moodContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 4,
     justifyContent: "center",
     width: "100%",
   },
   moodText: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#38a5c9",
-    marginLeft: 8,
+    marginLeft: 6,
     fontWeight: "500",
     flexShrink: 1,
   },
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 8,
-    paddingBottom: 16,
+    paddingHorizontal: 4,
+    paddingBottom: 12,
   },
   section: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   sectionContent: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#e4fbfe",
-    marginLeft: 12,
+    marginLeft: 8,
     flex: 1,
-    lineHeight: 22,
+    lineHeight: 20,
   },
   divider: {
     height: 1,
     backgroundColor: "#38a5c9",
-    marginVertical: 8,
+    marginVertical: 6,
     opacity: 0.3,
   },
   stateContainer: {
@@ -733,8 +738,8 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   messageOptionsContent: {
-    width: '90%',
-    maxHeight: '80%',
+    width: '85%',
+    maxHeight: '75%',
     backgroundColor: '#1a1a1a',
     borderRadius: 16,
     overflow: 'hidden',
@@ -747,23 +752,23 @@ const styles = StyleSheet.create({
     borderColor: '#38a5c9',
   },
   messageOptionsHeader: {
-    padding: 20,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#38a5c9',
     position: 'relative',
     backgroundColor: '#1a1a1a',
   },
   messageOptionsTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: '#38a5c9',
     textAlign: 'center',
   },
   messageOptionsSubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#e4fbfe',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 6,
   },
   closeButton: {
     position: 'absolute',
@@ -779,13 +784,13 @@ const styles = StyleSheet.create({
     borderColor: '#38a5c9',
   },
   messagesContainer: {
-    padding: 20,
+    padding: 16,
   },
   presetMessageButton: {
     backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#38a5c9',
     shadowColor: '#38a5c9',
@@ -795,10 +800,10 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   presetMessageText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#e4fbfe',
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 20,
   },
   chatButton: {
     backgroundColor: '#38a5c9',
@@ -811,20 +816,21 @@ const styles = StyleSheet.create({
   },
   quickMessageButtonContainer: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 16,
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 10,
+    marginBottom: 30,
   },
   quickMessageButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#38a5c9',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 30,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
     shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -835,9 +841,9 @@ const styles = StyleSheet.create({
   },
   quickMessageButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
-    marginLeft: 8,
+    marginLeft: 4,
   },
   messageSection: {
     marginBottom: 20,

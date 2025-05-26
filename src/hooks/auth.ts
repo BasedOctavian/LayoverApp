@@ -47,61 +47,48 @@ const useAuth = () => {
     setLoading(true);
     setError(null);
     try {
+      // Add a small delay to ensure Firebase auth state is cleared
+      await new Promise(resolve => setTimeout(resolve, 500));
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       setUser(userCredential.user);
     } catch (error) {
       const authError = error as AuthError;
-      setError(authError.message);
+      // Handle specific Firebase auth errors
+      if (authError.code === 'auth/too-many-requests') {
+        setError('Too many login attempts. Please try again later.');
+      } else if (authError.code === 'auth/user-not-found' || authError.code === 'auth/wrong-password') {
+        setError('Invalid email or password.');
+      } else {
+        setError(authError.message || 'Failed to log in');
+      }
+      throw authError;
     } finally {
       setLoading(false);
     }
   };
 
-  const signup = async (
-    email: string,
-    password: string,
-    userData: Omit<UserData, "userId" | "createdAt" | "updatedAt">
-  ) => {
-    setLoading(true);
-    setError(null);
+  const signup = async (email: string, password: string, userData: any) => {
     try {
-      // Create the user using Firebase Auth
+      setLoading(true);
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      const userId = user.uid;
-  
-      // If a profile picture URI is provided, upload the image using the UID as the filename
-      let profilePicUrl: string | null = null;
-      if (userData.profilePicture) {
-        const response = await fetch(userData.profilePicture);
-        const blob = await response.blob();
-        const storageRef = ref(storage, `profilePictures/${userId}`);
-        await uploadBytes(storageRef, blob);
-        profilePicUrl = await getDownloadURL(storageRef);
-      }
-  
-      // Create a Firestore user document with the UID and profile picture URL
-      const userDocRef = doc(db, "users", userId);
-      const userDocData = {
+      
+      // Create user document
+      const userDocRef = doc(db, "users", userCredential.user.uid);
+      await setDoc(userDocRef, {
         ...userData,
-        profilePicture: profilePicUrl,
-        userId,
-        email: userCredential.user.email,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        lastLogin: serverTimestamp(),
-        airportCode: "", // Add default empty airport code
-      };
-      
-      await setDoc(userDocRef, userDocData);
-  
-      // Ensure user state is set before returning
-      setUser(userCredential.user);
+      });
+
       return userCredential;
-    } catch (error) {
-      const authError = error as AuthError;
-      setError(authError.message);
-      throw authError;
+    } catch (error: any) {
+      let errorMessage = "Failed to create account";
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage = "Email is already in use";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage = "Password is too weak";
+      }
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -111,11 +98,17 @@ const useAuth = () => {
     setLoading(true);
     setError(null);
     try {
-      await signOut(auth);
+      // Clear the user state first
       setUser(null);
+      // Then sign out from Firebase
+      await signOut(auth);
+      // Add a small delay to ensure Firebase auth state is cleared
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
       const authError = error as AuthError;
-      setError(authError.message);
+      setError(authError.message || 'Failed to log out');
+      // Even if there's an error, we want to clear the user state
+      setUser(null);
     } finally {
       setLoading(false);
     }

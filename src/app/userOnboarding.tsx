@@ -21,7 +21,10 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import useAuth from "../hooks/auth";
 import { useRouter } from "expo-router";
-import LoadingSpinner from "../components/LoadingSpinner";
+import LoadingScreen from "../components/LoadingScreen";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db, storage } from "../../config/firebaseConfig";
 
 const avatarSize = 100;
 
@@ -260,7 +263,22 @@ const UserOnboarding = () => {
   const handleNext = async () => {
     Keyboard.dismiss();
     if (stepIndex < steps.length - 1) {
-      setStepIndex((prev) => prev + 1);
+      fadeAnim.setValue(1);
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }).start(() => {
+        setStepIndex((prev) => prev + 1);
+        fadeAnim.setValue(0);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      });
     } else {
       await handleSubmit();
     }
@@ -273,12 +291,13 @@ const UserOnboarding = () => {
         return;
       }
 
+      // First create the user document without the profile picture
       const userProfile = {
         email: userData.email,
         name: userData.name || "",
         age: parseInt(userData.age, 10) || 0,
         bio: userData.bio || "",
-        profilePicture: userData.profilePicture || "",
+        profilePicture: "", // Will be updated after upload
         travelHistory: userData.travelHistory?.split(/,\s*/) || [],
         goals: userData.goals?.split(/,\s*/) || [],
         interests: userData.interests?.split(/,\s*/) || [],
@@ -287,10 +306,36 @@ const UserOnboarding = () => {
         moodStatus: "neutral",
       };
 
-      await signup(userData.email, userData.password, userProfile);
-      if (user) {
-        router.replace("/home/dashboard");
+      // Create user account and get the user ID
+      const userCredential = await signup(userData.email, userData.password, userProfile);
+      
+      if (!userCredential?.user?.uid) {
+        throw new Error("Failed to create user account");
       }
+
+      // Upload profile picture if one was selected
+      if (userData.profilePicture && !userData.profilePicture.startsWith("http")) {
+        try {
+          const response = await fetch(userData.profilePicture);
+          const blob = await response.blob();
+          const storageRef = ref(storage, `profilePictures/${userCredential.user.uid}`);
+          await uploadBytes(storageRef, blob);
+          const profilePicUrl = await getDownloadURL(storageRef);
+
+          // Update user document with profile picture URL
+          const userDocRef = doc(db, "users", userCredential.user.uid);
+          await updateDoc(userDocRef, {
+            profilePicture: profilePicUrl,
+            updatedAt: serverTimestamp(),
+          });
+        } catch (error) {
+          console.error("Error uploading profile picture:", error);
+          // Continue even if profile picture upload fails
+        }
+      }
+
+      // Navigate to dashboard
+      router.replace("/home/dashboard");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to create account");
     }
@@ -321,7 +366,7 @@ const UserOnboarding = () => {
               </View>
             )}
             <View style={styles.cameraBadge}>
-              <Feather name="camera" size={16} color="#070707" />
+              <Feather name="camera" size={16} color="#000000" />
             </View>
           </TouchableOpacity>
         );
@@ -361,7 +406,11 @@ const UserOnboarding = () => {
             styles.inputContainer,
             isFocused && styles.inputContainerFocused
           ]}>
-            <Feather name={field.icon} size={20} color={isFocused ? "#e4fbfe" : "#38a5c9"} />
+            <Feather 
+              name={field.icon} 
+              size={20} 
+              color={isFocused ? "#e4fbfe" : "#38a5c9"} 
+            />
             <TextInput
               style={styles.input}
               placeholder={field.placeholder}
@@ -381,26 +430,15 @@ const UserOnboarding = () => {
   };
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <LinearGradient colors={["#070707", "#38a5c9"]} style={styles.flex}>
-          <LoadingSpinner 
-            size={120}
-            color="#e4fbfe"
-            customTexts={[
-              "Creating your profile...",
-              "Setting up your account...",
-              "Almost ready to take off...",
-              "Preparing your journey..."
-            ]}
-          />
-        </LinearGradient>
-      </View>
-    );
+    return <LoadingScreen message="Creating your account..." />;
+  }
+
+  if (!isAuthChecked) {
+    return <LoadingScreen message="Checking authentication..." />;
   }
 
   return (
-    <LinearGradient colors={["#070707", "#38a5c9"]} style={styles.gradient}>
+    <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardAvoidingView}
@@ -422,59 +460,71 @@ const UserOnboarding = () => {
                 { opacity: fadeAnim }
               ]}
             >
-              {!isAuthChecked ? (
-                <ActivityIndicator size="large" color="#e4fbfe" />
-              ) : (
-                <>
-                  <Text style={styles.title}>{steps[stepIndex].title}</Text>
-                  {steps[stepIndex].fields.map((field) => (
-                    <View key={field.key} style={styles.fieldContainer}>
-                      <Text style={styles.fieldLabel}>{field.label}</Text>
-                      {renderField(field)}
-                    </View>
-                  ))}
-                  <View style={styles.footer}>
-                    {stepIndex > 0 && (
-                      <TouchableOpacity
-                        style={styles.backButton}
-                        onPress={() => setStepIndex((prev) => prev - 1)}
-                      >
-                        <Feather
-                          name="chevron-left"
-                          size={24}
-                          color="#e4fbfe"
-                        />
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                      style={styles.nextButton}
-                      onPress={handleNext}
-                      disabled={loading}
-                    >
-                      <LinearGradient
-                        colors={["#070707", "#070707"]}
-                        style={styles.buttonGradient}
-                      >
-                        {loading ? (
-                          <ActivityIndicator color="#e4fbfe" />
-                        ) : (
-                          <Text style={styles.buttonText}>
-                            {stepIndex === steps.length - 1
-                              ? "Start Exploring! ✈️"
-                              : "Continue Journey →"}
-                          </Text>
-                        )}
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
-                  {stepIndex === 0 && (
-                    <TouchableOpacity onPress={() => router.push("login/login")}>
-                      <Text style={styles.loginText}>
-                        Already have an account? Log in
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </>
+              <Text style={styles.title}>{steps[stepIndex].title}</Text>
+              {steps[stepIndex].fields.map((field) => (
+                <View key={field.key} style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>{field.label}</Text>
+                  {renderField(field)}
+                </View>
+              ))}
+              <View style={styles.footer}>
+                {stepIndex > 0 && (
+                  <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => {
+                      fadeAnim.setValue(1);
+                      Animated.timing(fadeAnim, {
+                        toValue: 0,
+                        duration: 150,
+                        easing: Easing.inOut(Easing.ease),
+                        useNativeDriver: true,
+                      }).start(() => {
+                        setStepIndex((prev) => prev - 1);
+                        fadeAnim.setValue(0);
+                        Animated.timing(fadeAnim, {
+                          toValue: 1,
+                          duration: 300,
+                          easing: Easing.inOut(Easing.ease),
+                          useNativeDriver: true,
+                        }).start();
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather
+                      name="chevron-left"
+                      size={24}
+                      color="#e4fbfe"
+                    />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.nextButton}
+                  onPress={handleNext}
+                  disabled={loading}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={["#38a5c9", "#38a5c9"]}
+                    style={styles.buttonGradient}
+                  >
+                    <Text style={styles.buttonText}>
+                      {stepIndex === steps.length - 1
+                        ? "Start Exploring! ✈️"
+                        : "Continue Journey →"}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+              {stepIndex === 0 && (
+                <TouchableOpacity 
+                  onPress={() => router.push("login/login")}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.loginText}>
+                    Already have an account? Log in
+                  </Text>
+                </TouchableOpacity>
               )}
             </Animated.View>
           </TouchableWithoutFeedback>
@@ -525,7 +575,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(228, 251, 254, 0.1)",
+    backgroundColor: "#1a1a1a",
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
@@ -534,7 +584,7 @@ const styles = StyleSheet.create({
   },
   inputContainerFocused: {
     borderColor: "#e4fbfe",
-    backgroundColor: "rgba(228, 251, 254, 0.15)",
+    backgroundColor: "#1a1a1a",
   },
   input: {
     flex: 1,
@@ -551,7 +601,7 @@ const styles = StyleSheet.create({
     width: avatarSize,
     height: avatarSize,
     borderRadius: avatarSize / 2,
-    backgroundColor: "rgba(228, 251, 254, 0.1)",
+    backgroundColor: "#1a1a1a",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
@@ -573,12 +623,12 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 0,
     right: 0,
-    backgroundColor: "#e4fbfe",
+    backgroundColor: "#38a5c9",
     padding: 8,
     borderRadius: 20,
   },
   tagsContainer: {
-    backgroundColor: "rgba(228, 251, 254, 0.1)",
+    backgroundColor: "#1a1a1a",
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
@@ -587,7 +637,7 @@ const styles = StyleSheet.create({
   },
   tagsContainerFocused: {
     borderColor: "#e4fbfe",
-    backgroundColor: "rgba(228, 251, 254, 0.15)",
+    backgroundColor: "#1a1a1a",
   },
   tagsInput: {
     fontSize: 16,
@@ -603,7 +653,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   tag: {
-    backgroundColor: "rgba(56, 165, 201, 0.2)",
+    backgroundColor: "#1a1a1a",
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 20,
@@ -628,7 +678,7 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(228, 251, 254, 0.1)",
+    backgroundColor: "#1a1a1a",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#38a5c9",
@@ -646,23 +696,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonText: {
-    color: "#e4fbfe",
+    color: "#000000",
     fontFamily: "Inter-Bold",
     fontSize: 16,
   },
   loginText: {
-    color: "#e4fbfe",
+    color: "#38a5c9",
     fontFamily: "Inter-Medium",
     fontSize: 14,
     marginTop: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  flex: {
-    flex: 1,
   },
 });
 
