@@ -411,7 +411,7 @@ const Swipe = () => {
   if (!users.length) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+        <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40  }}>
           <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
             <Text style={styles.emptyStateText}>No users found nearby.</Text>
@@ -427,7 +427,7 @@ const Swipe = () => {
   /** Main Swiper view */
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40  }}>
         <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
         <View style={{ flex: 1 }}>
           {showSwiper && users.length > 0 ? (

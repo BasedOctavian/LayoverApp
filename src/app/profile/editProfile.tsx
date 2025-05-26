@@ -23,6 +23,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import { useRouter } from "expo-router";
 import TopBar from "../../components/TopBar";
+import LoadingScreen from "../../components/LoadingScreen";
 
 interface Trip {
   id: string;
@@ -297,13 +298,11 @@ const EditProfile = () => {
   };
 
   if (authLoading || loading) {
-    return (
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.gradient}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#6a11cb" />
-        </View>
-      </LinearGradient>
-    );
+    return <LoadingScreen message="Loading your profile..." />;
+  }
+
+  if (updating) {
+    return <LoadingScreen message="Updating your profile..." />;
   }
 
   return (
@@ -475,6 +474,7 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
     backgroundColor: "#f8f9fa",
+    marginBottom: -20,
   },
   scrollContent: {
     padding: 24,

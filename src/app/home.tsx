@@ -243,20 +243,6 @@ export default function EventCreation() {
               </View>
             }
           />
-          <TouchableOpacity
-            style={styles.searchButtonContainer}
-            onPress={() => router.push("locked/lockedScreen")}
-          >
-            <LinearGradient
-              colors={["#38a5c9", "#1F5B6F"]}
-              style={styles.searchButton}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <AntDesign name="search1" size={20} color="white" />
-              <Text style={styles.searchText}>Search Events</Text>
-            </LinearGradient>
-          </TouchableOpacity>
         </LinearGradient>
       </SafeAreaView>
     </>
@@ -354,30 +340,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#e4fbfe",
     marginLeft: 6,
-  },
-  searchButtonContainer: {
-    position: "absolute",
-    bottom: 30,
-    alignSelf: "center",
-    width: "90%",
-  },
-  searchButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 25,
-    elevation: 6,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  searchText: {
-    fontSize: 16,
-    color: "#FFFFFF",
-    marginLeft: 10,
-    fontWeight: "500",
   },
   loadingContainer: {
     flex: 1,

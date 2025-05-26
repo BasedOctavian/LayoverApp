@@ -1,12 +1,22 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView, Keyboard, Platform, Animated } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import useAuth from '../../../hooks/auth';
 import useChat from '../../../hooks/useChat';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import TopBar from '../../../components/TopBar';
+import LoadingScreen from '../../../components/LoadingScreen';
+import { Timestamp } from 'firebase/firestore';
+
+interface Message {
+  id: string;
+  text: string;
+  userId: string;
+  userName: string;
+  timestamp: Timestamp;
+}
 
 export default function EventChat() {
   const { id } = useLocalSearchParams(); // Event ID from navigation params
@@ -16,6 +26,39 @@ export default function EventChat() {
   const [newMessage, setNewMessage] = useState('');
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const marginAnim = useRef(new Animated.Value(50)).current;
+  const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        Animated.timing(marginAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: false,
+        }).start();
+        setKeyboardVisible(true);
+      }
+    );
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        Animated.timing(marginAnim, {
+          toValue: 50,
+          duration: 150,
+          useNativeDriver: false,
+        }).start();
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !user) return;
@@ -27,7 +70,7 @@ export default function EventChat() {
     setNewMessage('');
   };
 
-  const formatTimestamp = (timestamp) => {
+  const formatTimestamp = (timestamp: Timestamp): string => {
     if (!timestamp) return '';
     const date = timestamp.toDate(); // Convert Firestore Timestamp to Date
     const today = new Date();
@@ -39,12 +82,15 @@ export default function EventChat() {
       const minutes = date.getMinutes().toString().padStart(2, '0');
       return `${hours}:${minutes}`;
     } else {
-      const options = { month: 'short', day: 'numeric' };
+      const options: Intl.DateTimeFormatOptions = { 
+        month: 'short' as const, 
+        day: 'numeric' as const 
+      };
       return date.toLocaleDateString(undefined, options) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
   };
 
-  const renderMessage = ({ item }) => {
+  const renderMessage = ({ item }: { item: Message }) => {
     const isCurrentUser = item.userId === user?.uid;
     return (
       <View style={[styles.messageBubble, isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble]}>
@@ -61,35 +107,47 @@ export default function EventChat() {
     );
   };
 
+  if (loading) {
+    return (
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <LoadingScreen message="Loading chat..." />
+      </LinearGradient>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#f8f9fa", "#e9ecef"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
         <TopBar />
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Loading chat...</Text>
-          </View>
-        ) : error ? (
+        {error ? (
           <View style={styles.loadingContainer}>
             <Text style={styles.loadingText}>{error}</Text>
           </View>
         ) : (
-          <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
             <FlatList
               data={messages}
               renderItem={renderMessage}
               keyExtractor={item => item.id}
               style={styles.messageList}
-              inverted
               keyboardShouldPersistTaps="always"
+              contentContainerStyle={styles.messageListContent}
+              onContentSizeChange={() => {
+                if (messages.length > 0) {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }
+              }}
+              ref={flatListRef}
             />
-            <View style={styles.inputContainer}>
+            <Animated.View style={[styles.inputContainer, { marginBottom: marginAnim }]}>
               <TextInput
                 style={styles.input}
                 value={newMessage}
                 onChangeText={setNewMessage}
                 placeholder="Type a message..."
+                placeholderTextColor="#64748B"
                 accessibilityLabel="Message input"
               />
               <TouchableOpacity
@@ -97,9 +155,9 @@ export default function EventChat() {
                 style={styles.sendButton}
                 accessibilityLabel="Send message"
               >
-                <Ionicons name="send" size={24} color="#fff" />
+                <Feather name="send" size={24} color="#000000" />
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           </KeyboardAvoidingView>
         )}
       </LinearGradient>
@@ -108,35 +166,32 @@ export default function EventChat() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  flex: { flex: 1, marginBottom: -20 },
+  messageList: { 
+    flex: 1,
     paddingHorizontal: 16,
-    backgroundColor: "#f8f9fa",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
   },
-  logo: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#2F80ED",
+  messageListContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    paddingBottom: 16,
   },
-  messageList: { flex: 1 },
   messageBubble: {
     padding: 12,
     borderRadius: 16,
     marginVertical: 4,
     maxWidth: '80%',
+    borderWidth: 1,
   },
   currentUserBubble: {
-    backgroundColor: '#7F5AFF',
+    backgroundColor: '#38a5c9',
     alignSelf: 'flex-end',
+    borderColor: '#38a5c9',
   },
   otherUserBubble: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#1a1a1a',
     alignSelf: 'flex-start',
+    borderColor: '#38a5c9',
   },
   messageText: {
     fontSize: 16,
@@ -149,30 +204,34 @@ const styles = StyleSheet.create({
   messageTimestamp: {
     fontSize: 10,
     marginTop: 4,
+    opacity: 0.7,
   },
   currentUserText: {
-    color: '#fff',
+    color: '#000000',
   },
   otherUserText: {
-    color: '#2D3748',
+    color: '#e4fbfe',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#1a1a1a',
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: '#38a5c9',
   },
   input: {
     flex: 1,
     padding: 12,
     borderRadius: 20,
-    backgroundColor: '#F7F7F7',
+    backgroundColor: '#000000',
     marginRight: 12,
+    color: '#e4fbfe',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
   },
   sendButton: {
-    backgroundColor: '#7F5AFF',
+    backgroundColor: '#38a5c9',
     padding: 12,
     borderRadius: 20,
   },
@@ -183,6 +242,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#2D3748',
+    color: '#e4fbfe',
   },
 });

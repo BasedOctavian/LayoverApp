@@ -21,10 +21,10 @@ interface PresetStatus {
 
 // Define preset statuses with typed array
 const presetStatuses: PresetStatus[] = [
-  { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#6a11cb" /> },
-  { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#6a11cb" /> },
-  { label: "Work Mode", icon: <Feather name="briefcase" size={18} color="#6a11cb" /> },
-  { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#6a11cb" /> },
+  { label: "Down to Chat", icon: <FontAwesome5 name="comment" size={18} color="#38a5c9" /> },
+  { label: "Food & Drinks?", icon: <MaterialIcons name="restaurant" size={18} color="#38a5c9" /> },
+  { label: "Work Mode", icon: <Feather name="briefcase" size={18} color="#38a5c9" /> },
+  { label: "Exploring the Airport", icon: <Ionicons name="airplane" size={18} color="#38a5c9" /> },
 ];
 
 // Define props interface for the StatusSheet component
@@ -97,7 +97,7 @@ export default function StatusSheet({
           value={customStatus}
           onChangeText={setCustomStatus}
           placeholder="Enter your status..."
-          placeholderTextColor="#718096"
+          placeholderTextColor="#64748B"
         />
         <TouchableOpacity
           style={styles.submitButton}
@@ -120,20 +120,22 @@ const styles = StyleSheet.create({
     bottom: 0,
     right: 0,
     left: 0,
-    backgroundColor: "rgba(255,255,255,0.98)",
+    backgroundColor: "#1a1a1a",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     padding: 24,
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
     shadowRadius: 24,
     elevation: 10,
     zIndex: 101,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   } as ViewStyle,
   statusTitle: {
     fontSize: 14,
-    color: "#64748B",
+    color: "#e4fbfe",
     fontWeight: "600",
     marginBottom: 16,
     textTransform: "uppercase",
@@ -143,10 +145,12 @@ const styles = StyleSheet.create({
     gap: 14,
   } as ViewStyle,
   statusChip: {
-    backgroundColor: "rgba(47,128,237,0.08)",
+    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   } as ViewStyle,
   statusChipContent: {
     flexDirection: "row",
@@ -154,13 +158,13 @@ const styles = StyleSheet.create({
   } as ViewStyle,
   statusText: {
     fontSize: 15,
-    color: "#2F80ED",
+    color: "#e4fbfe",
     fontWeight: "600",
     marginLeft: 10,
   } as TextStyle,
   customStatusLabel: {
     fontSize: 14,
-    color: "#64748B",
+    color: "#e4fbfe",
     fontWeight: "600",
     marginTop: 16,
     marginBottom: 10,
@@ -168,20 +172,22 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   } as TextStyle,
   customStatusInput: {
-    backgroundColor: "rgba(47,128,237,0.08)",
+    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 18,
     fontSize: 15,
-    color: "#2F80ED",
+    color: "#e4fbfe",
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   } as TextStyle,
   submitButton: {
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: "center",
-    shadowColor: "#2F80ED",
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,

@@ -4,14 +4,13 @@ import useEvents from "../../hooks/useEvents";
 import { useEffect, useState } from "react";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
-import MapView, { Marker } from "react-native-maps";
 import useUsers from "../../hooks/useUsers";
 import useAuth from "../../hooks/auth";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { StatusBar } from "react-native";
+import { StatusBar, Platform } from "react-native";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 
@@ -21,13 +20,12 @@ export default function Event() {
   const { getUser } = useUsers();
   const [event, setEvent] = useState<any>(null);
   const [organizer, setOrganizer] = useState<string | null>(null);
-  const [fullScreenMap, setFullScreenMap] = useState(false);
   const [isAttending, setIsAttending] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("Loading event details...");
   const { user } = useAuth();
   const router = useRouter();
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [isSettingLocation, setIsSettingLocation] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const insets = useSafeAreaInsets();
@@ -107,6 +105,7 @@ export default function Event() {
   const handleAttend = async () => {
     if (!user?.uid || !event) return;
     setLoading(true);
+    setLoadingMessage("Updating attendance...");
     try {
       const currentAttendees = event.attendees || [];
       const newAttendees = isAttending
@@ -124,6 +123,7 @@ export default function Event() {
   const handleBecomeOrganizer = async () => {
     if (!user?.uid || event.organizer !== null) return;
     setLoading(true);
+    setLoadingMessage("Claiming organization...");
     try {
       await updateEvent(event.id, {
         organizer: user.uid,
@@ -165,6 +165,7 @@ export default function Event() {
     setShowDatePicker(false);
     if (!user?.uid || user.uid !== event.organizer) return;
     setLoading(true);
+    setLoadingMessage("Updating event time...");
     try {
       const timestamp = date.toISOString();
       await updateEvent(event.id, { startTime: timestamp });
@@ -176,31 +177,8 @@ export default function Event() {
     }
   };
 
-  const handleMapPress = async (e) => {
-    if (!isSettingLocation || !user?.uid || user.uid !== event.organizer) return;
-    const { latitude, longitude } = e.nativeEvent.coordinate;
-    setLoading(true);
-    try {
-      await updateEvent(event.id, {
-        latitude: latitude.toString(),
-        longitude: longitude.toString(),
-      });
-      setEvent((prev) => ({
-        ...prev,
-        latitude: latitude.toString(),
-        longitude: longitude.toString(),
-      }));
-      setFullScreenMap(false);
-      setIsSettingLocation(false);
-    } catch (error) {
-      console.error("Error updating location:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (!event) {
-    return <LoadingScreen message="Loading event details..." />;
+  if (!event || loading) {
+    return <LoadingScreen message={loadingMessage} />;
   }
 
   const isOrganizer = user?.uid === event.organizer;
@@ -251,7 +229,6 @@ export default function Event() {
       <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
         <TopBar />
-        {/* ScrollView */}
         <ScrollView
           style={styles.scrollContainer}
           contentContainerStyle={styles.scrollContent}
@@ -298,54 +275,17 @@ export default function Event() {
                     {event.attendees?.length || 0} attendees
                   </Text>
                 </View>
+                <View style={styles.detailItem}>
+                  <MaterialIcons name="flight" size={20} color="#38a5c9" />
+                  <Text style={styles.detailText}>
+                    {event.airportCode || "No airport set"}
+                  </Text>
+                </View>
               </View>
               {renderOrganizerSection()}
-              <View style={styles.mapCard}>
-                <View style={styles.sectionHeader}>
-                  <MaterialIcons name="place" size={20} color="#38a5c9" />
-                  <Text style={styles.sectionHeaderText}>Event Location</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setFullScreenMap(true)}
-                  style={styles.mapButton}
-                >
-                  <MapView
-                    style={styles.map}
-                    initialRegion={{
-                      latitude: parseFloat(event.latitude),
-                      longitude: parseFloat(event.longitude),
-                      latitudeDelta: 0.01,
-                      longitudeDelta: 0.01,
-                    }}
-                  >
-                    <Marker
-                      coordinate={{
-                        latitude: parseFloat(event.latitude),
-                        longitude: parseFloat(event.longitude),
-                      }}
-                      title={event.name}
-                      description={event.description}
-                    >
-                      <MaterialIcons name="place" size={28} color="#38a5c9" />
-                    </Marker>
-                  </MapView>
-                </TouchableOpacity>
-                {isOrganizer && (
-                  <TouchableOpacity
-                    style={styles.setLocationButton}
-                    onPress={() => {
-                      setFullScreenMap(true);
-                      setIsSettingLocation(true);
-                    }}
-                  >
-                    <Text style={styles.setLocationText}>Set Location</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
             </View>
           </Animated.View>
         </ScrollView>
-        {/* Bottom Buttons */}
         <View style={styles.bottomButtons}>
           <TouchableOpacity
             style={styles.buttonContainer}
@@ -383,54 +323,15 @@ export default function Event() {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-        {/* Full Screen Map */}
-        {fullScreenMap && (
-          <View style={styles.fullScreenMapContainer}>
-            <MapView
-              style={styles.fullScreenMap}
-              initialRegion={{
-                latitude: parseFloat(event.latitude),
-                longitude: parseFloat(event.longitude),
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
-              onPress={isSettingLocation ? handleMapPress : undefined}
-            >
-              <Marker
-                coordinate={{
-                  latitude: parseFloat(event.latitude),
-                  longitude: parseFloat(event.longitude),
-                }}
-                title={event.name}
-                description={event.description}
-              >
-                <MaterialIcons name="place" size={24} color="#38a5c9" />
-              </Marker>
-            </MapView>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => {
-                setFullScreenMap(false);
-                setIsSettingLocation(false);
-              }}
-            >
-              <MaterialIcons name="close" size={32} color="#fff" />
-            </TouchableOpacity>
-            {isSettingLocation && (
-              <View style={styles.instructionText}>
-                <Text style={styles.instructionTextContent}>
-                  Tap on the map to set the location
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-        {/* Date Picker */}
         <DateTimePickerModal
           isVisible={showDatePicker}
           mode="datetime"
           onConfirm={handleConfirmDate}
           onCancel={() => setShowDatePicker(false)}
+          textColor="#e4fbfe"
+          themeVariant="dark"
+          isDarkModeEnabled={true}
+          buttonTextColorIOS="#38a5c9"
         />
       </LinearGradient>
     </SafeAreaView>
@@ -440,6 +341,7 @@ export default function Event() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+    marginBottom: -20,
   },
   gradient: {
     flex: 1,
@@ -449,7 +351,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 24,
-    paddingBottom: 160,
+    paddingBottom: Platform.OS === 'ios' ? 100 : 80,
   },
   imageContainer: {
     position: "relative",
@@ -472,6 +374,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderWidth: 1,
     borderColor: "#38a5c9",
+    marginBottom: 10,
   },
   eventTitle: {
     fontSize: 28,
@@ -560,60 +463,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     alignSelf: "flex-end",
   },
-  mapCard: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 3,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    gap: 12,
-  },
-  sectionHeaderText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#e4fbfe",
-  },
-  mapButton: {
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-  map: {
-    width: "100%",
-    height: 220,
-  },
-  setLocationButton: {
-    marginTop: 12,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    backgroundColor: "rgba(56,165,201,0.1)",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-  },
-  setLocationText: {
-    color: "#38a5c9",
-    fontSize: 16,
-    fontWeight: "600",
-  },
   bottomButtons: {
     position: "absolute",
-    bottom: 24,
+    bottom: Platform.OS === 'ios' ? 40 : 32,
     left: 20,
     right: 20,
     flexDirection: "row",
     justifyContent: "space-between",
+    zIndex: 50,
   },
   buttonContainer: {
     width: "48%",
@@ -622,48 +479,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 6,
-  },
-  fullScreenMapContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.9)",
-    zIndex: 1000,
-  },
-  fullScreenMap: {
-    width: "100%",
-    height: "100%",
-  },
-  closeButton: {
-    position: "absolute",
-    top: 50,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    borderRadius: 20,
-    padding: 10,
-  },
-  instructionText: {
-    position: "absolute",
-    bottom: 50,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  instructionTextContent: {
-    backgroundColor: "rgba(0,0,0,0.7)",
-    color: "#fff",
-    padding: 10,
-    borderRadius: 8,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#e4fbfe",
+    marginBottom: 20,
   },
 });

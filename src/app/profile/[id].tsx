@@ -538,6 +538,7 @@ const TripGallery = ({ trip, onPhotoPress }: { trip: any; onPhotoPress: (photos:
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+    marginBottom: -20,
   },
   gradient: {
     flex: 1,
@@ -824,6 +825,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#38a5c9",
+    marginBottom: 30,
   },
   uploadingContainer: {
     backgroundColor: '#1a1a1a',

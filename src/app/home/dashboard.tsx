@@ -83,6 +83,8 @@ export default function Dashboard() {
   const [updatingMood, setUpdatingMood] = useState(false);
   const [searchHeaderHeight, setSearchHeaderHeight] = useState(0);
   const [defaultSearchHeight, setDefaultSearchHeight] = useState(0);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [popupData, setPopupData] = useState<{
     visible: boolean;
     title: string;
@@ -109,23 +111,20 @@ export default function Dashboard() {
   };
 
   const handleUpdateMoodStatus = async (status: string) => {
-    if (!userId) {
-      showPopup("Error", "User not logged in", "error");
-      return;
-    }
+    if (!userId) return;
     setUpdatingMood(true);
+    setIsUpdating(true);
     try {
       const updatedData = {
         moodStatus: status,
         updatedAt: serverTimestamp(),
       };
       await updateUser(userId, updatedData);
-      showPopup("Success", "Mood status updated successfully", "success");
     } catch (error) {
-      showPopup("Error", "Failed to update mood status", "error");
       console.error(error);
     } finally {
       setUpdatingMood(false);
+      setIsUpdating(false);
     }
   };
 
@@ -260,14 +259,38 @@ export default function Dashboard() {
     { icon: <Ionicons name="settings" size={24} color="#38a5c9" />, title: "Settings", screen: "settings/settings" },
   ];
 
+  const refreshData = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const [eventsData, sportEventsData] = await Promise.all([
+        getEvents(),
+        getSportEvents(),
+      ]);
+
+      if (eventsData) setEvents(eventsData);
+      if (sportEventsData) setAllSportEvents(sportEventsData);
+
+      const fetchedAirports = await getAirports();
+      if (fetchedAirports) setAllAirports(fetchedAirports);
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+      showPopup("Error", "Failed to refresh data", "error");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const filteredResults =
     searchType === "airports"
-      ? nearestAirports.tenClosest.filter((airport: Airport) => airport.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      : allEvents.filter((event) => event.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      ? (nearestAirports?.tenClosest || []).filter((airport: Airport) => 
+          airport?.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+      : (allEvents || []).filter((event) => 
+          event?.name?.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const dashboardData = [
-    { type: "section", id: "users", data: nearbyUsers },
-    { type: "section", id: "events", data: allEvents },
+    { type: "section", id: "users", data: nearbyUsers || [] },
+    { type: "section", id: "events", data: allEvents || [] },
     { type: "spacer", id: "spacer1" },
     ...features.map((feature, index) => ({ type: "feature", id: index.toString(), data: feature })),
   ];
@@ -275,6 +298,11 @@ export default function Dashboard() {
   // Show black screen during auth check
   if (!userId) {
     return <View style={{ flex: 1, backgroundColor: '#000000' }} />;
+  }
+
+  // Show loading screen during auth check or updates
+  if (!userId || isUpdating) {
+    return <LoadingScreen message={!userId ? "Loading your dashboard..." : "Updating..."} />;
   }
 
   // Show loading screen only during data loading
@@ -293,6 +321,8 @@ export default function Dashboard() {
                 style={{ flex: 1 }}
                 data={showSearch ? filteredResults : dashboardData}
                 keyExtractor={(item, index) => (showSearch ? index.toString() : item.id)}
+                refreshing={isRefreshing}
+                onRefresh={refreshData}
                 ListHeaderComponent={
                   <View>
                     {showSearch ? (
@@ -431,7 +461,12 @@ export default function Dashboard() {
                           {item.data.length > 0 ? (
                             <FlatList
                               horizontal
-                              data={item.data}
+                              data={[...item.data].sort((a, b) => {
+                                // Sort organized events first
+                                if (a.organizer && !b.organizer) return -1;
+                                if (!a.organizer && b.organizer) return 1;
+                                return 0;
+                              })}
                               keyExtractor={(event) => `${event.type}-${event.id}`}
                               renderItem={({ item: event }) => (
                                 <TouchableOpacity
@@ -485,6 +520,11 @@ export default function Dashboard() {
               <Feather name="edit" size={24} color="#FFF" />
             </TouchableOpacity>
             {/* Status Sheet Component */}
+            {showStatusSheet && (
+              <TouchableWithoutFeedback onPress={toggleStatusSheet}>
+                <View style={styles.overlay} />
+              </TouchableWithoutFeedback>
+            )}
             <StatusSheet
               showStatusSheet={showStatusSheet}
               sheetAnim={sheetAnim}
@@ -496,17 +536,6 @@ export default function Dashboard() {
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      {/* Popup Modal */}
-      {popupData.visible && (
-        <Modal transparent animationType="fade">
-          <View style={styles.popupOverlay}>
-            <View style={[styles.popupContainer, popupData.type === "error" ? styles.popupError : styles.popupSuccess]}>
-              <Text style={styles.popupTitle}>{popupData.title}</Text>
-              <Text style={styles.popupMessage}>{popupData.message}</Text>
-            </View>
-          </View>
-        </Modal>
-      )}
     </LinearGradient>
   );
 }
@@ -665,36 +694,40 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   searchHeader: {
-    marginHorizontal: 20,
-    marginTop: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
     backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    padding: 16,
-    elevation: 6,
+    borderRadius: 16,
+    padding: 12,
+    elevation: 4,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
     borderWidth: 1,
     borderColor: "#38a5c9",
   },
   searchInputContainer: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#000000",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     color: "#e4fbfe",
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
   cancelButton: {
-    marginLeft: 12,
+    marginLeft: 8,
     padding: 4,
   },
   filterContainer: {
     flexDirection: "row",
-    marginTop: 14,
     gap: 8,
   },
   filterButton: {
@@ -704,73 +737,78 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: "#000000",
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
     marginLeft: 8,
   },
   defaultSearchContainer: {
-    marginHorizontal: 20,
-    marginTop: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
   },
   searchContainer: {
     borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1a1a1a",
-    elevation: 6,
+    elevation: 4,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
     borderWidth: 1,
     borderColor: "#38a5c9",
   },
   searchPlaceholder: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     color: "#38a5c9",
-    marginLeft: 10,
+    marginLeft: 12,
   },
   searchIcon: {
-    marginLeft: 10,
+    marginLeft: 8,
   },
   resultItem: {
-    marginBottom: 10,
+    marginHorizontal: 16,
+    marginBottom: 8,
     borderRadius: 16,
     overflow: "hidden",
+    padding: 5,
   },
   resultItemView: {
-    padding: 16,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1a1a1a",
     borderWidth: 1,
     borderColor: "#38a5c9",
+    borderRadius: 16,
   },
   organizedResultItemView: {
-    padding: 16,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#38a5c9",
+    borderRadius: 16,
   },
   resultIcon: {
-    marginRight: 14,
+    marginRight: 12,
   },
   resultText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     color: "#e4fbfe",
     fontWeight: "500",
   },
   organizedResultText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     color: "#000000",
     fontWeight: "500",
   },
@@ -790,49 +828,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
   },
-  popupOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-  },
-  popupContainer: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    padding: 24,
-    minWidth: "80%",
-    marginBottom: 650,
-    elevation: 8,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-  },
-  popupTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 12,
-    textAlign: "center",
-    color: "#e4fbfe",
-  },
-  popupMessage: {
-    fontSize: 16,
-    textAlign: "center",
-    color: "#38a5c9",
-    lineHeight: 24,
-  },
-  popupSuccess: {
-    borderLeftWidth: 6,
-    borderLeftColor: "#38a5c9",
-  },
-  popupError: {
-    borderLeftWidth: 6,
-    borderLeftColor: "#FF5A5F",
-  },
   spacer: {
     height: 18,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 1,
   },
 });
 

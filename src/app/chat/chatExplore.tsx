@@ -7,7 +7,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  SafeAreaView,
+  StatusBar,
 } from "react-native";
 import useAuth from "../../hooks/auth";
 import { useEffect, useState } from "react";
@@ -26,8 +26,16 @@ import { auth } from "../../../config/firebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+
+interface Chat {
+  id: string;
+  participants: string[];
+  createdAt: Date;
+}
 
 export default function ChatExplore() {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { getUsers, loading: usersLoading, error: usersError } = useUsers();
   const [users, setUsers] = useState<any[]>([]);
@@ -63,7 +71,7 @@ export default function ChatExplore() {
       const chatsCollection = collection(db, "chats");
       const q = query(chatsCollection, where("participants", "array-contains", userId));
       const snapshot = await getDocs(q);
-      const chats = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const chats = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Chat[];
       return chats;
     } catch (error) {
       setChatError("Failed to fetch user chats.");
@@ -154,10 +162,19 @@ export default function ChatExplore() {
     </TouchableOpacity>
   );
 
-  return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+  if (loading) {
+    return (
       <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <TopBar />
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <LoadingScreen message="Loading..." />
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+ <TopBar />
+      <SafeAreaView style={styles.flex} edges={["top"]}>
         <View style={styles.container}>
           <TextInput
             style={styles.searchInput}
@@ -179,15 +196,18 @@ export default function ChatExplore() {
             />
           )}
         </View>
-      </LinearGradient>
-    </SafeAreaView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: "#E6F0FA",
+  },
+  container: {
+    flex: 1,
+    padding: 16,
   },
   topBar: {
     flexDirection: "row",
@@ -198,15 +218,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
     height: 50,
+    
   },
   logo: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#2F80ED",
-  },
-  container: {
-    flex: 1,
-    padding: 16,
   },
   searchInput: {
     backgroundColor: "#1a1a1a",
@@ -215,7 +232,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: "#e4fbfe",
-    marginBottom: 16,
+    marginBottom: -50,
     marginTop: 20,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
@@ -273,6 +290,5 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 20,
-    
   },
 });

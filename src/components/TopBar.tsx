@@ -1,20 +1,27 @@
 import React from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Image, TouchableOpacity, StyleSheet, Text, Platform } from 'react-native';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Define props interface
 interface TopBarProps {
   onProfilePress?: () => void;
   showBackButton?: boolean;
   title?: string;
+  showNotifications?: boolean;
+  onNotificationPress?: () => void;
+  notificationCount?: number;
 }
 
 const TopBar: React.FC<TopBarProps> = ({ 
   onProfilePress, 
   showBackButton = false,
-  title
+  title,
+  showNotifications = true,
+  onNotificationPress,
+  notificationCount = 0
 }) => {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
@@ -30,7 +37,10 @@ const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <View style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}>
+    <LinearGradient
+      colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.6)']}
+      style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}
+    >
       <View style={styles.leftSection}>
         {showBackButton ? (
           <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
@@ -48,12 +58,29 @@ const TopBar: React.FC<TopBarProps> = ({
         {title && <Text style={styles.title}>{title}</Text>}
       </View>
       
-      {onProfilePress && (
-        <TouchableOpacity onPress={onProfilePress} style={styles.profileButton}>
-          <Ionicons name="person-circle" size={32} color="#e4fbfe" />
-        </TouchableOpacity>
-      )}
-    </View>
+      <View style={styles.rightSection}>
+        {showNotifications && (
+          <TouchableOpacity onPress={onNotificationPress} style={styles.iconButton}>
+            <View style={styles.notificationContainer}>
+              <Ionicons name="notifications" size={24} color="#e4fbfe" />
+              {notificationCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationText}>
+                    {notificationCount > 99 ? '99+' : notificationCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
+        
+        {onProfilePress && (
+          <TouchableOpacity onPress={onProfilePress} style={styles.profileButton}>
+            <Ionicons name="person-circle" size={32} color="#e4fbfe" />
+          </TouchableOpacity>
+        )}
+      </View>
+    </LinearGradient>
   );
 };
 
@@ -66,7 +93,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#000000',
     borderBottomWidth: 1,
-    borderBottomColor: '#38a5c9',
+    borderBottomColor: 'rgba(56, 165, 201, 0.3)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#38a5c9',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   leftSection: {
     flexDirection: 'row' as const,
@@ -87,8 +125,38 @@ const styles = StyleSheet.create({
     color: '#e4fbfe',
     marginLeft: 8,
   },
+  rightSection: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+  },
+  iconButton: {
+    padding: 4,
+  },
   profileButton: {
     padding: 4,
+  },
+  notificationContainer: {
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#000000',
+  },
+  notificationText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 4,
   }
 });
 

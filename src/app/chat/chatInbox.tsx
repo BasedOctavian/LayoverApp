@@ -135,7 +135,7 @@ export default function ChatInbox() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
         <TopBar />
 
         <View style={styles.container}>
@@ -299,5 +299,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
+    marginBottom: 30,
   },
 });
