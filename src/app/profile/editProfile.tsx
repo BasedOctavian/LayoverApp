@@ -41,6 +41,11 @@ interface FormData {
   goals: string[];
   travelHistory: Trip[];
   profilePicture: string;
+  socialMedia: {
+    instagram?: string;
+    linkedin?: string;
+    twitter?: string;
+  };
 }
 
 type ProfileArrayField = "languages" | "interests" | "goals";
@@ -58,6 +63,11 @@ const EditProfile = () => {
     goals: [""],
     travelHistory: [],
     profilePicture: "",
+    socialMedia: {
+      instagram: "",
+      linkedin: "",
+      twitter: "",
+    },
   });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -104,6 +114,11 @@ const EditProfile = () => {
                   : data.travelHistory
                 : [],
               profilePicture: data.profilePicture || "",
+              socialMedia: {
+                instagram: data.socialMedia?.instagram || "",
+                linkedin: data.socialMedia?.linkedin || "",
+                twitter: data.socialMedia?.twitter || "",
+              },
             });
           }
         } catch (error) {
@@ -222,7 +237,7 @@ const EditProfile = () => {
       if (profilePicUrl && !profilePicUrl.startsWith("http")) {
         const response = await fetch(profilePicUrl);
         const blob = await response.blob();
-        const storageRef = ref(storage, `profilePictures/${userId}`);
+        const storageRef = ref(storage, `profile_pictures/${userId}`);
         await uploadBytes(storageRef, blob);
         profilePicUrl = await getDownloadURL(storageRef);
       }
@@ -261,7 +276,12 @@ const EditProfile = () => {
       };
 
       await updateUser(userId, updatedData);
-      Alert.alert("Success", "Profile updated successfully");
+      Alert.alert("Success", "Profile updated successfully", [
+        {
+          text: "OK",
+          onPress: () => router.back()
+        }
+      ]);
     } catch (error) {
       Alert.alert("Error", "Failed to update profile");
       console.error(error);
@@ -306,7 +326,7 @@ const EditProfile = () => {
   }
 
   return (
-    <LinearGradient colors={["#E6F0FA", "#E6F0FA"]} style={styles.gradient}>
+    <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
       <TopBar />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Animated.View style={{ opacity: fadeAnim }}>
@@ -335,7 +355,7 @@ const EditProfile = () => {
               onChangeText={(text) =>
                 setFormData({ ...formData, name: text })
               }
-              placeholderTextColor="#718096"
+              placeholderTextColor="#e4fbfe80"
             />
             <TextInput
               style={styles.input}
@@ -345,7 +365,7 @@ const EditProfile = () => {
                 setFormData({ ...formData, age: text })
               }
               keyboardType="numeric"
-              placeholderTextColor="#718096"
+              placeholderTextColor="#e4fbfe80"
             />
             <TextInput
               style={styles.input}
@@ -354,7 +374,7 @@ const EditProfile = () => {
               onChangeText={(text) =>
                 setFormData({ ...formData, moodStatus: text })
               }
-              placeholderTextColor="#718096"
+              placeholderTextColor="#e4fbfe80"
             />
             <TextInput
               style={[styles.input, styles.multilineInput]}
@@ -364,7 +384,7 @@ const EditProfile = () => {
                 setFormData({ ...formData, bio: text })
               }
               multiline
-              placeholderTextColor="#718096"
+              placeholderTextColor="#e4fbfe80"
             />
           </View>
 
@@ -384,7 +404,7 @@ const EditProfile = () => {
                         handleFieldChange(field, index, text)
                       }
                       placeholder={`Enter ${field.slice(0, -1)}`}
-                      placeholderTextColor="#999"
+                      placeholderTextColor="#e4fbfe80"
                     />
                     <TouchableOpacity
                       onPress={() => handleRemoveField(field, index)}
@@ -406,7 +426,7 @@ const EditProfile = () => {
                     <MaterialIcons
                       name="add-circle"
                       size={18}
-                      color="#6a11cb"
+                      color="#38a5c9"
                     />{" "}
                     Add {field.slice(0, -1)}
                   </Text>
@@ -425,6 +445,7 @@ const EditProfile = () => {
                   placeholder="Trip Name"
                   value={trip.name}
                   onChangeText={(text) => handleTripNameChange(index, text)}
+                  placeholderTextColor="#e4fbfe80"
                 />
                 <View style={styles.photosContainer}>
                   {trip.photos.map((photo, photoIndex) => (
@@ -452,6 +473,58 @@ const EditProfile = () => {
             </TouchableOpacity>
           </View>
 
+          {/* Social Media Section */}
+          <View style={[styles.card, styles.sectionCard]}>
+            <Text style={styles.cardTitle}>Social Media</Text>
+            <View style={styles.socialMediaContainer}>
+              <View style={styles.socialMediaInput}>
+                <MaterialIcons name="photo-camera" size={24} color="#38a5c9" style={styles.socialIcon} />
+                <TextInput
+                  style={[styles.input, styles.socialInput]}
+                  placeholder="Instagram Username"
+                  value={formData.socialMedia.instagram}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      socialMedia: { ...prev.socialMedia, instagram: text },
+                    }))
+                  }
+                  placeholderTextColor="#e4fbfe80"
+                />
+              </View>
+              <View style={styles.socialMediaInput}>
+                <MaterialIcons name="work" size={24} color="#38a5c9" style={styles.socialIcon} />
+                <TextInput
+                  style={[styles.input, styles.socialInput]}
+                  placeholder="LinkedIn URL"
+                  value={formData.socialMedia.linkedin}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      socialMedia: { ...prev.socialMedia, linkedin: text },
+                    }))
+                  }
+                  placeholderTextColor="#e4fbfe80"
+                />
+              </View>
+              <View style={styles.socialMediaInput}>
+                <MaterialIcons name="chat" size={24} color="#38a5c9" style={styles.socialIcon} />
+                <TextInput
+                  style={[styles.input, styles.socialInput]}
+                  placeholder="X (Twitter) Username"
+                  value={formData.socialMedia.twitter}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      socialMedia: { ...prev.socialMedia, twitter: text },
+                    }))
+                  }
+                  placeholderTextColor="#e4fbfe80"
+                />
+              </View>
+            </View>
+          </View>
+
           {/* Save Button */}
           <TouchableOpacity
             style={styles.saveButton}
@@ -459,7 +532,7 @@ const EditProfile = () => {
             disabled={updating}
           >
             {updating ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#e4fbfe" />
             ) : (
               <Text style={styles.saveButtonText}>Save Changes</Text>
             )}
@@ -473,118 +546,158 @@ const EditProfile = () => {
 const styles = StyleSheet.create({
   gradient: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
-    marginBottom: -20,
+    backgroundColor: "#000000",
   },
   scrollContent: {
     padding: 24,
     paddingTop: 56,
     paddingBottom: 160,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   profileHeader: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 40,
   },
   profileImage: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     borderWidth: 3,
-    borderColor: "rgba(255,255,255,0.9)",
+    borderColor: "#38a5c9",
   },
   changePhotoText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "#6a11cb",
-    fontWeight: "500",
+    marginTop: 12,
+    fontSize: 15,
+    color: "#38a5c9",
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textAlign: "center",
   },
   card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#6a11cb",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 3,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
     marginBottom: 24,
   },
   sectionCard: {},
   cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#2D3748",
-    marginBottom: 12,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#e4fbfe",
+    marginBottom: 16,
+    letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: "#f5f5f5",
-    borderRadius: 10,
-    padding: 15,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 16,
+    padding: 16,
+    color: "#e4fbfe",
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    marginBottom: 12,
     fontSize: 16,
-    color: "#2D3748",
-    marginBottom: 10,
   },
   multilineInput: {
-    height: 80,
+    height: 100,
     textAlignVertical: "top",
   },
   fieldRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   flexInput: {
     flex: 1,
   },
   removeButton: {
-    marginLeft: 10,
+    marginLeft: 12,
+    padding: 4,
   },
   addButton: {
-    marginTop: 10,
+    marginTop: 12,
     alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(56, 165, 201, 0.1)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   addButtonText: {
-    color: "#6a11cb",
-    fontSize: 16,
-    fontWeight: "500",
+    color: "#38a5c9",
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   saveButton: {
-    backgroundColor: "#6a11cb",
-    borderRadius: 25,
-    padding: 15,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 30,
+    padding: 18,
     alignItems: "center",
-    marginVertical: 20,
+    marginVertical: 24,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   saveButtonText: {
-    color: "#fff",
+    color: "#e4fbfe",
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
   tripContainer: {
-    marginBottom: 20,
-    padding: 10,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 10,
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   photosContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 10,
+    marginTop: 12,
+    gap: 8,
   },
   photoThumbnail: {
-    width: 60,
-    height: 60,
-    margin: 5,
-    borderRadius: 5,
+    width: 70,
+    height: 70,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   addPhotoText: {
-    color: "#6a11cb",
-    marginTop: 10,
+    color: "#38a5c9",
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  socialMediaContainer: {
+    gap: 16,
+  },
+  socialMediaInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  socialIcon: {
+    marginRight: 12,
+  },
+  socialInput: {
+    flex: 1,
+    marginBottom: 0,
+    backgroundColor: 'transparent',
     fontSize: 16,
   },
 });

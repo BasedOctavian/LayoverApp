@@ -11,6 +11,7 @@ import {
   StatusBar,
   TextInput,
   Alert,
+  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
@@ -19,7 +20,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../../../config/firebaseConfig";
 import { db } from "../../../config/firebaseConfig";
 import useAuth from "../../hooks/auth";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import ImageViewing from "react-native-image-viewing";
@@ -43,6 +44,11 @@ interface UserData {
   goals: string[];
   travelHistory?: any[];
   createdAt?: any;
+  socialMedia?: {
+    instagram?: string;
+    linkedin?: string;
+    twitter?: string;
+  };
 }
 
 // Helper function to convert Firestore data to UserData
@@ -58,7 +64,8 @@ const convertToUserData = (data: DocumentData): UserData => {
     interests: data.interests || [],
     goals: data.goals || [],
     travelHistory: data.travelHistory,
-    createdAt: data.createdAt
+    createdAt: data.createdAt,
+    socialMedia: data.socialMedia || {}
   };
 };
 
@@ -84,6 +91,61 @@ const Profile = () => {
   const topBarHeight = 50 + insets.top;
   const [uploadingImage, setUploadingImage] = useState(false);
   const { addChat, addMessage } = useChats();
+
+  // Add focus effect to refresh data
+  useFocusEffect(
+    React.useCallback(() => {
+      if (userId && id) {
+        setLoading(true);
+        fetchUserData();
+      }
+    }, [userId, id])
+  );
+
+  const fetchUserData = async () => {
+    if (userId && id) {
+      setLoading(true);
+      try {
+        const userDocRef = doc(db, "users", id);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          setUserData(convertToUserData(userDoc.data()));
+        } else {
+          setError("No user data found.");
+        }
+      } catch (error) {
+        setError("Failed to fetch user data.");
+        console.error(error);
+      } finally {
+        setLoading(false);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+  };
+
+  // Remove the old useEffect that was calling fetchUserData
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+      } else {
+        router.replace("login/login");
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Initial data fetch
+  useEffect(() => {
+    if (userId && id) {
+      fetchUserData();
+    }
+  }, [userId, id]);
 
   // Toggle quick starters modal
   const togglePrompts = () => {
@@ -121,7 +183,8 @@ const Profile = () => {
           interests: userData.interests,
           goals: userData.goals,
           travelHistory: userData.travelHistory,
-          createdAt: userData.createdAt
+          createdAt: userData.createdAt,
+          socialMedia: userData.socialMedia || {}
         };
         setEditedData(newEditedData);
       }
@@ -146,6 +209,7 @@ const Profile = () => {
         interests: editedData.interests,
         goals: editedData.goals,
         travelHistory: editedData.travelHistory,
+        socialMedia: editedData.socialMedia || {},
         createdAt: editedData.createdAt
       };
       await updateDoc(userDocRef, updateData);
@@ -168,48 +232,6 @@ const Profile = () => {
       };
     });
   };
-
-  // Auth state listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthUser(user);
-      } else {
-        router.replace("login/login");
-      }
-      setAuthLoading(false);
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (userId && id) {
-        setLoading(true);
-        try {
-          const userDocRef = doc(db, "users", id);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            setUserData(convertToUserData(userDoc.data()));
-          } else {
-            setError("No user data found.");
-          }
-        } catch (error) {
-          setError("Failed to fetch user data.");
-          console.error(error);
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchUserData();
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start();
-  }, [userId, id, fadeAnim]);
 
   // Preset messaging prompts
   const presetPrompts = [
@@ -369,7 +391,7 @@ const Profile = () => {
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-        <TopBar onProfilePress={() => {}} />
+        <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
 
         <ScrollView
           style={styles.scrollContainer}
@@ -435,7 +457,7 @@ const Profile = () => {
                 </Text>
               )}
               <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={18} color="#e4fbfe" />
+                <MaterialIcons name="mood" size={16} color="#38a5c9" />
                 {isEditing ? (
                   <TextInput
                     style={styles.moodInput}
@@ -443,9 +465,12 @@ const Profile = () => {
                     onChangeText={(value) => handleInputChange("moodStatus", value)}
                     placeholder="How are you feeling?"
                     placeholderTextColor="#e4fbfe80"
+                    maxLength={50}
                   />
                 ) : (
-                  <Text style={styles.moodText}>{userData.moodStatus}</Text>
+                  <Text style={styles.moodText} numberOfLines={1} ellipsizeMode="tail">
+                    {userData.moodStatus || "No status set"}
+                  </Text>
                 )}
               </View>
             </View>
@@ -528,6 +553,42 @@ const Profile = () => {
                 )}
               </View>
 
+              {/* Social Media Section */}
+              {userData.socialMedia && Object.keys(userData.socialMedia).length > 0 && (
+                <View style={[styles.card, styles.socialMediaCard]}>
+                  <Text style={styles.cardTitle}>Social Media</Text>
+                  <View style={styles.socialMediaLinks}>
+                    {userData.socialMedia?.instagram && (
+                      <TouchableOpacity 
+                        style={styles.socialLink}
+                        onPress={() => Linking.openURL(`https://instagram.com/${userData.socialMedia?.instagram}`)}
+                      >
+                        <MaterialIcons name="photo-camera" size={24} color="#e4fbfe" />
+                        <Text style={styles.socialLinkText}>@{userData.socialMedia.instagram}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {userData.socialMedia?.linkedin && (
+                      <TouchableOpacity 
+                        style={styles.socialLink}
+                        onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
+                      >
+                        <MaterialIcons name="work" size={24} color="#e4fbfe" />
+                        <Text style={styles.socialLinkText}>LinkedIn Profile</Text>
+                      </TouchableOpacity>
+                    )}
+                    {userData.socialMedia?.twitter && (
+                      <TouchableOpacity 
+                        style={styles.socialLink}
+                        onPress={() => Linking.openURL(`https://twitter.com/${userData.socialMedia?.twitter}`)}
+                      >
+                        <MaterialIcons name="chat" size={24} color="#e4fbfe" />
+                        <Text style={styles.socialLinkText}>@{userData.socialMedia.twitter}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+
               {/* Trip Galleries with Conditional Rendering */}
               {userData.travelHistory && Array.isArray(userData.travelHistory) && userData.travelHistory.length > 1 ? (
                 userData.travelHistory.map((trip: any, index: number) => (
@@ -556,19 +617,10 @@ const Profile = () => {
             <TouchableOpacity
               style={styles.editFab}
               activeOpacity={0.9}
-              onPress={toggleEditMode}
+              onPress={() => router.push('/profile/editProfile')}
             >
-              <MaterialIcons name={isEditing ? "save" : "edit"} size={24} color="#e4fbfe" />
+              <MaterialIcons name="edit" size={24} color="#e4fbfe" />
             </TouchableOpacity>
-            {isEditing && (
-              <TouchableOpacity
-                style={[styles.editFab, { marginTop: 16 }]}
-                activeOpacity={0.9}
-                onPress={handleSaveChanges}
-              >
-                <MaterialIcons name="check" size={24} color="#e4fbfe" />
-              </TouchableOpacity>
-            )}
           </View>
         ) : (
           <View style={styles.actionContainer}>
@@ -754,18 +806,19 @@ const styles = StyleSheet.create({
   moodContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(228, 251, 254, 0.1)",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    backgroundColor: "rgba(56, 165, 201, 0.1)",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     marginTop: 8,
     borderWidth: 1,
     borderColor: "#38a5c9",
+    maxWidth: "80%",
   },
   moodText: {
-    fontSize: 14,
-    color: "#ffffff",
-    marginLeft: 8,
+    fontSize: 13,
+    color: "#38a5c9",
+    marginLeft: 6,
     fontWeight: "500",
   },
   sectionsContainer: {
@@ -937,9 +990,10 @@ const styles = StyleSheet.create({
   },
   moodInput: {
     flex: 1,
-    color: "#e4fbfe",
-    marginLeft: 8,
-    fontSize: 14,
+    color: "#38a5c9",
+    marginLeft: 6,
+    fontSize: 13,
+    padding: 0,
   },
   bioInput: {
     color: "#e4fbfe",
@@ -973,6 +1027,27 @@ const styles = StyleSheet.create({
     padding: 8,
     borderWidth: 1,
     borderColor: '#38a5c9',
+  },
+  socialMediaCard: {
+    marginBottom: 24,
+  },
+  socialMediaLinks: {
+    gap: 12,
+  },
+  socialLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  socialLinkText: {
+    color: '#e4fbfe',
+    marginLeft: 12,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 

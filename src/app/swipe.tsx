@@ -339,8 +339,10 @@ const Swipe = () => {
                 {user.name}, {user.age || ""}
               </Text>
               <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={20} color="#38a5c9" />
-                <Text style={styles.moodText}>{user.moodStatus || "Exploring the world 🌍"}</Text>
+                <MaterialIcons name="mood" size={16} color="#38a5c9" />
+                <Text style={styles.moodText} numberOfLines={1} ellipsizeMode="tail">
+                  {user.moodStatus || "Exploring the world 🌍"}
+                </Text>
               </View>
             </View>
           </View>
@@ -640,16 +642,20 @@ const styles = StyleSheet.create({
   moodContainer: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "rgba(56, 165, 201, 0.1)",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     marginTop: 4,
-    justifyContent: "center",
-    width: "100%",
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    maxWidth: "80%",
   },
   moodText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#38a5c9",
     marginLeft: 6,
     fontWeight: "500",
-    flexShrink: 1,
   },
   contentContainer: {
     flex: 1,

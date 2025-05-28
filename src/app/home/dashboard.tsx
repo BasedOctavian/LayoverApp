@@ -13,6 +13,7 @@ import {
   Keyboard,
   StatusBar,
   Modal,
+  Linking,
 } from "react-native";
 import { Ionicons, FontAwesome5, MaterialIcons, Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -43,7 +44,16 @@ type NearbyUser = {
   id: string;
   name: string;
   status: string;
+  isInviteCard?: boolean;
 };
+
+interface UserData {
+  id: string;
+  name?: string;
+  moodStatus?: string;
+  airportCode?: string;
+  lastLogin?: any;
+}
 
 function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
   const toRad = (value: number) => (value * Math.PI) / 180;
@@ -68,7 +78,7 @@ export default function Dashboard() {
   const [searchType, setSearchType] = useState<"airports" | "events">("airports");
   const { getEvents } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
-  const { updateUser, updateUserLocationAndLogin } = useUsers();
+  const { updateUser, updateUserLocationAndLogin, getNearbyUsers } = useUsers();
   const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
@@ -96,14 +106,9 @@ export default function Dashboard() {
     message: "",
     type: "success",
   });
+  const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
 
   const hasUpdatedRef = useRef(false);
-
-  const nearbyUsers: NearbyUser[] = [
-    { id: "1", name: "Alex Johnson", status: "Down to Chat" },
-    { id: "2", name: "Sam Carter", status: "Food & Drinks?" },
-    { id: "3", name: "Taylor Lee", status: "Work Mode" },
-  ];
 
   const showPopup = (title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
@@ -249,6 +254,47 @@ export default function Dashboard() {
 
   const { filteredRegularEvents, matchingSportEvents } = useFilteredEvents(selectedAirport, events, allSportEvents);
   const allEvents = [...matchingSportEvents, ...filteredRegularEvents];
+
+  useEffect(() => {
+    const fetchNearbyUsers = async () => {
+      if (!selectedAirport?.airportCode) return;
+      
+      try {
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+        const users = await getNearbyUsers(selectedAirport.airportCode, thirtyMinutesAgo) as UserData[];
+        
+        // Convert users to NearbyUser format and limit to 3
+        const formattedUsers = users
+          .filter(user => user.id !== userId) // Exclude current user
+          .slice(0, 3)
+          .map(user => ({
+            id: user.id,
+            name: user.name || 'Anonymous',
+            status: user.moodStatus || 'Available'
+          }));
+
+        // Generate a unique timestamp for this batch of invite cards
+        const timestamp = Date.now();
+        
+        // If we have fewer than 3 users, add "Invite Friends" cards with unique IDs
+        const inviteFriendsCards = Array(3 - formattedUsers.length)
+          .fill(null)
+          .map((_, index) => ({
+            id: `invite-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+            name: 'Invite Friends',
+            status: 'Click to invite',
+            isInviteCard: true
+          }));
+
+        setNearbyUsers([...formattedUsers, ...inviteFriendsCards]);
+      } catch (error) {
+        console.error('Error fetching nearby users:', error);
+        setNearbyUsers([]);
+      }
+    };
+
+    fetchNearbyUsers();
+  }, [selectedAirport?.airportCode, userId]);
 
   const features: FeatureButton[] = [
     { icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, title: "Nearby Users", screen: "swipe" },
@@ -428,12 +474,19 @@ export default function Dashboard() {
                             <FlatList
                               horizontal
                               data={item.data}
-                              keyExtractor={(user) => user.id}
-                              renderItem={({ item: user }) => (
+                              keyExtractor={(user: NearbyUser) => user.id}
+                              renderItem={({ item: user }: { item: NearbyUser }) => (
                                 <TouchableOpacity
                                   style={styles.userCard}
                                   activeOpacity={0.8}
-                                  onPress={() => router.push(`profile/${user.id}`)}
+                                  onPress={() => {
+                                    if (user.isInviteCard) {
+                                      // Open Google.com when invite card is clicked
+                                      Linking.openURL('https://www.google.com');
+                                    } else {
+                                      router.push(`profile/${user.id}`);
+                                    }
+                                  }}
                                 >
                                   <View style={styles.avatar}>
                                     <FontAwesome5 name="user" size={24} color="#38a5c9" />
