@@ -10,6 +10,7 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -27,41 +28,89 @@ const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
 const CARD_HEIGHT = height * 0.18;
 
-function ChatItem({ chat, currentUser, getUser, onPress }) {
-  const [partner, setPartner] = useState(null);
+interface Chat {
+  id: string;
+  participants: string[];
+  lastMessage?: string;
+}
+
+interface Partner {
+  id: string;
+  name: string;
+  profilePicture?: string;
+}
+
+interface ChatItemProps {
+  chat: Chat;
+  currentUser: User;
+  getUser: (userId: string) => Promise<Partner>;
+  onPress: () => void;
+}
+
+function ChatItem({ chat, currentUser, getUser, onPress }: ChatItemProps) {
+  const [partner, setPartner] = useState<Partner | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (chat?.participants && currentUser) {
-      const partnerId = chat.participants.find(
-        (id) => id !== currentUser.uid
-      );
-      if (partnerId) {
-        (async () => {
-          const fetchedPartner = await getUser(partnerId);
-          setPartner(fetchedPartner);
-        })();
+    const loadPartner = async () => {
+      if (chat?.participants && currentUser) {
+        const partnerId = chat.participants.find(
+          (id: string) => id !== currentUser.uid
+        );
+        if (partnerId) {
+          try {
+            const fetchedPartner = await getUser(partnerId);
+            setPartner(fetchedPartner);
+          } catch (error) {
+            console.error("Error fetching partner:", error);
+          } finally {
+            setIsLoading(false);
+          }
+        } else {
+          setIsLoading(false);
+        }
+      } else {
+        setIsLoading(false);
       }
-    }
+    };
+
+    loadPartner();
   }, [chat, currentUser, getUser]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.chatCard, { justifyContent: "center" }]}>
+        <ActivityIndicator color="#38a5c9" />
+      </View>
+    );
+  }
 
   if (!partner) {
     return (
       <View style={[styles.chatCard, { justifyContent: "center" }]}>
-        <Text style={styles.chatText}>Loading chat...</Text>
+        <Text style={styles.errorText}>Failed to load chat</Text>
       </View>
     );
   }
 
   return (
     <TouchableOpacity style={styles.chatCard} onPress={onPress}>
-      <Image
-        source={{
-          uri: partner.profilePicture || "https://via.placeholder.com/150",
-        }}
-        style={styles.profileImage}
-      />
+      <View style={styles.imageContainer}>
+        {partner.profilePicture ? (
+          <Image
+            source={{ uri: partner.profilePicture }}
+            style={styles.profileImage}
+          />
+        ) : (
+          <View style={[styles.profileImage, styles.placeholderImage]}>
+            <Text style={styles.placeholderText}>
+              {partner.name?.charAt(0)?.toUpperCase() || "?"}
+            </Text>
+          </View>
+        )}
+      </View>
       <View style={styles.chatInfo}>
-        <Text style={styles.chatName}>{partner.name}</Text>
+        <Text style={styles.chatName}>{partner.name || "Unknown User"}</Text>
         {chat.lastMessage ? (
           <Text style={styles.chatLastMessage} numberOfLines={1}>
             {chat.lastMessage}
@@ -80,9 +129,9 @@ export default function ChatInbox() {
   const topBarHeight = 50 + insets.top;
 
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [chats, setChats] = useState([]);
-  const [filteredChats, setFilteredChats] = useState([]);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
@@ -92,7 +141,7 @@ export default function ChatInbox() {
       } else {
         router.replace("login/login");
       }
-      setLoading(false);
+      setIsAuthLoading(false);
     });
     return unsubscribe;
   }, []);
@@ -100,12 +149,18 @@ export default function ChatInbox() {
   useEffect(() => {
     const fetchChats = async () => {
       if (user) {
-        const allChats = await getChats();
-        const userChats = allChats.filter(
-          (chat) => chat.participants && chat.participants.includes(user.uid)
-        );
-        setChats(userChats);
-        setFilteredChats(userChats);
+        try {
+          const allChats = await getChats();
+          if (allChats) {
+            const userChats = allChats.filter(
+              (chat: any) => chat.participants && chat.participants.includes(user.uid)
+            ) as Chat[];
+            setChats(userChats);
+            setFilteredChats(userChats);
+          }
+        } catch (error) {
+          console.error("Error fetching chats:", error);
+        }
       }
     };
     fetchChats();
@@ -122,22 +177,35 @@ export default function ChatInbox() {
     }
   }, [searchQuery, chats]);
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }: { item: Chat }) => (
     <ChatItem
       chat={item}
-      currentUser={user}
-      getUser={getUser}
+      currentUser={user!}
+      getUser={async (userId: string) => {
+        const userData = await getUser(userId);
+        if (!userData) throw new Error("User not found");
+        return userData as Partner;
+      }}
       onPress={() => {
         router.push("/chat/" + item.id);
       }}
     />
   );
 
-  return (
-    <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
-        <TopBar />
+  if (isAuthLoading || chatsLoading) {
+    return (
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <LoadingScreen message="Loading your chats..." />
+      </LinearGradient>
+    );
+  }
 
+  return (
+    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <TopBar showBackButton={true} title="Messages" />
         <View style={styles.container}>
           <TextInput
             style={styles.searchInput}
@@ -147,11 +215,7 @@ export default function ChatInbox() {
             onChangeText={setSearchQuery}
           />
 
-          {loading ? (
-            <LoadingScreen message="Loading your chats..." />
-          ) : chatsLoading ? (
-            <LoadingScreen message="Loading chat history..." />
-          ) : chatsError ? (
+          {chatsError ? (
             <View style={styles.stateContainer}>
               <Text style={styles.errorText}>{chatsError}</Text>
               <TouchableOpacity style={styles.retryButton} onPress={() => {}}>
@@ -164,6 +228,11 @@ export default function ChatInbox() {
               renderItem={renderItem}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
+              ListEmptyComponent={
+                <View style={styles.stateContainer}>
+                  <Text style={styles.emptyText}>No chats found</Text>
+                </View>
+              }
             />
           )}
 
@@ -180,20 +249,9 @@ export default function ChatInbox() {
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    backgroundColor: "#E6F0FA",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    marginBottom: -0,
-  },
-  logo: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#2F80ED",
+  flex: {
+    flex: 1,
+    marginBottom: -20,
   },
   container: {
     flex: 1,
@@ -230,11 +288,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#38a5c9",
   },
+  imageContainer: {
+    width: 50,
+    height: 50,
+    marginRight: 16,
+  },
   profileImage: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    marginRight: 16,
   },
   chatInfo: {
     flex: 1,
@@ -258,11 +320,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: "#64748B",
-  },
   errorText: {
     color: "#FF3B30",
     fontSize: 16,
@@ -282,7 +339,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 20,
-    marginTop: 10,
   },
   fab: {
     position: "absolute",
@@ -291,7 +347,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#2F80ED",
+    backgroundColor: "#38a5c9",
     alignItems: "center",
     justifyContent: "center",
     elevation: 4,
@@ -299,6 +355,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
-    marginBottom: 30,
+    marginBottom: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: "#64748B",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  placeholderImage: {
+    backgroundColor: "#38a5c9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  placeholderText: {
+    color: "#FFF",
+    fontSize: 20,
+    fontWeight: "600",
   },
 });

@@ -27,9 +27,43 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import TopBar from "../../components/TopBar";
 import * as ImagePicker from 'expo-image-picker';
 import LoadingScreen from "../../components/LoadingScreen";
+import useChats from "../../hooks/useChats";
+import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
+import { DocumentData } from "firebase/firestore";
+
+interface UserData {
+  name: string;
+  age: string;
+  pronouns?: string;
+  bio?: string;
+  profilePicture?: string;
+  moodStatus?: string;
+  languages: string[];
+  interests: string[];
+  goals: string[];
+  travelHistory?: any[];
+  createdAt?: any;
+}
+
+// Helper function to convert Firestore data to UserData
+const convertToUserData = (data: DocumentData): UserData => {
+  return {
+    name: data.name || '',
+    age: data.age || '',
+    pronouns: data.pronouns,
+    bio: data.bio,
+    profilePicture: data.profilePicture,
+    moodStatus: data.moodStatus,
+    languages: data.languages || [],
+    interests: data.interests || [],
+    goals: data.goals || [],
+    travelHistory: data.travelHistory,
+    createdAt: data.createdAt
+  };
+};
 
 const Profile = () => {
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -42,13 +76,14 @@ const Profile = () => {
   const [currentImages, setCurrentImages] = useState<string[]>([]);
   const [initialIndex, setInitialIndex] = useState(0);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [editedData, setEditedData] = useState<any>(null);
+  const [editedData, setEditedData] = useState<UserData | null>(null);
   const params = useLocalSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const [uploadingImage, setUploadingImage] = useState(false);
+  const { addChat, addMessage } = useChats();
 
   // Toggle quick starters modal
   const togglePrompts = () => {
@@ -74,16 +109,46 @@ const Profile = () => {
       setEditedData(null);
     } else {
       // Initialize edited data with current user data
-      setEditedData({ ...userData });
+      if (userData) {
+        const newEditedData: UserData = {
+          name: userData.name,
+          age: userData.age,
+          pronouns: userData.pronouns,
+          bio: userData.bio,
+          profilePicture: userData.profilePicture,
+          moodStatus: userData.moodStatus,
+          languages: userData.languages,
+          interests: userData.interests,
+          goals: userData.goals,
+          travelHistory: userData.travelHistory,
+          createdAt: userData.createdAt
+        };
+        setEditedData(newEditedData);
+      }
     }
     setIsEditMode(!isEditMode);
   };
 
   // Handle save changes
   const handleSaveChanges = async () => {
+    if (!editedData) return;
+    
     try {
       const userDocRef = doc(db, "users", id);
-      await updateDoc(userDocRef, editedData);
+      const updateData = {
+        name: editedData.name,
+        age: editedData.age,
+        pronouns: editedData.pronouns,
+        bio: editedData.bio,
+        profilePicture: editedData.profilePicture,
+        moodStatus: editedData.moodStatus,
+        languages: editedData.languages,
+        interests: editedData.interests,
+        goals: editedData.goals,
+        travelHistory: editedData.travelHistory,
+        createdAt: editedData.createdAt
+      };
+      await updateDoc(userDocRef, updateData);
       setUserData(editedData);
       setIsEditMode(false);
       Alert.alert("Success", "Profile updated successfully!");
@@ -94,11 +159,14 @@ const Profile = () => {
   };
 
   // Handle input changes
-  const handleInputChange = (field: string, value: string) => {
-    setEditedData((prev: any) => ({
-      ...prev,
-      [field]: value,
-    }));
+  const handleInputChange = (field: string, value: string | string[]) => {
+    setEditedData((prev: UserData | null) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        [field]: value,
+      };
+    });
   };
 
   // Auth state listener
@@ -122,7 +190,7 @@ const Profile = () => {
           const userDocRef = doc(db, "users", id);
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
-            setUserData(userDoc.data());
+            setUserData(convertToUserData(userDoc.data()));
           } else {
             setError("No user data found.");
           }
@@ -190,10 +258,13 @@ const Profile = () => {
         });
 
         // Update local state
-        setUserData(prev => ({
-          ...prev,
-          profilePicture: downloadURL
-        }));
+        setUserData((prev: UserData | null) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            profilePicture: downloadURL
+          };
+        });
 
         Alert.alert('Success', 'Profile picture updated successfully!');
       }
@@ -204,6 +275,65 @@ const Profile = () => {
       setUploadingImage(false);
     }
   };
+
+  // Handle message starter selection
+  const handleMessageStarter = async (message: string) => {
+    if (!authUser) return;
+    
+    try {
+      // Check if a chat already exists between these users
+      const chatsCollection = collection(db, "chats");
+      const q = query(
+        chatsCollection, 
+        where("participants", "array-contains", authUser.uid)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      let existingChatId = null;
+      
+      // Check each chat to see if it contains both users
+      for (const doc of querySnapshot.docs) {
+        const chatData = doc.data();
+        if (chatData.participants.includes(id)) {
+          existingChatId = doc.id;
+          break;
+        }
+      }
+      
+      let chatId;
+      if (existingChatId) {
+        chatId = existingChatId;
+      } else {
+        // Create a new chat if none exists
+        const chatData = {
+          participants: [authUser.uid, id],
+          createdAt: new Date(),
+          lastMessage: null,
+        };
+        
+        const docRef = await addDoc(chatsCollection, chatData);
+        chatId = docRef.id;
+      }
+
+      // Add the initial message
+      await addMessage(chatId, {
+        content: message,
+        date: new Date(),
+        sender: authUser.uid,
+        receiver: id,
+      });
+
+      // Navigate to the chat
+      router.push(`/chat/${chatId}`);
+      setShowPrompts(false);
+    } catch (error) {
+      console.error("Error handling message starter:", error);
+      Alert.alert("Error", "Failed to start chat. Please try again.");
+    }
+  };
+
+  // Add type guard for editedData
+  const isEditing = isEditMode && editedData !== null;
 
   if (authLoading || loading) {
     return <LoadingScreen message="Loading profile" />;
@@ -271,18 +401,18 @@ const Profile = () => {
                 )}
                 <View style={styles.statusIndicator} />
               </TouchableOpacity>
-              {isEditMode ? (
+              {isEditing ? (
                 <View style={styles.editInputContainer}>
                   <TextInput
                     style={styles.editInput}
-                    value={editedData.name}
+                    value={editedData!.name}
                     onChangeText={(value) => handleInputChange("name", value)}
                     placeholder="Name"
                     placeholderTextColor="#e4fbfe80"
                   />
                   <TextInput
                     style={styles.editInput}
-                    value={editedData.age}
+                    value={editedData!.age}
                     onChangeText={(value) => handleInputChange("age", value)}
                     placeholder="Age"
                     placeholderTextColor="#e4fbfe80"
@@ -290,7 +420,7 @@ const Profile = () => {
                   />
                   <TextInput
                     style={styles.editInput}
-                    value={editedData.pronouns}
+                    value={editedData!.pronouns || ''}
                     onChangeText={(value) => handleInputChange("pronouns", value)}
                     placeholder="Pronouns"
                     placeholderTextColor="#e4fbfe80"
@@ -306,10 +436,10 @@ const Profile = () => {
               )}
               <View style={styles.moodContainer}>
                 <MaterialIcons name="mood" size={18} color="#e4fbfe" />
-                {isEditMode ? (
+                {isEditing ? (
                   <TextInput
                     style={styles.moodInput}
-                    value={editedData.moodStatus}
+                    value={editedData!.moodStatus}
                     onChangeText={(value) => handleInputChange("moodStatus", value)}
                     placeholder="How are you feeling?"
                     placeholderTextColor="#e4fbfe80"
@@ -322,11 +452,11 @@ const Profile = () => {
 
             {/* Profile Sections with Microinteractions */}
             <View style={styles.sectionsContainer}>
-              {isEditMode ? (
+              {isEditing ? (
                 <View style={[styles.card, styles.aboutCard]}>
                   <TextInput
                     style={styles.bioInput}
-                    value={editedData.bio}
+                    value={editedData!.bio || ''}
                     onChangeText={(value) => handleInputChange("bio", value)}
                     placeholder="Tell us about yourself..."
                     placeholderTextColor="#e4fbfe80"
@@ -344,12 +474,12 @@ const Profile = () => {
               )}
 
               <View style={styles.gridContainer}>
-                {isEditMode ? (
+                {isEditing ? (
                   <>
                     <View style={[styles.card, styles.gridCard]}>
                       <TextInput
                         style={styles.editInput}
-                        value={editedData.languages.join(", ")}
+                        value={editedData!.languages.join(", ")}
                         onChangeText={(value) => handleInputChange("languages", value.split(", "))}
                         placeholder="Languages (comma separated)"
                         placeholderTextColor="#e4fbfe80"
@@ -358,7 +488,7 @@ const Profile = () => {
                     <View style={[styles.card, styles.gridCard]}>
                       <TextInput
                         style={styles.editInput}
-                        value={editedData.interests.join(", ")}
+                        value={editedData!.interests.join(", ")}
                         onChangeText={(value) => handleInputChange("interests", value.split(", "))}
                         placeholder="Interests (comma separated)"
                         placeholderTextColor="#e4fbfe80"
@@ -367,7 +497,7 @@ const Profile = () => {
                     <View style={[styles.card, styles.gridCard]}>
                       <TextInput
                         style={styles.editInput}
-                        value={editedData.goals.join(", ")}
+                        value={editedData!.goals.join(", ")}
                         onChangeText={(value) => handleInputChange("goals", value.split(", "))}
                         placeholder="Goals (comma separated)"
                         placeholderTextColor="#e4fbfe80"
@@ -428,9 +558,9 @@ const Profile = () => {
               activeOpacity={0.9}
               onPress={toggleEditMode}
             >
-              <MaterialIcons name={isEditMode ? "save" : "edit"} size={24} color="#e4fbfe" />
+              <MaterialIcons name={isEditing ? "save" : "edit"} size={24} color="#e4fbfe" />
             </TouchableOpacity>
-            {isEditMode && (
+            {isEditing && (
               <TouchableOpacity
                 style={[styles.editFab, { marginTop: 16 }]}
                 activeOpacity={0.9}
@@ -485,6 +615,7 @@ const Profile = () => {
                       key={index}
                       style={styles.promptChip}
                       activeOpacity={0.8}
+                      onPress={() => handleMessageStarter(prompt)}
                     >
                       <Text style={styles.promptText}>{prompt}</Text>
                     </TouchableOpacity>
@@ -698,6 +829,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 6,
+    marginBottom: 20,
   },
   fabGradient: {
     width: 56,

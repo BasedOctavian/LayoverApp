@@ -27,13 +27,15 @@ const TopBar: React.FC<TopBarProps> = ({
   const topBarHeight = 50 + insets.top;
 
   const handleLogoPress = () => {
-    // Navigate to the home screen when the logo is pressed
-    console.log("Logo pressed");
-    router.replace("/home/dashboard"); // Adjust the route name as needed
+    router.replace("/home/dashboard");
   };
 
   const handleBackPress = () => {
     router.back();
+  };
+
+  const handleNotificationPress = () => {
+    router.push("/notifications/notifications");
   };
 
   return (
@@ -42,25 +44,24 @@ const TopBar: React.FC<TopBarProps> = ({
       style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}
     >
       <View style={styles.leftSection}>
-        {showBackButton ? (
+        {showBackButton && (
           <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
             <Ionicons name="chevron-back" size={28} color="#e4fbfe" />
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity onPress={handleLogoPress}>
-            <Image
-              source={require('../../assets/adaptive-icon.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
         )}
+        <TouchableOpacity onPress={handleLogoPress}>
+          <Image
+            source={require('../../assets/adaptive-icon.png')}
+            style={[styles.logo, showBackButton && styles.logoWithBack]}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
         {title && <Text style={styles.title}>{title}</Text>}
       </View>
       
       <View style={styles.rightSection}>
         {showNotifications && (
-          <TouchableOpacity onPress={onNotificationPress} style={styles.iconButton}>
+          <TouchableOpacity onPress={handleNotificationPress} style={styles.iconButton}>
             <View style={styles.notificationContainer}>
               <Ionicons name="notifications" size={24} color="#e4fbfe" />
               {notificationCount > 0 && (
@@ -113,7 +114,11 @@ const styles = StyleSheet.create({
   logo: {
     width: 85,
     height: 85,
-    tintColor: '#e4fbfe', // This will tint the logo to match the theme
+    tintColor: '#e4fbfe',
+  },
+  logoWithBack: {
+    width: 65,
+    height: 65,
   },
   backButton: {
     padding: 4,

@@ -11,7 +11,7 @@ export default function RootLayout() {
   
   // Define routes where bottom nav should be hidden
   const hideBottomNavRoutes = ['/login/login', '/userOnboarding'];
-  const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname);
+  const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && !pathname.startsWith('/chat/');
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -92,6 +92,13 @@ export default function RootLayout() {
             {/* Event Chat Screen */}
             <Stack.Screen
               name="event/eventChat/[id]"
+              options={{
+                headerShown: false,
+              }}
+            />
+            {/* Notifications Screen */}
+            <Stack.Screen
+              name="notifications/notifications"
               options={{
                 headerShown: false,
               }}

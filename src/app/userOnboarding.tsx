@@ -295,7 +295,7 @@ const UserOnboarding = () => {
       const userProfile = {
         email: userData.email,
         name: userData.name || "",
-        age: parseInt(userData.age, 10) || 0,
+        age: parseInt(userData.age ?? "0", 10),
         bio: userData.bio || "",
         profilePicture: "", // Will be updated after upload
         travelHistory: userData.travelHistory?.split(/,\s*/) || [],

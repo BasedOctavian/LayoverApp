@@ -172,9 +172,10 @@ export default function ChatExplore() {
   }
 
   return (
-    <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
- <TopBar />
-      <SafeAreaView style={styles.flex} edges={["top"]}>
+    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <TopBar showBackButton={true} title="New Chat" />
         <View style={styles.container}>
           <TextInput
             style={styles.searchInput}
@@ -184,7 +185,9 @@ export default function ChatExplore() {
             onChangeText={setSearchQuery}
           />
           {usersLoading || chatLoading ? (
-            <LoadingScreen message="Finding users to chat with..." />
+            <View style={styles.loadingContainer}>
+              <LoadingScreen message="Finding users to chat with..." />
+            </View>
           ) : usersError || chatError ? (
             <Text style={styles.errorText}>{usersError || chatError}</Text>
           ) : (
@@ -196,34 +199,19 @@ export default function ChatExplore() {
             />
           )}
         </View>
-      </SafeAreaView>
-    </LinearGradient>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+    marginBottom: -20,
   },
   container: {
     flex: 1,
     padding: 16,
-  },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    backgroundColor: "#E6F0FA",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    height: 50,
-    
-  },
-  logo: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#2F80ED",
   },
   searchInput: {
     backgroundColor: "#1a1a1a",
@@ -232,8 +220,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: "#e4fbfe",
-    marginBottom: -50,
-    marginTop: 20,
+    marginBottom: 16,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -276,12 +263,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#38a5c9",
   },
-  loadingText: {
-    color: "#1E293B",
-    textAlign: "center",
-    marginTop: 20,
-    fontSize: 16,
-  },
   errorText: {
     color: "#FF3B30",
     textAlign: "center",
@@ -290,5 +271,10 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -14,11 +14,31 @@ import { StatusBar, Platform } from "react-native";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 
+interface Event {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  eventImage?: string;
+  createdAt: any;
+  startTime: any;
+  attendees?: string[];
+  organizer: string | null;
+  organizedAt?: any;
+  airportCode?: string;
+}
+
+interface UserData {
+  id: string;
+  name: string;
+}
+
 export default function Event() {
   const { id } = useLocalSearchParams();
+  const eventId = Array.isArray(id) ? id[0] : id;
   const { getEvent, updateEvent } = useEvents();
   const { getUser } = useUsers();
-  const [event, setEvent] = useState<any>(null);
+  const [event, setEvent] = useState<Event | null>(null);
   const [organizer, setOrganizer] = useState<string | null>(null);
   const [isAttending, setIsAttending] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,19 +54,21 @@ export default function Event() {
   // Existing useEffect hooks
   useEffect(() => {
     if (event && user) {
-      setIsAttending(event.attendees?.includes(user.uid));
+      const isUserAttending = event.attendees?.includes(user.uid) ?? false;
+      setIsAttending(isUserAttending);
     }
   }, [event, user]);
 
   useEffect(() => {
-    if (id) {
+    if (eventId) {
       (async () => {
-        const eventData = await getEvent(id);
+        const eventData = await getEvent(eventId);
         if (eventData) {
-          setEvent(eventData);
-          const organizerID = eventData.organizer;
+          const typedEventData = eventData as Event;
+          setEvent(typedEventData);
+          const organizerID = typedEventData.organizer;
           if (organizerID) {
-            const organizerData = await getUser(organizerID);
+            const organizerData = await getUser(organizerID) as UserData;
             setOrganizer(organizerData?.name || "Unknown");
           } else {
             setOrganizer(null);
@@ -54,7 +76,7 @@ export default function Event() {
         }
       })();
     }
-  }, [id]);
+  }, [eventId]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -83,7 +105,7 @@ export default function Event() {
       const date = timestamp?.seconds
         ? new Date(timestamp.seconds * 1000)
         : new Date(timestamp);
-      const options = {
+      const options: Intl.DateTimeFormatOptions = {
         timeZone: "America/New_York",
         month: "numeric",
         day: "numeric",
@@ -112,7 +134,7 @@ export default function Event() {
         ? currentAttendees.filter((uid: string) => uid !== user.uid)
         : [...currentAttendees, user.uid];
       await updateEvent(event.id, { attendees: newAttendees });
-      setEvent((prev) => ({ ...prev, attendees: newAttendees }));
+      setEvent((prev: Event | null) => prev ? { ...prev, attendees: newAttendees } : null);
     } catch (error) {
       console.error("Error updating attendance:", error);
     } finally {
@@ -121,7 +143,7 @@ export default function Event() {
   };
 
   const handleBecomeOrganizer = async () => {
-    if (!user?.uid || event.organizer !== null) return;
+    if (!user?.uid || !event || event.organizer !== null) return;
     setLoading(true);
     setLoadingMessage("Claiming organization...");
     try {
@@ -129,9 +151,9 @@ export default function Event() {
         organizer: user.uid,
         organizedAt: new Date().toISOString(),
       });
-      const updatedEvent = await getEvent(id);
+      const updatedEvent = await getEvent(eventId) as Event;
       setEvent(updatedEvent);
-      const organizerData = await getUser(user.uid);
+      const organizerData = await getUser(user.uid) as UserData;
       setOrganizer(organizerData?.name || "You");
       Alert.alert(
         "Congratulations!",
@@ -163,13 +185,13 @@ export default function Event() {
 
   const handleConfirmDate = async (date: Date) => {
     setShowDatePicker(false);
-    if (!user?.uid || user.uid !== event.organizer) return;
+    if (!user?.uid || !event || user.uid !== event.organizer) return;
     setLoading(true);
     setLoadingMessage("Updating event time...");
     try {
       const timestamp = date.toISOString();
       await updateEvent(event.id, { startTime: timestamp });
-      setEvent((prev) => ({ ...prev, startTime: timestamp }));
+      setEvent((prev: Event | null) => prev ? { ...prev, startTime: timestamp } : null);
     } catch (error) {
       console.error("Error updating start time:", error);
     } finally {
