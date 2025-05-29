@@ -251,23 +251,28 @@ export default function Event() {
       <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
         <TopBar />
+        {event.eventImage && (
+          <View style={[styles.imageContainer, { top: topBarHeight }]}>
+            <Image 
+              source={{ uri: event.eventImage }} 
+              style={styles.eventImage}
+            />
+            <LinearGradient
+              colors={['transparent', '#1a1a1a']}
+              style={styles.imageGradient}
+            />
+          </View>
+        )}
         <ScrollView
           style={styles.scrollContainer}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingTop: event.eventImage ? 100 : 24 }
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View style={{ opacity: fadeAnim }}>
-            {event.eventImage && (
-              <View style={styles.imageContainer}>
-                <Image source={{ uri: event.eventImage }} style={styles.eventImage} />
-              </View>
-            )}
-            <View
-              style={[
-                styles.detailsCard,
-                { marginTop: event.eventImage ? -40 : 0 },
-              ]}
-            >
+            <View style={styles.detailsCard}>
               <Text style={styles.eventTitle}>{event.name}</Text>
               <View style={styles.categoryChip}>
                 <Text style={styles.eventCategory}>{event.category}</Text>
@@ -306,45 +311,48 @@ export default function Event() {
               </View>
               {renderOrganizerSection()}
             </View>
+            <View style={styles.bottomButtons}>
+              <TouchableOpacity
+                style={styles.buttonContainer}
+                onPress={() => router.push(`event/eventChat/${id}`)}
+                accessibilityLabel="Event Chat"
+                accessibilityHint="Navigate to event discussion"
+              >
+                <LinearGradient 
+                  colors={["#38a5c9", "#2F80ED"]} 
+                  style={[styles.buttonGradient, { borderRadius: 12 }]}
+                >
+                  <Ionicons name="chatbubbles" size={24} color="#fff" />
+                  <Text style={styles.buttonText}>Event Chat</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.buttonContainer}
+                onPress={handleAttend}
+                activeOpacity={0.9}
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#38a5c9", "#2F80ED"]}
+                  style={[styles.buttonGradient, { borderRadius: 12 }]}
+                >
+                  <Feather
+                    name={isAttending ? "x-circle" : "check-circle"}
+                    size={24}
+                    color="#fff"
+                  />
+                  <Text style={styles.buttonText}>
+                    {loading
+                      ? "Processing..."
+                      : isAttending
+                      ? "Leave Event"
+                      : "Attend Event"}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         </ScrollView>
-        <View style={styles.bottomButtons}>
-          <TouchableOpacity
-            style={styles.buttonContainer}
-            onPress={() => router.push(`event/eventChat/${id}`)}
-            accessibilityLabel="Event Chat"
-            accessibilityHint="Navigate to event discussion"
-          >
-            <LinearGradient colors={["#38a5c9", "#2F80ED"]} style={styles.buttonGradient}>
-              <Ionicons name="chatbubbles" size={24} color="#fff" />
-              <Text style={styles.buttonText}>Event Chat</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.buttonContainer}
-            onPress={handleAttend}
-            activeOpacity={0.9}
-            disabled={loading}
-          >
-            <LinearGradient
-              colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#38a5c9", "#2F80ED"]}
-              style={styles.buttonGradient}
-            >
-              <Feather
-                name={isAttending ? "x-circle" : "check-circle"}
-                size={24}
-                color="#fff"
-              />
-              <Text style={styles.buttonText}>
-                {loading
-                  ? "Processing..."
-                  : isAttending
-                  ? "Remove Participation"
-                  : "Attend Event"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
         <DateTimePickerModal
           isVisible={showDatePicker}
           mode="datetime"
@@ -368,22 +376,37 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
+  imageContainer: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    height: 200,
+    zIndex: 0,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  eventImage: {
+    marginTop: 20,
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  imageGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
   scrollContainer: {
     flex: 1,
+    zIndex: 1,
   },
   scrollContent: {
     padding: 24,
     paddingBottom: Platform.OS === 'ios' ? 100 : 80,
-  },
-  imageContainer: {
-    position: "relative",
-  },
-  eventImage: {
-    width: "100%",
-    height: 300,
-    resizeMode: "cover",
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
   },
   detailsCard: {
     backgroundColor: "#1a1a1a",
@@ -397,6 +420,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#38a5c9",
     marginBottom: 10,
+    marginTop: 20,
   },
   eventTitle: {
     fontSize: 28,
@@ -470,14 +494,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    height: 52,
   },
   buttonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
+    textAlign: "center",
   },
   organizedTimestamp: {
     fontSize: 12,
@@ -486,13 +511,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   bottomButtons: {
-    position: "absolute",
-    bottom: Platform.OS === 'ios' ? 40 : 32,
-    left: 20,
-    right: 20,
     flexDirection: "row",
     justifyContent: "space-between",
-    zIndex: 50,
+    marginTop: 20,
+    marginBottom: Platform.OS === 'ios' ? 40 : 32,
   },
   buttonContainer: {
     width: "48%",
@@ -501,6 +523,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 6,
-    marginBottom: 20,
+    borderRadius: 12,
+    overflow: "hidden",
   },
 });

@@ -24,7 +24,8 @@ import useAirports, { Airport } from '../hooks/useAirports';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '../../config/firebaseConfig';
+import { auth, storage } from '../../config/firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useRouter } from 'expo-router';
 import TopBar from '../components/TopBar';
 import LoadingScreen from '../components/LoadingScreen';
@@ -73,6 +74,9 @@ const EventCreation: React.FC = () => {
     eventImage: null as string | null,
     airportCode: '',
   });
+
+  const [tempDate, setTempDate] = useState<Date>(new Date());
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const loadAirports = async () => {
@@ -139,11 +143,27 @@ const EventCreation: React.FC = () => {
     setShowSearch(false);
   };
 
+  const formatDateTime = (date: Date) => {
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    };
+    return date.toLocaleString('en-US', options);
+  };
+
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
     if (selectedDate) {
-      setEventData({ ...eventData, startTime: selectedDate });
+      setTempDate(selectedDate);
     }
+  };
+
+  const handleDateConfirm = () => {
+    setEventData({ ...eventData, startTime: tempDate });
+    setShowDatePicker(false);
   };
 
   const handleSelectEventImage = async () => {
@@ -171,23 +191,76 @@ const EventCreation: React.FC = () => {
     }
   };
 
+  const uploadImage = async (uri: string): Promise<string> => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      // Generate a unique filename with timestamp
+      const timestamp = new Date().getTime();
+      const filename = `event_${timestamp}.jpg`;
+      
+      // Match the exact path structure from the rules: eventImages/{userId}/{fileName}
+      const storageRef = ref(storage, `eventImages/${user?.uid}/${filename}`);
+      
+      await uploadBytes(storageRef, blob);
+      const downloadURL = await getDownloadURL(storageRef);
+      return downloadURL;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      throw new Error('Failed to upload image');
+    }
+  };
+
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+    
+    if (!user?.uid) {
+      Alert.alert('Error', 'You must be logged in to create an event');
+      return;
+    }
+
+    // Validate required fields
+    if (!eventData.name.trim()) {
+      Alert.alert('Error', 'Please enter an event name');
+      return;
+    }
+    if (!eventData.description.trim()) {
+      Alert.alert('Error', 'Please enter an event description');
+      return;
+    }
+    if (!eventData.category) {
+      Alert.alert('Error', 'Please select a category');
+      return;
+    }
     if (!selectedAirport) {
       Alert.alert('Error', 'Please select an airport');
       return;
     }
+
     try {
+      setIsSubmitting(true);
+      let imageUrl = null;
+      if (eventData.eventImage) {
+        imageUrl = await uploadImage(eventData.eventImage);
+      }
+
       const newEvent = {
         ...eventData,
         startTime: eventData.startTime.toISOString(),
-        createdAt: new Date(),
-        organizer: user?.uid || '',
-        attendees: [user?.uid || ''],
+        createdAt: new Date().toISOString(),
+        organizer: user.uid,
+        attendees: [user.uid],
+        private: false,
+        eventImage: imageUrl,
       };
+
       await addEvent(newEvent);
-      Alert.alert('Success', 'Event created successfully!');
+      router.replace('/');
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to create event');
+      console.error('Error creating event:', err);
+      Alert.alert('Error', err.message || 'Failed to create event. Please try again.');
+      setIsSubmitting(false);
     }
   };
 
@@ -236,7 +309,7 @@ const EventCreation: React.FC = () => {
                   <View style={styles.inputGroup}>
                     <Text style={styles.label}>Event Name</Text>
                     <TextInput
-                      style={styles.input}
+                      style={[styles.input, styles.textInput]}
                       placeholder="Enter event name"
                       placeholderTextColor="#64748B"
                       value={eventData.name}
@@ -246,7 +319,7 @@ const EventCreation: React.FC = () => {
                   <View style={styles.inputGroup}>
                     <Text style={styles.label}>Description</Text>
                     <TextInput
-                      style={[styles.input, styles.multilineInput]}
+                      style={[styles.input, styles.multilineInput, styles.textInput]}
                       placeholder="Describe your event"
                       placeholderTextColor="#64748B"
                       multiline
@@ -281,7 +354,9 @@ const EventCreation: React.FC = () => {
                         <Text style={[
                           styles.categoryText,
                           eventData.category === category && styles.selectedCategoryText
-                        ]}>{category}</Text>
+                        ]}>
+                          {category}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -290,62 +365,75 @@ const EventCreation: React.FC = () => {
                 {/* Event Time Section */}
                 <View style={styles.sectionContainer}>
                   <Text style={styles.sectionTitle}>Event Time</Text>
-                  <TouchableOpacity 
-                    style={styles.input} 
-                    onPress={() => setShowDatePicker(true)}
-                  >
-                    <Text style={styles.dateText}>
-                      {eventData.startTime.toLocaleString()}
-                    </Text>
-                    <Feather name="clock" size={18} color="#38a5c9" />
-                  </TouchableOpacity>
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={eventData.startTime}
-                      mode="datetime"
-                      display="default"
-                      onChange={handleDateChange}
-                    />
-                  )}
-                </View>
-
-                {/* Privacy Section */}
-                <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionTitle}>Privacy</Text>
-                  <View style={styles.privacyContainer}>
-                    <View style={styles.switchContainer}>
-                      <MaterialIcons 
-                        name={eventData.private ? 'lock' : 'public'} 
-                        size={24} 
-                        color="#38a5c9" 
-                      />
-                      <Text style={styles.privacyText}>
-                        {eventData.private ? 'Private Event' : 'Public Event'}
-                      </Text>
-                    </View>
-                    <Switch
-                      value={eventData.private}
-                      onValueChange={(value) => setEventData({ ...eventData, private: value })}
-                      trackColor={{ false: '#1a1a1a', true: '#38a5c9' }}
-                      thumbColor="#FFFFFF"
-                    />
+                  <View style={styles.timeContainer}>
+                    <TouchableOpacity 
+                      style={styles.timeInput} 
+                      onPress={() => {
+                        setTempDate(eventData.startTime);
+                        setShowDatePicker(true);
+                      }}
+                    >
+                      <View style={styles.timeContent}>
+                        <Feather name="calendar" size={20} color="#38a5c9" />
+                        <View style={styles.timeTextContainer}>
+                          <Text style={styles.timeLabel}>Date & Time</Text>
+                          <Text style={styles.timeValue}>
+                            {formatDateTime(eventData.startTime)}
+                          </Text>
+                        </View>
+                      </View>
+                      <Feather name="chevron-right" size={20} style={{ marginLeft: -20 }} color="#38a5c9" />
+                    </TouchableOpacity>
                   </View>
+                  {showDatePicker && (
+                    <View style={styles.datePickerContainer}>
+                      <View style={styles.datePickerWrapper}>
+                        <DateTimePicker
+                          value={tempDate}
+                          mode="datetime"
+                          display="spinner"
+                          onChange={handleDateChange}
+                          minimumDate={new Date()}
+                          textColor="#e4fbfe"
+                        />
+                      </View>
+                      <View style={styles.datePickerButtons}>
+                        <TouchableOpacity 
+                          style={[styles.datePickerButton, styles.datePickerCancelButton]} 
+                          onPress={() => setShowDatePicker(false)}
+                        >
+                          <Text style={styles.datePickerCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.datePickerButton, styles.datePickerDoneButton]} 
+                          onPress={handleDateConfirm}
+                        >
+                          <Text style={styles.datePickerDoneText}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </View>
               </LinearGradient>
 
               {/* Create Button */}
               <LinearGradient
                 colors={['#38a5c9', '#2F80ED']}
-                style={styles.createButton}
+                style={[styles.createButton, isSubmitting && styles.createButtonDisabled]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
                 <TouchableOpacity 
                   onPress={handleSubmit}
-                  disabled={loading}
-                  style={styles.buttonInner}
+                  disabled={loading || isSubmitting}
+                  style={[styles.buttonInner, isSubmitting && styles.buttonInnerDisabled]}
+                  activeOpacity={0.7}
                 >
-                  <Text style={styles.createButtonText}>Create Event</Text>
+                  {loading || isSubmitting ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.createButtonText}>Create Event</Text>
+                  )}
                 </TouchableOpacity>
               </LinearGradient>
             </ScrollView>
@@ -360,7 +448,7 @@ const EventCreation: React.FC = () => {
           >
             <View style={styles.searchModalHeader}>
               <TextInput
-                style={styles.searchInput}
+                style={[styles.searchInput, styles.textInput]}
                 placeholder="Search airports..."
                 placeholderTextColor="#64748B"
                 value={searchQuery}
@@ -493,25 +581,42 @@ const styles = StyleSheet.create({
   categoryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
+    justifyContent: 'center',
+    paddingVertical: 8,
   },
   categoryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderRadius: 20,
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
     borderColor: '#38a5c9',
+    minWidth: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#38a5c9',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   selectedCategory: {
     backgroundColor: '#38a5c9',
+    borderColor: '#38a5c9',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
   },
   categoryText: {
     color: '#e4fbfe',
     fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   selectedCategoryText: {
     color: '#000000',
+    fontWeight: '600',
   },
   dateText: {
     color: '#e4fbfe',
@@ -560,7 +665,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     marginRight: 8,
-    color: '#e4fbfe',
     borderWidth: 1,
     borderColor: '#38a5c9',
   },
@@ -586,7 +690,7 @@ const styles = StyleSheet.create({
   },
   createButton: {
     marginHorizontal: 16,
-    marginTop: 24,
+    marginTop: 0,
     marginBottom: 32,
     borderRadius: 16,
     padding: 16,
@@ -596,15 +700,105 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  createButtonDisabled: {
+    opacity: 0.7,
+    shadowOpacity: 0.1,
+  },
   buttonInner: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  buttonInnerDisabled: {
+    opacity: 0.8,
+  },
   createButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  textInput: {
+    color: '#e4fbfe',
+  },
+  timeContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  timeInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+    borderRadius: 12,
+  },
+  timeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  timeTextContainer: {
+    flex: 1,
+  },
+  timeLabel: {
+    color: '#64748B',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  timeValue: {
+    color: '#e4fbfe',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  datePickerContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    marginTop: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  datePickerWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  datePickerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#38a5c9',
+  },
+  datePickerButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  datePickerCancelButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  datePickerDoneButton: {
+    backgroundColor: '#38a5c9',
+  },
+  datePickerCancelText: {
+    color: '#38a5c9',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  datePickerDoneText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

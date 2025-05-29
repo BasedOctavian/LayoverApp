@@ -35,6 +35,12 @@ import {
   PanGestureHandler,
 } from "react-native-gesture-handler";
 
+interface TravelHistory {
+  id: string;
+  name: string;
+  photos?: string[];
+}
+
 interface User {
   id: string;
   name: string;
@@ -44,10 +50,11 @@ interface User {
   languages?: string[];
   interests?: string[];
   goals?: string[];
-  travelHistory?: string[];
+  travelHistory?: TravelHistory[];
   moodStatus?: string;
   likedUsers?: string[];
   dislikedUsers?: string[];
+  airportCode?: string;
 }
 
 interface Connection {
@@ -56,8 +63,8 @@ interface Connection {
 }
 
 const { width, height } = Dimensions.get("window");
-const CARD_WIDTH = width * 0.9;
-const CARD_HEIGHT = height * 0.67;
+const CARD_WIDTH = width * 0.85;
+const CARD_HEIGHT = height * 0.55;
 
 const Swipe = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -80,57 +87,148 @@ const Swipe = () => {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const cardRotation = useSharedValue(0);
-  const currentIndex = useRef(0);
+  const isAnimating = useSharedValue(false);
+  const lastDirection = useSharedValue<'left' | 'right' | null>(null);
+  const currentIndex = useSharedValue(0);
+  const currentUser = useSharedValue<User | null>(null);
+
+  // Update currentUser when users or currentIndex changes
+  useEffect(() => {
+    if (users.length > 0) {
+      currentUser.value = users[currentIndex.value];
+    }
+  }, [users, currentIndex.value]);
+
+  const resetCard = () => {
+    if (isAnimating.value) return;
+    
+    isAnimating.value = true;
+    translateX.value = withSpring(0, {
+      damping: 15,
+      stiffness: 100,
+    });
+    translateY.value = withSpring(0, {
+      damping: 15,
+      stiffness: 100,
+    });
+    cardRotation.value = withSpring(0, {
+      damping: 15,
+      stiffness: 100,
+    }, () => {
+      isAnimating.value = false;
+    });
+  };
 
   const gesture = Gesture.Pan()
+    .onBegin(() => {
+      if (isAnimating.value) return;
+      lastDirection.value = null;
+    })
     .onUpdate((event) => {
-      translateX.value = event.translationX;
-      translateY.value = event.translationY;
+      if (isAnimating.value) return;
+
+      // Add resistance to the drag
+      const resistance = 0.5;
+      const dragDistance = event.translationX;
+      const resistedDistance = dragDistance > 0 
+        ? Math.min(dragDistance, width * 0.4) * resistance
+        : Math.max(dragDistance, -width * 0.4) * resistance;
+
+      // Update direction
+      if (Math.abs(resistedDistance) > 10) {
+        lastDirection.value = resistedDistance > 0 ? 'right' : 'left';
+      }
+
+      translateX.value = resistedDistance;
+      translateY.value = event.translationY * 0.3;
       cardRotation.value = interpolate(
-        event.translationX,
+        resistedDistance,
         [-width / 2, 0, width / 2],
         [-30, 0, 30],
         Extrapolate.CLAMP
       );
     })
     .onEnd((event) => {
-      const shouldSwipe = Math.abs(event.translationX) > width * 0.25;
+      if (isAnimating.value) return;
+
+      const shouldSwipe = Math.abs(event.translationX) > width * 0.2;
+      const velocity = event.velocityX;
       
-      if (shouldSwipe) {
-        const direction = event.translationX > 0 ? "right" : "left";
+      // If moving fast enough, trigger swipe regardless of distance
+      if (Math.abs(velocity) > 500) {
+        const direction = velocity > 0 ? "right" : "left";
         runOnJS(handleSwipe)(direction);
+        return;
+      }
+      
+      if (shouldSwipe && lastDirection.value) {
+        runOnJS(handleSwipe)(lastDirection.value);
       } else {
-        translateX.value = withSpring(0);
-        translateY.value = withSpring(0);
-        cardRotation.value = withSpring(0);
+        runOnJS(resetCard)();
+      }
+    })
+    .onFinalize(() => {
+      if (!isAnimating.value && Math.abs(translateX.value) < width * 0.2) {
+        runOnJS(resetCard)();
       }
     });
 
   const handleSwipe = (direction: "left" | "right") => {
+    if (isAnimating.value) return;
+    isAnimating.value = true;
+
     if (direction === "right") {
-      onSwipedRight(currentIndex.current);
+      onSwipedRight(currentIndex.value);
     } else {
-      onSwipedLeft(currentIndex.current);
+      onSwipedLeft(currentIndex.value);
     }
     
-    translateX.value = withSpring(direction === "right" ? width * 1.5 : -width * 1.5);
-    translateY.value = withSpring(0);
-    cardRotation.value = withSpring(direction === "right" ? 30 : -30);
+    translateX.value = withSpring(direction === "right" ? width * 1.5 : -width * 1.5, {
+      damping: 15,
+      stiffness: 100,
+      velocity: direction === "right" ? 1000 : -1000,
+    });
+    translateY.value = withSpring(0, {
+      damping: 15,
+      stiffness: 100,
+    });
+    cardRotation.value = withSpring(direction === "right" ? 30 : -30, {
+      damping: 15,
+      stiffness: 100,
+    });
     
-    setTimeout(() => {
-      translateX.value = 0;
-      translateY.value = 0;
-      cardRotation.value = 0;
-      currentIndex.current = (currentIndex.current + 1) % users.length;
-    }, 300);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        translateX.value = 0;
+        translateY.value = 0;
+        cardRotation.value = 0;
+        currentIndex.value = (currentIndex.value + 1) % users.length;
+        isAnimating.value = false;
+      }, 300);
+    });
   };
 
   const cardStyle = useAnimatedStyle(() => {
+    const rotate = interpolate(
+      translateX.value,
+      [-width / 2, 0, width / 2],
+      [-30, 0, 30],
+      Extrapolate.CLAMP
+    );
+    
+    const scale = interpolate(
+      Math.abs(translateX.value),
+      [0, width * 0.2],
+      [1, 0.95],
+      Extrapolate.CLAMP
+    );
+
     return {
       transform: [
         { translateX: translateX.value },
         { translateY: translateY.value },
-        { rotate: `${cardRotation.value}deg` },
+        { rotate: `${rotate}deg` },
+        { scale },
       ],
     };
   });
@@ -138,21 +236,59 @@ const Swipe = () => {
   const likeStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       translateX.value,
-      [0, width * 0.25],
+      [0, width * 0.2],
       [0, 1],
       Extrapolate.CLAMP
     );
-    return { opacity };
+    const scale = interpolate(
+      translateX.value,
+      [0, width * 0.2],
+      [0.5, 1],
+      Extrapolate.CLAMP
+    );
+    const rotate = interpolate(
+      translateX.value,
+      [0, width * 0.2],
+      [-15, 0],
+      Extrapolate.CLAMP
+    );
+    return { 
+      opacity,
+      transform: [{ scale }, { rotate: `${rotate}deg` }],
+      position: 'absolute',
+      top: 50,
+      right: 40,
+      zIndex: 1000,
+    };
   });
 
   const nopeStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
       translateX.value,
-      [-width * 0.25, 0],
+      [-width * 0.2, 0],
       [1, 0],
       Extrapolate.CLAMP
     );
-    return { opacity };
+    const scale = interpolate(
+      translateX.value,
+      [-width * 0.2, 0],
+      [1, 0.5],
+      Extrapolate.CLAMP
+    );
+    const rotate = interpolate(
+      translateX.value,
+      [-width * 0.2, 0],
+      [0, 15],
+      Extrapolate.CLAMP
+    );
+    return { 
+      opacity,
+      transform: [{ scale }, { rotate: `${rotate}deg` }],
+      position: 'absolute',
+      top: 50,
+      left: 40,
+      zIndex: 1000,
+    };
   });
 
   const presetMessages = [
@@ -327,52 +463,103 @@ const Swipe = () => {
     return (
       <Animated.View style={[styles.cardContainer, styles.cardShadow]}>
         <View style={styles.cardContent}>
-          <View style={styles.profileHeader}>
-            <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
-                style={styles.profileImage}
-              />
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.nameText}>
-                {user.name}, {user.age || ""}
-              </Text>
-              <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={16} color="#38a5c9" />
-                <Text style={styles.moodText} numberOfLines={1} ellipsizeMode="tail">
-                  {user.moodStatus || "Exploring the world 🌍"}
+          {/* Profile Image Section */}
+          <View style={styles.imageContainer}>
+            <Image
+              source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
+              style={styles.profileImage}
+            />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.8)']}
+              style={styles.imageOverlay}
+            >
+              <View style={styles.profileHeader}>
+                <Text style={styles.nameText}>
+                  {user.name}, {user.age}
                 </Text>
+                <View style={styles.locationContainer}>
+                  <MaterialIcons name="location-on" size={16} color="#38a5c9" />
+                  <Text style={styles.locationText}>{user.airportCode}</Text>
+                </View>
               </View>
-            </View>
+            </LinearGradient>
           </View>
 
+          {/* Content Section */}
           <View style={styles.contentContainer}>
-            {renderSection("person", user.bio)}
-            {renderSection("translate", user.languages)}
-            {renderSection("favorite", user.interests)}
-            {renderSection("work", user.goals)}
-            {renderSection("flight-takeoff", user.travelHistory)}
+            {/* Bio Section */}
+            {user.bio && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <MaterialIcons name="person" size={18} color="#38a5c9" />
+                  <Text style={styles.sectionContent}>{user.bio}</Text>
+                </View>
+                <View style={styles.divider} />
+              </View>
+            )}
+
+            {/* Languages Section */}
+            {user.languages && user.languages.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <MaterialIcons name="translate" size={18} color="#38a5c9" />
+                  <Text style={styles.sectionContent}>
+                    {user.languages.join(" • ")}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+              </View>
+            )}
+
+            {/* Interests Section */}
+            {user.interests && user.interests.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <MaterialIcons name="favorite" size={18} color="#38a5c9" />
+                  <Text style={styles.sectionContent}>
+                    {user.interests.join(" • ")}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+              </View>
+            )}
+
+            {/* Goals Section */}
+            {user.goals && user.goals.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <MaterialIcons name="flight-takeoff" size={18} color="#38a5c9" />
+                  <Text style={styles.sectionContent}>
+                    Wants to visit: {user.goals.join(" • ")}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+              </View>
+            )}
+
+            {/* Travel History Section */}
+            {user.travelHistory && user.travelHistory.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <MaterialIcons name="history" size={18} color="#38a5c9" />
+                  <Text style={styles.sectionContent}>
+                    Visited: {user.travelHistory.map(trip => trip.name).join(" • ")}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+              </View>
+            )}
+
+            {/* Mood Status */}
+            {user.moodStatus && (
+              <View style={styles.moodContainer}>
+                <MaterialIcons name="mood" size={16} color="#38a5c9" />
+                <Text style={styles.moodText}>{user.moodStatus}</Text>
+              </View>
+            )}
           </View>
         </View>
       </Animated.View>
-    );
-  };
-
-  /** Render profile section with icon and content */
-  const renderSection = (iconName: keyof typeof MaterialIcons.glyphMap, content?: string | string[]) => {
-    if (!content || (Array.isArray(content) && !content.length)) return null;
-
-    return (
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <MaterialIcons name={iconName} size={20} color="#38a5c9" />
-          <Text style={styles.sectionContent}>
-            {Array.isArray(content) ? content.join(" • ") : content}
-          </Text>
-        </View>
-        <View style={styles.divider} />
-      </View>
     );
   };
 
@@ -381,15 +568,6 @@ const Swipe = () => {
       transform: [{ scale: buttonScale.value }],
     };
   });
-
-  const handleButtonPress = () => {
-    buttonScale.value = withSpring(0.95, {}, () => {
-      buttonScale.value = withSpring(1);
-    });
-    if (users.length > 0) {
-      handleShowMessageOptions(users[currentIndex.current]);
-    }
-  };
 
   /** Loading state */
   if (loading || isLoadingUsers) {
@@ -441,12 +619,18 @@ const Swipe = () => {
               <View style={styles.cardsContainer}>
                 <GestureDetector gesture={gesture}>
                   <Animated.View style={[styles.cardContainer, cardStyle]}>
-                    {renderCard(users[currentIndex.current])}
+                    {users[currentIndex.value] && renderCard(users[currentIndex.value])}
                     <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
-                      <Text style={styles.likeText}>LIKE</Text>
+                      <View style={styles.labelContainer}>
+                        <MaterialIcons name="people" size={32} color="#4CD964" />
+                        <Text style={styles.likeText}>CONNECT</Text>
+                      </View>
                     </Animated.View>
                     <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
-                      <Text style={styles.nopeText}>NOPE</Text>
+                      <View style={styles.labelContainer}>
+                        <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
+                        <Text style={styles.nopeText}>NOPE</Text>
+                      </View>
                     </Animated.View>
                   </Animated.View>
                 </GestureDetector>
@@ -457,7 +641,11 @@ const Swipe = () => {
                 <Animated.View style={buttonStyle}>
                   <TouchableOpacity 
                     style={styles.quickMessageButton}
-                    onPress={handleButtonPress}
+                    onPress={() => {
+                      if (users.length > 0) {
+                        handleShowMessageOptions(users[currentIndex.value]);
+                      }
+                    }}
                   >
                     <MaterialIcons name="message" size={24} color="#FFF" />
                     <Text style={styles.quickMessageButtonText}>Send Quick Message</Text>
@@ -579,11 +767,14 @@ const styles = StyleSheet.create({
   cardContainer: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: "hidden",
     marginHorizontal: 'auto',
-    marginBottom: 80,
+    marginBottom: 70,
     backfaceVisibility: 'hidden',
+    backgroundColor: "#1a1a1a",
+    borderWidth: 1,
+    borderColor: "#38a5c9",
   },
   cardShadow: {
     shadowColor: "#38a5c9",
@@ -604,40 +795,78 @@ const styles = StyleSheet.create({
   cardContent: {
     flex: 1,
     backgroundColor: "#1a1a1a",
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    borderRadius: 16,
-  },
-  profileHeader: {
-    flexDirection: "column",
-    alignItems: "center",
-    marginBottom: 12,
   },
   imageContainer: {
-    width: CARD_WIDTH - 32,
-    height: CARD_HEIGHT * 0.4,
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
+    width: '100%',
+    height: CARD_HEIGHT * 0.6,
+    position: 'relative',
   },
   profileImage: {
     width: "100%",
     height: "100%",
     resizeMode: "cover",
   },
-  profileInfo: {
-    alignItems: "center",
-    width: "100%",
-    marginBottom: 8,
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '40%',
+    padding: 16,
+    justifyContent: 'flex-end',
+  },
+  profileHeader: {
+    flexDirection: "column",
+    alignItems: "flex-start",
   },
   nameText: {
-    fontSize: 22,
-    fontWeight: "600",
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  locationContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(56, 165, 201, 0.2)",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  locationText: {
+    fontSize: 14,
+    color: "#FFFFFF",
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+  contentContainer: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: "#1a1a1a",
+  },
+  section: {
+    marginBottom: 8,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  sectionContent: {
+    fontSize: 14,
     color: "#e4fbfe",
-    textAlign: "center",
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 18,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#38a5c9",
+    marginVertical: 6,
+    opacity: 0.2,
   },
   moodContainer: {
     flexDirection: "row",
@@ -647,41 +876,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 16,
     marginTop: 4,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    maxWidth: "80%",
+    alignSelf: 'flex-start',
   },
   moodText: {
     fontSize: 13,
     color: "#38a5c9",
     marginLeft: 6,
     fontWeight: "500",
-  },
-  contentContainer: {
-    flex: 1,
-    paddingHorizontal: 4,
-    paddingBottom: 12,
-  },
-  section: {
-    marginBottom: 12,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  sectionContent: {
-    fontSize: 14,
-    color: "#e4fbfe",
-    marginLeft: 8,
-    flex: 1,
-    lineHeight: 20,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#38a5c9",
-    marginVertical: 6,
-    opacity: 0.3,
   },
   stateContainer: {
     flex: 1,
@@ -827,7 +1028,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 10,
-    marginBottom: 30,
+    marginBottom: 60,
   },
   quickMessageButton: {
     flexDirection: 'row',
@@ -867,10 +1068,20 @@ const styles = StyleSheet.create({
   },
   overlayLabel: {
     position: 'absolute',
-    top: 60,
     padding: 10,
-    borderRadius: 5,
-    borderWidth: 2,
+    borderRadius: 10,
+    borderWidth: 3,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  labelContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
   },
   likeLabel: {
     right: 40,
@@ -882,13 +1093,23 @@ const styles = StyleSheet.create({
   },
   likeText: {
     color: '#4CD964',
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
+    textTransform: 'uppercase',
+    marginTop: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   nopeText: {
     color: '#FF3B30',
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
+    textTransform: 'uppercase',
+    marginTop: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 });
 
