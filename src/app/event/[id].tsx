@@ -1,7 +1,7 @@
+import React, { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated } from "react-native";
 import useEvents from "../../hooks/useEvents";
-import { useEffect, useState } from "react";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import useUsers from "../../hooks/useUsers";
@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { StatusBar, Platform } from "react-native";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
+import { ThemeContext } from "../../context/ThemeContext";
 
 interface Event {
   id: string;
@@ -51,6 +52,7 @@ export default function Event() {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const { theme } = React.useContext(ThemeContext);
 
   // Existing useEffect hooks
   useEffect(() => {
@@ -252,8 +254,8 @@ export default function Event() {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar />
         {event.eventImage && (
           <View style={[styles.imageContainer, { top: topBarHeight }]}>
@@ -262,7 +264,7 @@ export default function Event() {
               style={styles.eventImage}
             />
             <LinearGradient
-              colors={['transparent', '#1a1a1a']}
+              colors={['transparent', theme === "light" ? '#ffffff' : '#1a1a1a']}
               style={styles.imageGradient}
             />
           </View>
@@ -276,39 +278,45 @@ export default function Event() {
           showsVerticalScrollIndicator={false}
         >
           <Animated.View style={{ opacity: fadeAnim }}>
-            <View style={styles.detailsCard}>
-              <Text style={styles.eventTitle}>{event.name}</Text>
-              <View style={styles.categoryChip}>
+            <View style={[styles.detailsCard, { 
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+              borderColor: "#37a4c8"
+            }]}>
+              <Text style={[styles.eventTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{event.name}</Text>
+              <View style={[styles.categoryChip, { 
+                backgroundColor: theme === "light" ? "rgba(56,165,201,0.1)" : "rgba(56,165,201,0.1)",
+                borderColor: "#37a4c8"
+              }]}>
                 <Text style={styles.eventCategory}>{event.category}</Text>
               </View>
-              <Text style={styles.eventDescription}>{event.description}</Text>
+              <Text style={[styles.eventDescription, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{event.description}</Text>
               <View style={styles.detailsGrid}>
                 <View style={styles.detailItem}>
-                  <MaterialIcons name="event" size={20} color="#38a5c9" />
-                  <Text style={styles.detailText}>
+                  <MaterialIcons name="event" size={20} color="#37a4c8" />
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     Created {formatDateTime(event.createdAt)}
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <MaterialIcons name="schedule" size={20} color="#38a5c9" />
-                  <Text style={styles.detailText}>
+                  <MaterialIcons name="schedule" size={20} color="#37a4c8" />
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     Starts {formatDateTime(event.startTime)}
                     {isOrganizer && (
                       <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                        <MaterialIcons name="edit" size={16} color="#38a5c9" style={{ marginLeft: 8 }} />
+                        <MaterialIcons name="edit" size={16} color="#37a4c8" style={{ marginLeft: 8 }} />
                       </TouchableOpacity>
                     )}
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <MaterialIcons name="people" size={20} color="#38a5c9" />
-                  <Text style={styles.detailText}>
+                  <MaterialIcons name="people" size={20} color="#37a4c8" />
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     {event.attendees?.length || 0} attendees
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <MaterialIcons name="flight" size={20} color="#38a5c9" />
-                  <Text style={styles.detailText}>
+                  <MaterialIcons name="flight" size={20} color="#37a4c8" />
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     {event.airportCode || "No airport set"}
                   </Text>
                 </View>
@@ -323,11 +331,11 @@ export default function Event() {
                 accessibilityHint="Navigate to event discussion"
               >
                 <LinearGradient 
-                  colors={["#38a5c9", "#2F80ED"]} 
+                  colors={["#37a4c8", "#2F80ED"]} 
                   style={[styles.buttonGradient, { borderRadius: 12 }]}
                 >
-                  <Ionicons name="chatbubbles" size={24} color="#fff" />
-                  <Text style={styles.buttonText}>Event Chat</Text>
+                  <Ionicons name="chatbubbles" size={24} color="#ffffff" />
+                  <Text style={[styles.buttonText, { color: "#ffffff" }]}>Event Chat</Text>
                 </LinearGradient>
               </TouchableOpacity>
               <TouchableOpacity
@@ -337,15 +345,15 @@ export default function Event() {
                 disabled={loading}
               >
                 <LinearGradient
-                  colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#38a5c9", "#2F80ED"]}
+                  colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#37a4c8", "#2F80ED"]}
                   style={[styles.buttonGradient, { borderRadius: 12 }]}
                 >
                   <Feather
                     name={isAttending ? "x-circle" : "check-circle"}
                     size={24}
-                    color="#fff"
+                    color="#ffffff"
                   />
-                  <Text style={styles.buttonText}>
+                  <Text style={[styles.buttonText, { color: "#ffffff" }]}>
                     {loading
                       ? "Processing..."
                       : isAttending
@@ -362,10 +370,10 @@ export default function Event() {
           mode="datetime"
           onConfirm={handleConfirmDate}
           onCancel={() => setShowDatePicker(false)}
-          textColor="#e4fbfe"
+          textColor={theme === "light" ? "#000000" : "#e4fbfe"}
           themeVariant="dark"
-          isDarkModeEnabled={true}
-          buttonTextColorIOS="#38a5c9"
+          isDarkModeEnabled={theme === "dark"}
+          buttonTextColorIOS="#37a4c8"
         />
       </LinearGradient>
     </SafeAreaView>

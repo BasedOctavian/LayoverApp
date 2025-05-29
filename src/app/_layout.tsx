@@ -1,10 +1,24 @@
 import { Stack, usePathname } from "expo-router";
-import { TouchableOpacity, View, StyleSheet } from "react-native";
+import { TouchableOpacity, View, StyleSheet, StatusBar } from "react-native";
 import { AntDesign, MaterialIcons } from "@expo/vector-icons"; // Import the required icons
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import "../../global.css";
 import { ThemeProvider } from "../context/ThemeContext";
 import BottomNavBar from "../components/BottomNavBar";
+import { useContext } from "react";
+import { ThemeContext } from "../context/ThemeContext";
+
+// Create a wrapper component that uses ThemeContext
+const ThemeAwareStatusBar = () => {
+  const { theme } = useContext(ThemeContext);
+  return (
+    <StatusBar
+      barStyle={theme === "light" ? "dark-content" : "light-content"}
+      backgroundColor="transparent"
+      translucent
+    />
+  );
+};
 
 export default function RootLayout() {
   const pathname = usePathname();
@@ -16,19 +30,28 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
+        <ThemeAwareStatusBar />
         <View style={styles.container}>
           <Stack
             screenOptions={{
-              animation: "none",
+              animation: "fade",
+              animationDuration: 200,
               contentStyle: { backgroundColor: '#070707' },
               headerStyle: { backgroundColor: '#070707' },
-              headerTintColor: '#fff'
+              headerTintColor: '#fff',
+              gestureEnabled: true,
+              gestureDirection: 'horizontal',
+              fullScreenGestureEnabled: true,
+              animationTypeForReplace: 'push',
+              presentation: 'card',
+              freezeOnBlur: true,
             }}>
             {/* Main Screen (index) */}
             <Stack.Screen
               name="index"
               options={{
                 headerShown: false,
+                animation: 'none',
               }}
             />
 
@@ -37,6 +60,7 @@ export default function RootLayout() {
               name="home"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
 
@@ -45,6 +69,7 @@ export default function RootLayout() {
               name="search"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
 
@@ -53,6 +78,7 @@ export default function RootLayout() {
               name="eventCreation"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
 
@@ -61,6 +87,7 @@ export default function RootLayout() {
               name="eventCreationContinued"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
 
@@ -69,6 +96,7 @@ export default function RootLayout() {
               name="profile/[id]"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* User Onboarding */}
@@ -76,6 +104,7 @@ export default function RootLayout() {
               name="userOnboarding"
               options={{
                 headerShown: false,
+                animation: 'none',
               }}
             />
             {/* Swipe */}
@@ -83,6 +112,7 @@ export default function RootLayout() {
               name="swipe"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Event Screen */}
@@ -90,6 +120,7 @@ export default function RootLayout() {
               name="event/[id]"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Event Chat Screen */}
@@ -97,6 +128,7 @@ export default function RootLayout() {
               name="event/eventChat/[id]"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Notifications Screen */}
@@ -104,6 +136,7 @@ export default function RootLayout() {
               name="notifications/notifications"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Sport Event Screen */}
@@ -111,6 +144,7 @@ export default function RootLayout() {
               name="sport/[id]"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Chat explore Screen */}
@@ -118,6 +152,7 @@ export default function RootLayout() {
               name="chat/chatExplore"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Chat Inbox Screen */}
@@ -125,6 +160,7 @@ export default function RootLayout() {
               name="chat/chatInbox"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Chat Screen */}
@@ -132,6 +168,7 @@ export default function RootLayout() {
               name="chat/[id]"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Dashboard Screen */}
@@ -139,6 +176,7 @@ export default function RootLayout() {
               name="home/dashboard"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Edit Profile Screen */}
@@ -146,6 +184,7 @@ export default function RootLayout() {
               name="profile/editProfile"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Login Screen */}
@@ -153,6 +192,7 @@ export default function RootLayout() {
               name="login/login"
               options={{
                 headerShown: false,
+                animation: 'none',
               }}
             />
             {/* Locked Screen */}
@@ -160,6 +200,7 @@ export default function RootLayout() {
               name="locked/lockedScreen"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Settings Screen */}
@@ -167,6 +208,7 @@ export default function RootLayout() {
               name="settings/settings"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
             {/* Update Password Screen */}
@@ -174,6 +216,7 @@ export default function RootLayout() {
               name="settings/updatePassword"
               options={{
                 headerShown: false,
+                animation: 'slide_from_right',
               }}
             />
           </Stack>

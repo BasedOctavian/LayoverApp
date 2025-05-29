@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
@@ -79,29 +78,8 @@ const UserOnboarding = () => {
   const { user, signup, loading } = useAuth();
   const router = useRouter();
   const [isAuthChecked, setIsAuthChecked] = useState(false);
-  const [fadeAnim] = useState(new Animated.Value(1));
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
-
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      () => {
-        setKeyboardVisible(true);
-      }
-    );
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
-      () => {
-        setKeyboardVisible(false);
-      }
-    );
-
-    return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
-    };
-  }, []);
+  const [scaleAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
     if (user !== undefined) {
@@ -110,128 +88,28 @@ const UserOnboarding = () => {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (!keyboardVisible) {
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [stepIndex, keyboardVisible]);
-
-  const steps: Step[] = [
-    {
-      key: "email",
-      title: "Let's Get You Boarded! ✈️",
-      icon: "send",
-      fields: [
-        {
-          key: "email",
-          label: "Email",
-          icon: "mail",
-          placeholder: "flyer@skyconnect.com",
-          keyboardType: "email-address",
-        },
-        {
-          key: "password",
-          label: "Password",
-          icon: "lock",
-          placeholder: "••••••••",
-          type: "password",
-          secure: true,
-        },
-      ],
-    },
-    {
-      key: "profile",
-      title: "Your Travel Persona 🌍",
-      icon: "user",
-      fields: [
-        {
-          key: "name",
-          label: "Full Name",
-          icon: "user",
-          placeholder: "Alex Wanderlust",
-        },
-        {
-          key: "age",
-          label: "Age",
-          icon: "edit-3",
-          placeholder: "Enter your age",
-          keyboardType: "numeric",
-        },
-        {
-          key: "bio",
-          label: "Short Bio",
-          icon: "edit-3",
-          placeholder: "Digital nomad & coffee enthusiast...",
-        },
-        {
-          key: "profilePicture",
-          label: "Profile Photo",
-          icon: "camera",
-          type: "image",
-          placeholder: "",
-        },
-      ],
-    },
-    {
-      key: "travel",
-      title: "Share Your Travel Experience ✈️",
-      icon: "map-pin",
-      fields: [
-        {
-          key: "travelHistory",
-          label: "Travel History",
-          icon: "map-pin",
-          placeholder: "Countries visited, adventures experienced...",
-          type: "tags",
-        },
-        {
-          key: "goals",
-          label: "Travel Goals",
-          icon: "heart",
-          placeholder: "Your dream destinations, bucket-list goals...",
-          type: "tags",
-        },
-      ],
-    },
-    {
-      key: "social",
-      title: "Connect Your Interests 🧳",
-      icon: "briefcase",
-      fields: [
-        {
-          key: "interests",
-          label: "Travel Interests",
-          icon: "heart",
-          placeholder: "Hiking, Local cuisine...",
-          type: "tags",
-        },
-        {
-          key: "languages",
-          label: "Languages",
-          icon: "globe",
-          placeholder: "English, Spanish...",
-          type: "tags",
-        },
-      ],
-    },
-  ];
-
   const handleInputChange = useCallback((key: string, value: string) => {
     setUserData((prev: UserData) => ({ ...prev, [key]: value }));
   }, []);
 
   const handleFocus = useCallback((key: string) => {
     setFocusedField(key);
+    Animated.spring(scaleAnim, {
+      toValue: 1.02,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
   }, []);
 
   const handleBlur = useCallback(() => {
     setFocusedField(null);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
   }, []);
 
   const handleSelectPhoto = async () => {
@@ -263,21 +141,21 @@ const UserOnboarding = () => {
   const handleNext = async () => {
     Keyboard.dismiss();
     if (stepIndex < steps.length - 1) {
-      fadeAnim.setValue(1);
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 150,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }).start(() => {
-        setStepIndex((prev) => prev + 1);
-        fadeAnim.setValue(0);
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          easing: Easing.inOut(Easing.ease),
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 0.95,
+          duration: 100,
           useNativeDriver: true,
-        }).start();
+          easing: Easing.ease,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          speed: 50,
+          bounciness: 4,
+        }),
+      ]).start(() => {
+        setStepIndex((prev) => prev + 1);
       });
     } else {
       await handleSubmit();
@@ -429,6 +307,106 @@ const UserOnboarding = () => {
     }
   };
 
+  const steps: Step[] = [
+    {
+      key: "email",
+      title: "Let's Get You Boarded! ✈️",
+      icon: "send",
+      fields: [
+        {
+          key: "email",
+          label: "Email",
+          icon: "mail",
+          placeholder: "flyer@skyconnect.com",
+          keyboardType: "email-address",
+        },
+        {
+          key: "password",
+          label: "Password",
+          icon: "lock",
+          placeholder: "••••••••",
+          type: "password",
+          secure: true,
+        },
+      ],
+    },
+    {
+      key: "profile",
+      title: "Your Travel Persona 🌍",
+      icon: "user",
+      fields: [
+        {
+          key: "name",
+          label: "Full Name",
+          icon: "user",
+          placeholder: "Alex Wanderlust",
+        },
+        {
+          key: "age",
+          label: "Age",
+          icon: "edit-3",
+          placeholder: "Enter your age",
+          keyboardType: "numeric",
+        },
+        {
+          key: "bio",
+          label: "Short Bio",
+          icon: "edit-3",
+          placeholder: "Digital nomad & coffee enthusiast...",
+        },
+        {
+          key: "profilePicture",
+          label: "Profile Photo",
+          icon: "camera",
+          type: "image",
+          placeholder: "",
+        },
+      ],
+    },
+    {
+      key: "travel",
+      title: "Share Your Travel Experience ✈️",
+      icon: "map-pin",
+      fields: [
+        {
+          key: "travelHistory",
+          label: "Travel History",
+          icon: "map-pin",
+          placeholder: "Countries visited, adventures experienced...",
+          type: "tags",
+        },
+        {
+          key: "goals",
+          label: "Travel Goals",
+          icon: "heart",
+          placeholder: "Your dream destinations, bucket-list goals...",
+          type: "tags",
+        },
+      ],
+    },
+    {
+      key: "social",
+      title: "Connect Your Interests 🧳",
+      icon: "briefcase",
+      fields: [
+        {
+          key: "interests",
+          label: "Travel Interests",
+          icon: "heart",
+          placeholder: "Hiking, Local cuisine...",
+          type: "tags",
+        },
+        {
+          key: "languages",
+          label: "Languages",
+          icon: "globe",
+          placeholder: "English, Spanish...",
+          type: "tags",
+        },
+      ],
+    },
+  ];
+
   if (loading) {
     return <LoadingScreen message="Creating your account..." />;
   }
@@ -439,97 +417,88 @@ const UserOnboarding = () => {
 
   return (
     <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardAvoidingView}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            keyboardVisible && styles.scrollContentKeyboardVisible
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={false}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <Animated.View 
-              style={[
-                styles.contentContainer, 
-                { opacity: fadeAnim }
-              ]}
-            >
-              <Text style={styles.title}>{steps[stepIndex].title}</Text>
-              {steps[stepIndex].fields.map((field) => (
-                <View key={field.key} style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>{field.label}</Text>
-                  {renderField(field)}
-                </View>
-              ))}
-              <View style={styles.footer}>
-                {stepIndex > 0 && (
-                  <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => {
-                      fadeAnim.setValue(1);
-                      Animated.timing(fadeAnim, {
-                        toValue: 0,
-                        duration: 150,
-                        easing: Easing.inOut(Easing.ease),
-                        useNativeDriver: true,
-                      }).start(() => {
-                        setStepIndex((prev) => prev - 1);
-                        fadeAnim.setValue(0);
-                        Animated.timing(fadeAnim, {
-                          toValue: 1,
-                          duration: 300,
-                          easing: Easing.inOut(Easing.ease),
-                          useNativeDriver: true,
-                        }).start();
-                      });
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather
-                      name="chevron-left"
-                      size={24}
-                      color="#e4fbfe"
-                    />
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.nextButton}
-                  onPress={handleNext}
-                  disabled={loading}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={["#38a5c9", "#38a5c9"]}
-                    style={styles.buttonGradient}
-                  >
-                    <Text style={styles.buttonText}>
-                      {stepIndex === steps.length - 1
-                        ? "Start Exploring! ✈️"
-                        : "Continue Journey →"}
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <Animated.View 
+            style={[
+              styles.contentContainer,
+              { transform: [{ scale: scaleAnim }] }
+            ]}
+          >
+            <Text style={styles.title}>{steps[stepIndex].title}</Text>
+            {steps[stepIndex].fields.map((field) => (
+              <View key={field.key} style={styles.fieldContainer}>
+                <Text style={styles.fieldLabel}>{field.label}</Text>
+                {renderField(field)}
               </View>
-              {stepIndex === 0 && (
-                <TouchableOpacity 
-                  onPress={() => router.push("login/login")}
+            ))}
+            <View style={styles.footer}>
+              {stepIndex > 0 && (
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={() => {
+                    Animated.sequence([
+                      Animated.timing(scaleAnim, {
+                        toValue: 0.95,
+                        duration: 100,
+                        useNativeDriver: true,
+                        easing: Easing.ease,
+                      }),
+                      Animated.spring(scaleAnim, {
+                        toValue: 1,
+                        useNativeDriver: true,
+                        speed: 50,
+                        bounciness: 4,
+                      }),
+                    ]).start(() => {
+                      setStepIndex((prev) => prev - 1);
+                    });
+                  }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.loginText}>
-                    Already have an account? Log in
-                  </Text>
+                  <Feather
+                    name="chevron-left"
+                    size={24}
+                    color="#e4fbfe"
+                  />
                 </TouchableOpacity>
               )}
-            </Animated.View>
-          </TouchableWithoutFeedback>
-        </ScrollView>
-      </KeyboardAvoidingView>
+              <TouchableOpacity
+                style={styles.nextButton}
+                onPress={handleNext}
+                disabled={loading}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={["#38a5c9", "#38a5c9"]}
+                  style={styles.buttonGradient}
+                >
+                  <Text style={styles.buttonText}>
+                    {stepIndex === steps.length - 1
+                      ? "Start Exploring! ✈️"
+                      : "Continue Journey →"}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+            {stepIndex === 0 && (
+              <TouchableOpacity 
+                onPress={() => router.push("login/login")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.loginText}>
+                  Already have an account? Log in
+                </Text>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
+        </TouchableWithoutFeedback>
+      </ScrollView>
     </LinearGradient>
   );
 };
@@ -538,22 +507,15 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
-  },
-  scrollContentKeyboardVisible: {
-    justifyContent: "flex-start",
-    paddingTop: 20,
   },
   contentContainer: {
     width: "100%",
     paddingHorizontal: 24,
     paddingVertical: 40,
     alignItems: "center",
+    marginTop: '22%',
   },
   title: {
     fontSize: 28,
@@ -581,10 +543,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#38a5c9",
     minHeight: 56,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   inputContainerFocused: {
     borderColor: "#e4fbfe",
     backgroundColor: "#1a1a1a",
+    shadowColor: "#38a5c9",
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
   },
   input: {
     flex: 1,
@@ -683,6 +661,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#38a5c9",
     marginRight: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   nextButton: {
     borderRadius: 12,
@@ -690,6 +676,14 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderColor: "#38a5c9",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   buttonGradient: {
     paddingVertical: 18,

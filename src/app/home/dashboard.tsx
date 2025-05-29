@@ -34,6 +34,7 @@ import { useFilteredEvents } from "../../hooks/useFilteredEvents";
 import StatusSheet from "../../components/StatusSheet";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
+import { ThemeContext } from "../../context/ThemeContext";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -101,6 +102,30 @@ export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const { theme } = React.useContext(ThemeContext);
+
+  // Animation values for theme transitions
+  const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+  const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+
+  // Interpolate colors for smooth transitions
+  const backgroundColor = backgroundAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#e6e6e6', '#000000'],
+    extrapolate: 'clamp'
+  });
+
+  const textColor = textAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#000000', '#ffffff'],
+    extrapolate: 'clamp'
+  });
+
+  // Update animation values when theme changes
+  useEffect(() => {
+    backgroundAnim.setValue(theme === "light" ? 0 : 1);
+    textAnim.setValue(theme === "light" ? 0 : 1);
+  }, [theme]);
 
   const { user } = useAuth();
   const [userId, setUserId] = useState<string | null>(null);
@@ -410,14 +435,17 @@ export default function Dashboard() {
             setShowSearch(false);
           }}
         >
-          <View style={styles.resultItemView}>
-            <Feather name="airplay" size={20} color="#38a5c9" style={styles.resultIcon} />
+          <View style={[styles.resultItemView, { 
+            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+            borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+          }]}>
+            <Feather name="airplay" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.resultIcon} />
             <View style={styles.airportResultContent}>
-              <Text style={styles.airportName}>{item.name}</Text>
-              <Text style={styles.airportLocation}>{item.location}</Text>
-              <Text style={styles.airportCode}>{item.airportCode}</Text>
+              <Text style={[styles.airportName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{item.name}</Text>
+              <Text style={[styles.airportLocation, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>{item.location}</Text>
+              <Text style={[styles.airportCode, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>{item.airportCode}</Text>
             </View>
-            <Feather name="chevron-right" size={18} color="#CBD5E1" />
+            <Feather name="chevron-right" size={18} color={theme === "light" ? "#37a4c8" : "#CBD5E1"} />
           </View>
         </TouchableOpacity>
       );
@@ -437,22 +465,52 @@ export default function Dashboard() {
             }
           }}
         >
-          <View style={isCreateEvent ? styles.createEventItemView : (isOrganized ? styles.organizedResultItemView : styles.resultItemView)}>
+          <View style={[
+            isCreateEvent ? styles.createEventItemView : (isOrganized ? styles.organizedResultItemView : styles.resultItemView),
+            { 
+              backgroundColor: isOrganized 
+                ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                : (theme === "light" ? "#ffffff" : "#1a1a1a"),
+              borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+            }
+          ]}>
             <Feather 
               name={isCreateEvent ? "plus-circle" : "calendar"} 
               size={20} 
-              color={isCreateEvent ? "#38a5c9" : (isOrganized ? "#FFFFFF" : "#38a5c9")} 
+              color={isCreateEvent 
+                ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                : (isOrganized ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9"))} 
               style={styles.resultIcon} 
             />
             <View style={styles.eventResultContent}>
-              <Text style={isCreateEvent ? styles.createEventName : (isOrganized ? styles.organizedEventName : styles.eventName)}>
+              <Text style={[
+                isCreateEvent ? styles.createEventName : (isOrganized ? styles.organizedEventName : styles.eventName),
+                { 
+                  color: isOrganized 
+                    ? "#FFFFFF" 
+                    : (theme === "light" ? "#000000" : "#e4fbfe")
+                }
+              ]}>
                 {item.name}
               </Text>
-              <Text style={isCreateEvent ? styles.createEventDescription : (isOrganized ? styles.organizedEventDescription : styles.eventDescription)}>
+              <Text style={[
+                isCreateEvent ? styles.createEventDescription : (isOrganized ? styles.organizedEventDescription : styles.eventDescription),
+                { 
+                  color: isOrganized 
+                    ? "#FFFFFF" 
+                    : (theme === "light" ? "#37a4c8" : "#38a5c9")
+                }
+              ]}>
                 {item.description}
               </Text>
             </View>
-            <Feather name="chevron-right" size={18} color={isCreateEvent ? "#CBD5E1" : (isOrganized ? "#FFFFFF" : "#CBD5E1")} />
+            <Feather 
+              name="chevron-right" 
+              size={18} 
+              color={isCreateEvent 
+                ? (theme === "light" ? "#37a4c8" : "#CBD5E1")
+                : (isOrganized ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#CBD5E1"))} 
+            />
           </View>
         </TouchableOpacity>
       );
@@ -463,11 +521,14 @@ export default function Dashboard() {
     if (searchType === "airports" && filteredResults.length > visibleAirportCount) {
       return (
         <TouchableOpacity
-          style={styles.loadMoreButton}
+          style={[styles.loadMoreButton, { 
+            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+            borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+          }]}
           onPress={handleLoadMore}
         >
-          <Text style={styles.loadMoreText}>Load More Airports</Text>
-          <Feather name="chevron-down" size={18} color="#38a5c9" />
+          <Text style={[styles.loadMoreText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>Load More Airports</Text>
+          <Feather name="chevron-down" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
         </TouchableOpacity>
       );
     }
@@ -495,7 +556,7 @@ export default function Dashboard() {
 
   // Show black screen during auth check
   if (!userId) {
-    return <View style={{ flex: 1, backgroundColor: '#000000' }} />;
+    return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#e6e6e6" : "#000000" }} />;
   }
 
   // Show loading screen during auth check or updates
@@ -509,7 +570,7 @@ export default function Dashboard() {
   }
 
   return (
-    <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+    <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
       <TopBar onProfilePress={() => router.push(`profile/${authUser?.uid}`)} />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
@@ -525,43 +586,66 @@ export default function Dashboard() {
             >
               {showSearch ? (
                 <View
-                  style={styles.searchHeader}
+                  style={[styles.searchHeader, { 
+                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                  }]}
                   onLayout={(event) => {
                     const { height } = event.nativeEvent.layout;
                     setSearchHeaderHeight(height);
                   }}
                 >
-                  <View style={styles.searchInputContainer}>
+                  <View style={[styles.searchInputContainer, { 
+                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(56, 165, 201, 0.3)"
+                  }]}>
                     <TextInput
-                      style={styles.searchInput}
+                      style={[styles.searchInput, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
                       placeholder={`Search ${searchType}...`}
-                      placeholderTextColor="#64748B"
+                      placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
                       value={searchQuery}
                       onChangeText={setSearchQuery}
                     />
                     {searchQuery.length > 0 && (
                       <TouchableOpacity 
-                        style={styles.clearButton} 
+                        style={[styles.clearButton, { 
+                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                        }]} 
                         onPress={() => setSearchQuery("")}
                       >
-                        <Feather name="x-circle" size={20} color="#64748B" />
+                        <Feather name="x-circle" size={20} color={theme === "light" ? "#64748B" : "#64748B"} />
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity style={styles.cancelButton} onPress={() => setShowSearch(false)}>
-                      <Feather name="x" size={24} color="#38a5c9" />
+                    <TouchableOpacity 
+                      style={[styles.cancelButton, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                      }]} 
+                      onPress={() => setShowSearch(false)}
+                    >
+                      <Feather name="x" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                     </TouchableOpacity>
                   </View>
                   <View style={styles.filterContainer}>
                     <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("airports")}>
-                      <View style={[styles.filterButtonInner, { backgroundColor: searchType === "airports" ? "#38a5c9" : "#F1F5F9" }]}>
-                        <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : "#64748B"} />
-                        <Text style={[styles.filterText, { color: searchType === "airports" ? "#FFFFFF" : "#64748B" }]}>Airports</Text>
+                      <View style={[styles.filterButtonInner, { 
+                        backgroundColor: searchType === "airports" ? (theme === "light" ? "#37a4c8" : "#38a5c9") : (theme === "light" ? "#e6e6e6" : "#1a1a1a"),
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                      }]}>
+                        <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")} />
+                        <Text style={[styles.filterText, { 
+                          color: searchType === "airports" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")
+                        }]}>Airports</Text>
                       </View>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("events")}>
-                      <View style={[styles.filterButtonInner, { backgroundColor: searchType === "events" ? "#38a5c9" : "#F1F5F9" }]}>
-                        <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : "#64748B"} />
-                        <Text style={[styles.filterText, { color: searchType === "events" ? "#FFFFFF" : "#64748B" }]}>Events</Text>
+                      <View style={[styles.filterButtonInner, { 
+                        backgroundColor: searchType === "events" ? (theme === "light" ? "#37a4c8" : "#38a5c9") : (theme === "light" ? "#e6e6e6" : "#1a1a1a"),
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                      }]}>
+                        <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")} />
+                        <Text style={[styles.filterText, { 
+                          color: searchType === "events" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")
+                        }]}>Events</Text>
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -576,12 +660,17 @@ export default function Dashboard() {
                     setDefaultSearchHeight(height);
                   }}
                 >
-                  <View style={styles.searchContainer}>
-                    <Feather name="search" size={18} color="#64748B" />
-                    <Text style={styles.searchPlaceholder}>
+                  <View style={[styles.searchContainer, { 
+                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                  }]}>
+                    <Feather name="search" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                    <Text style={[styles.searchPlaceholder, { 
+                      color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                    }]}>
                       {selectedAirport ? selectedAirport.name : "Select an airport"}
                     </Text>
-                    <Feather name="chevron-down" size={20} color="#64748B" style={styles.searchIcon} />
+                    <Feather name="chevron-down" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.searchIcon} />
                   </View>
                 </TouchableOpacity>
               )}
@@ -613,8 +702,8 @@ export default function Dashboard() {
                     return (
                       <View style={styles.section}>
                         <View style={styles.headerRow}>
-                          <FontAwesome5 name="users" size={20} color="#38a5c9" style={styles.headerIcon} />
-                          <Text style={styles.sectionHeader}>Nearby Users</Text>
+                          <FontAwesome5 name="users" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
+                          <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Nearby Users</Text>
                         </View>
                         {item.data.length > 0 ? (
                           <FlatList
@@ -623,44 +712,49 @@ export default function Dashboard() {
                             keyExtractor={(user: NearbyUser) => user.id}
                             renderItem={({ item: user }: { item: NearbyUser }) => (
                               <TouchableOpacity
-                                style={styles.userCard}
+                                style={[styles.userCard, { 
+                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                }]}
                                 activeOpacity={0.8}
                                 onPress={() => {
                                   if (user.isInviteCard) {
-                                    // Open Google.com when invite card is clicked
                                     Linking.openURL('https://www.google.com');
                                   } else {
                                     router.push(`profile/${user.id}`);
                                   }
                                 }}
                               >
-                                <View style={styles.avatar}>
+                                <View style={[styles.avatar, { 
+                                  backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                }]}>
                                   {user.profilePicture ? (
                                     <Image 
                                       source={{ uri: user.profilePicture }} 
                                       style={styles.avatarImage}
                                     />
                                   ) : (
-                                    <FontAwesome5 name="user" size={24} color="#38a5c9" />
+                                    <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                                   )}
                                 </View>
-                                <Text style={styles.userName}>{user.name}</Text>
-                                <Text style={styles.userStatus}>{user.status}</Text>
+                                <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{user.name}</Text>
+                                <Text style={[styles.userStatus, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>{user.status}</Text>
                               </TouchableOpacity>
                             )}
                             showsHorizontalScrollIndicator={false}
                           />
                         ) : (
-                          <Text style={styles.noDataText}>No nearby users found.</Text>
+                          <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No nearby users found.</Text>
                         )}
                       </View>
                     );
                   } else if (item.id === "events") {
                     return (
-                      <View style={styles.section} >
+                      <View style={styles.section}>
                         <View style={styles.headerRow}>
-                          <MaterialIcons name="event" size={20} color="#38a5c9" style={styles.headerIcon} />
-                          <Text style={styles.sectionHeader}>
+                          <MaterialIcons name="event" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
+                          <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                             Nearby Events
                           </Text>
                         </View>
@@ -668,7 +762,6 @@ export default function Dashboard() {
                           <FlatList
                             horizontal
                             data={[...item.data].sort((a, b) => {
-                              // Sort organized events first
                               if (a.organizer && !b.organizer) return -1;
                               if (!a.organizer && b.organizer) return 1;
                               return 0;
@@ -676,7 +769,10 @@ export default function Dashboard() {
                             keyExtractor={(event) => `${event.type}-${event.id}`}
                             renderItem={({ item: event }) => (
                               <TouchableOpacity
-                                style={styles.eventCard}
+                                style={[styles.eventCard, { 
+                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                }]}
                                 activeOpacity={0.8}
                                 onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
                               >
@@ -689,34 +785,40 @@ export default function Dashboard() {
                                 <View style={styles.eventContent}>
                                   <View style={styles.eventHeader}>
                                     {getCategoryIcon(event.category || 'Misc')}
-                                    <Text style={styles.eventName}>
+                                    <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                                       {event.name}
                                     </Text>
                                   </View>
-                                  <Text style={styles.eventDescription}>
+                                  <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
                                     {event.description}
                                   </Text>
                                   <View style={styles.eventMetaContainer}>
                                     {event.startTime && (
-                                      <View style={styles.eventMetaItem}>
-                                        <Feather name="clock" size={14} color="#64748B" />
-                                        <Text style={styles.eventMeta}>
+                                      <View style={[styles.eventMetaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      }]}>
+                                        <Feather name="clock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
                                           {new Date(event.startTime).toLocaleDateString()}
                                         </Text>
                                       </View>
                                     )}
                                     {event.attendees && (
-                                      <View style={styles.eventMetaItem}>
-                                        <Feather name="users" size={14} color="#64748B" />
-                                        <Text style={styles.eventMeta}>
+                                      <View style={[styles.eventMetaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      }]}>
+                                        <Feather name="users" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
                                           {event.attendees.length} {event.attendees.length === 1 ? 'attendee' : 'attendees'}
                                         </Text>
                                       </View>
                                     )}
                                     {event.private && (
-                                      <View style={styles.eventMetaItem}>
-                                        <Feather name="lock" size={14} color="#64748B" />
-                                        <Text style={styles.eventMeta}>
+                                      <View style={[styles.eventMetaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      }]}>
+                                        <Feather name="lock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
                                           Private
                                         </Text>
                                       </View>
@@ -728,7 +830,7 @@ export default function Dashboard() {
                             showsHorizontalScrollIndicator={false}
                           />
                         ) : (
-                          <Text style={styles.noDataText}>No events at this airport.</Text>
+                          <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No events at this airport.</Text>
                         )}
                       </View>
                     );
@@ -736,15 +838,18 @@ export default function Dashboard() {
                 } else if (item.type === "feature") {
                   return (
                     <TouchableOpacity
-                      style={styles.featureItem}
+                      style={[styles.featureItem, { 
+                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                      }]}
                       activeOpacity={0.8}
                       onPress={() => router.push(item.data.screen)}
                     >
                       <View style={styles.featureItemContent}>
                         {item.data.icon}
-                        <Text style={styles.featureItemText}>{item.data.title}</Text>
+                        <Text style={[styles.featureItemText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{item.data.title}</Text>
                       </View>
-                      <Feather name="chevron-right" size={18} color="#CBD5E1" />
+                      <Feather name="chevron-right" size={18} color={theme === "light" ? "#37a4c8" : "#CBD5E1"} />
                     </TouchableOpacity>
                   );
                 } else if (item.type === "spacer") {
@@ -826,7 +931,6 @@ const styles = StyleSheet.create({
   },
   headerIcon: {
     marginRight: 10,
-
     marginTop: -30,
   },
   sectionHeader: {
@@ -974,7 +1078,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 16,
-    backgroundColor: "#1a1a1a",
     borderRadius: 24,
     padding: 20,
     elevation: 4,
@@ -983,30 +1086,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   searchInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#000000",
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 14,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "rgba(56, 165, 201, 0.3)",
   },
   searchInput: {
     flex: 1,
     fontSize: 17,
-    color: "#e4fbfe",
     paddingVertical: 8,
     letterSpacing: 0.3,
   },
   clearButton: {
     width: 36,
     height: 36,
-    backgroundColor: "rgba(56, 165, 201, 0.1)",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1015,7 +1113,6 @@ const styles = StyleSheet.create({
   cancelButton: {
     width: 36,
     height: 36,
-    backgroundColor: "rgba(56, 165, 201, 0.1)",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1034,9 +1131,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 20,
     padding: 14,
-    backgroundColor: "#000000",
     borderWidth: 1,
-    borderColor: "#38a5c9",
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1058,19 +1153,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1a1a1a",
     elevation: 4,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   searchPlaceholder: {
     flex: 1,
     fontSize: 17,
-    color: "#38a5c9",
     marginLeft: 14,
     letterSpacing: 0.3,
   },

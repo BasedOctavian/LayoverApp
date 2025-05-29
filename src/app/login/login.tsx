@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -26,35 +26,13 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const { user, loading: isAuthLoading, login, loading: isLoggingIn } = useAuth();
   const router = useRouter();
-  const [fadeAnim] = useState(new Animated.Value(1));
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(true);
-
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      () => {
-        setKeyboardVisible(true);
-      }
-    );
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
-      () => {
-        setKeyboardVisible(false);
-      }
-    );
-
-    return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
-    };
-  }, []);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Wait for auth state to be checked
         await new Promise(resolve => setTimeout(resolve, 1000));
         setIsRefreshing(false);
         
@@ -70,17 +48,13 @@ const Login = () => {
     checkAuth();
   }, [isAuthLoading, user]);
 
-  useEffect(() => {
-    if (!keyboardVisible) {
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [keyboardVisible]);
+  const handleFocus = useCallback((field: string) => {
+    setFocusedField(field);
+  }, []);
+
+  const handleBlur = useCallback(() => {
+    setFocusedField(null);
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -99,14 +73,6 @@ const Login = () => {
     }
   };
 
-  const handleFocus = useCallback((field: string) => {
-    setFocusedField(field);
-  }, []);
-
-  const handleBlur = useCallback(() => {
-    setFocusedField(null);
-  }, []);
-
   if (isAuthLoading || isLoggingIn || isRefreshing) {
     return <LoadingScreen message="Signing you in..." />;
   }
@@ -114,25 +80,18 @@ const Login = () => {
   return (
     <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.keyboardAvoidingView}
       >
         <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            keyboardVisible && styles.scrollContentKeyboardVisible
-          ]}
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <Animated.View 
-              style={[
-                styles.contentContainer,
-                { opacity: fadeAnim }
-              ]}
-            >
+            <View style={styles.contentContainer}>
               <Text style={styles.title}>Welcome Back! ✈️</Text>
 
               <View style={styles.fieldContainer}>
@@ -204,7 +163,7 @@ const Login = () => {
               >
                 <Text style={styles.signUpText}>Don't have an account? Sign up</Text>
               </TouchableOpacity>
-            </Animated.View>
+            </View>
           </TouchableWithoutFeedback>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -223,15 +182,13 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
   },
-  scrollContentKeyboardVisible: {
-    justifyContent: "flex-start",
-    paddingTop: 20,
-  },
   contentContainer: {
     width: "100%",
     paddingHorizontal: 24,
     paddingVertical: 40,
     alignItems: "center",
+    minHeight: Platform.OS === 'ios' ? '100%' : 'auto',
+    marginTop: '52%',
   },
   title: {
     fontSize: 28,

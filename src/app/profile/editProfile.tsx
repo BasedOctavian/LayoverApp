@@ -225,6 +225,43 @@ const EditProfile = () => {
     }
   };
 
+  // Add URL formatting functions
+  const formatSocialUrl = (platform: string, username: string) => {
+    if (!username) return "";
+    const cleanUsername = username.trim().replace(/^@/, '');
+    
+    switch (platform) {
+      case 'instagram':
+        return `https://www.instagram.com/${cleanUsername}/`;
+      case 'linkedin':
+        return `https://www.linkedin.com/in/${cleanUsername}/`;
+      case 'twitter':
+        return `https://twitter.com/${cleanUsername}`;
+      default:
+        return username;
+    }
+  };
+
+  const extractUsername = (url: string, platform: string) => {
+    if (!url) return "";
+    
+    try {
+      const urlObj = new URL(url);
+      switch (platform) {
+        case 'instagram':
+          return urlObj.pathname.replace(/^\/|\/$/g, '');
+        case 'linkedin':
+          return urlObj.pathname.replace(/^\/in\/|\/$/g, '');
+        case 'twitter':
+          return urlObj.pathname.replace(/^\/|\/$/g, '');
+        default:
+          return url;
+      }
+    } catch {
+      return url;
+    }
+  };
+
   const handleUpdateProfile = async () => {
     if (!userId) {
       Alert.alert("Error", "User not logged in");
@@ -233,6 +270,13 @@ const EditProfile = () => {
     setUpdating(true);
     try {
       let profilePicUrl = formData.profilePicture;
+
+      // Format social media URLs before saving
+      const formattedSocialMedia = {
+        instagram: formatSocialUrl('instagram', formData.socialMedia.instagram),
+        linkedin: formatSocialUrl('linkedin', formData.socialMedia.linkedin),
+        twitter: formatSocialUrl('twitter', formData.socialMedia.twitter),
+      };
 
       if (profilePicUrl && !profilePicUrl.startsWith("http")) {
         const response = await fetch(profilePicUrl);
@@ -272,6 +316,7 @@ const EditProfile = () => {
         interests: formData.interests.filter((i) => i.trim() !== ""),
         goals: formData.goals.filter((g) => g.trim() !== ""),
         travelHistory: updatedTravelHistory,
+        socialMedia: formattedSocialMedia,
         updatedAt: serverTimestamp(),
       };
 
@@ -482,7 +527,7 @@ const EditProfile = () => {
                 <TextInput
                   style={[styles.input, styles.socialInput]}
                   placeholder="Instagram Username"
-                  value={formData.socialMedia.instagram}
+                  value={extractUsername(formData.socialMedia.instagram, 'instagram')}
                   onChangeText={(text) =>
                     setFormData((prev) => ({
                       ...prev,
@@ -496,8 +541,8 @@ const EditProfile = () => {
                 <MaterialIcons name="work" size={24} color="#38a5c9" style={styles.socialIcon} />
                 <TextInput
                   style={[styles.input, styles.socialInput]}
-                  placeholder="LinkedIn URL"
-                  value={formData.socialMedia.linkedin}
+                  placeholder="LinkedIn Username"
+                  value={extractUsername(formData.socialMedia.linkedin, 'linkedin')}
                   onChangeText={(text) =>
                     setFormData((prev) => ({
                       ...prev,
@@ -511,8 +556,8 @@ const EditProfile = () => {
                 <MaterialIcons name="chat" size={24} color="#38a5c9" style={styles.socialIcon} />
                 <TextInput
                   style={[styles.input, styles.socialInput]}
-                  placeholder="X (Twitter) Username"
-                  value={formData.socialMedia.twitter}
+                  placeholder="Twitter Username"
+                  value={extractUsername(formData.socialMedia.twitter, 'twitter')}
                   onChangeText={(text) =>
                     setFormData((prev) => ({
                       ...prev,

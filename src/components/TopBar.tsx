@@ -1,10 +1,11 @@
-import React, { useContext } from 'react';
+import React, { useContext, useRef, useCallback } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, Text, Platform } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemeContext } from '../context/ThemeContext';
+import useAuth from '../hooks/auth';
 
 // Define props interface
 interface TopBarProps {
@@ -27,18 +28,53 @@ const TopBar: React.FC<TopBarProps> = ({
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const { theme } = useContext(ThemeContext);
+  const { user } = useAuth();
+  const isNavigating = useRef(false);
 
-  const handleLogoPress = () => {
+  const handleNavigation = useCallback((route: string) => {
+    if (isNavigating.current) return;
+    
+    isNavigating.current = true;
+    router.push(route);
+    
+    // Reset navigation lock after animation completes
+    setTimeout(() => {
+      isNavigating.current = false;
+    }, 300);
+  }, []);
+
+  const handleLogoPress = useCallback(() => {
+    if (isNavigating.current) return;
+    
+    isNavigating.current = true;
     router.replace("/home/dashboard");
-  };
+    
+    setTimeout(() => {
+      isNavigating.current = false;
+    }, 300);
+  }, []);
 
-  const handleBackPress = () => {
+  const handleBackPress = useCallback(() => {
+    if (isNavigating.current) return;
+    
+    isNavigating.current = true;
     router.back();
-  };
+    
+    setTimeout(() => {
+      isNavigating.current = false;
+    }, 300);
+  }, []);
 
-  const handleNotificationPress = () => {
+  const handleNotificationPress = useCallback(() => {
+    if (isNavigating.current) return;
+    
+    isNavigating.current = true;
     router.push("/notifications/notifications");
-  };
+    
+    setTimeout(() => {
+      isNavigating.current = false;
+    }, 300);
+  }, []);
 
   return (
     <LinearGradient
@@ -51,11 +87,18 @@ const TopBar: React.FC<TopBarProps> = ({
     >
       <View style={styles.leftSection}>
         {showBackButton && (
-          <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
+          <TouchableOpacity 
+            onPress={handleBackPress} 
+            style={styles.backButton}
+            activeOpacity={0.7}
+          >
             <Ionicons name="chevron-back" size={28} color={theme === "light" ? "#000000" : "#ffffff"} />
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={handleLogoPress}>
+        <TouchableOpacity 
+          onPress={handleLogoPress}
+          activeOpacity={0.7}
+        >
           <Image
             source={require('../../assets/adaptive-icon.png')}
             style={[
@@ -71,7 +114,11 @@ const TopBar: React.FC<TopBarProps> = ({
       
       <View style={styles.rightSection}>
         {showNotifications && (
-          <TouchableOpacity onPress={handleNotificationPress} style={styles.iconButton}>
+          <TouchableOpacity 
+            onPress={handleNotificationPress} 
+            style={styles.iconButton}
+            activeOpacity={0.7}
+          >
             <View style={styles.notificationContainer}>
               <Ionicons name="notifications" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
               {notificationCount > 0 && (
@@ -86,8 +133,24 @@ const TopBar: React.FC<TopBarProps> = ({
         )}
         
         {onProfilePress && (
-          <TouchableOpacity onPress={onProfilePress} style={styles.profileButton}>
-            <Ionicons name="person-circle" size={32} color={theme === "light" ? "#000000" : "#ffffff"} />
+          <TouchableOpacity 
+            onPress={onProfilePress} 
+            style={styles.profileButton}
+            activeOpacity={0.7}
+          >
+            <View style={styles.avatarContainer}>
+              {user?.profilePicture ? (
+                <Image
+                  source={{ uri: user.profilePicture }}
+                  style={styles.profileImage}
+                />
+              ) : (
+                <View style={styles.profilePlaceholder}>
+                  <Ionicons name="person" size={20} color={theme === "light" ? "#000000" : "#ffffff"} />
+                </View>
+              )}
+              <View style={[styles.statusIndicator, { borderColor: theme === "light" ? "#e6e6e6" : "#000000" }]} />
+            </View>
           </TouchableOpacity>
         )}
       </View>
@@ -148,6 +211,41 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     padding: 4,
+  },
+  avatarContainer: {
+    position: 'relative',
+    shadowColor: '#38a5c9',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  profileImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#38a5c9',
+  },
+  profilePlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#38a5c9',
+  },
+  statusIndicator: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#4CAF50",
+    borderWidth: 2,
   },
   notificationContainer: {
     position: 'relative',

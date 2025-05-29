@@ -13,6 +13,7 @@ import {
 import { Feather, FontAwesome5, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
+import { ThemeContext } from "../context/ThemeContext";
 
 // Define the interface for preset status items
 interface PresetStatus {
@@ -77,6 +78,7 @@ export default function StatusSheet({
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(0)).current;
   const isClosing = useRef(false);
+  const { theme } = React.useContext(ThemeContext);
 
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationY: translateY } }],
@@ -142,6 +144,8 @@ export default function StatusSheet({
             ],
             opacity: sheetAnim,
             paddingBottom: insets.bottom + 24,
+            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+            borderColor: "#37a4c8"
           },
         ]}
       >
@@ -150,10 +154,10 @@ export default function StatusSheet({
           onHandlerStateChange={onHandlerStateChange}
         >
           <Animated.View style={styles.handleContainer}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: "#37a4c8" }]} />
           </Animated.View>
         </PanGestureHandler>
-        <Text style={styles.statusTitle}>Update Status</Text>
+        <Text style={[styles.statusTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Update Status</Text>
         <View style={styles.statusGrid}>
           {presetStatuses.map((status, index) => (
             <TouchableOpacity
@@ -171,19 +175,26 @@ export default function StatusSheet({
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={styles.customStatusLabel}>Custom Status</Text>
+        <Text style={[styles.customStatusLabel, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Custom Status</Text>
         <TextInput
-          style={styles.customStatusInput}
+          style={[styles.customStatusInput, { 
+            backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+            color: theme === "light" ? "#000000" : "#e4fbfe",
+            borderColor: "#37a4c8"
+          }]}
           value={customStatus}
           onChangeText={setCustomStatus}
           placeholder="Enter your status..."
-          placeholderTextColor="#64748B"
+          placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
           maxLength={50}
         />
         <TouchableOpacity
           style={[
             styles.submitButton,
-            { opacity: customStatus.trim().length > 0 ? 1 : 0.5 }
+            { 
+              opacity: customStatus.trim().length > 0 ? 1 : 0.5,
+              backgroundColor: "#37a4c8"
+            }
           ]}
           disabled={customStatus.trim().length === 0}
           onPress={() => {
@@ -205,7 +216,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     right: 0,
     left: 0,
-    backgroundColor: "#1a1a1a",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -216,7 +226,6 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 101,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   } as ViewStyle,
   handleContainer: {
     width: '100%',
@@ -228,13 +237,11 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: "#38a5c9",
     borderRadius: 2,
     opacity: 0.8,
   } as ViewStyle,
   statusTitle: {
     fontSize: 14,
-    color: "#e4fbfe",
     fontWeight: "600",
     marginBottom: 16,
     textTransform: "uppercase",
@@ -266,25 +273,20 @@ const styles = StyleSheet.create({
   } as TextStyle,
   customStatusLabel: {
     fontSize: 14,
-    color: "#e4fbfe",
     fontWeight: "600",
     marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 1,
   } as TextStyle,
   customStatusInput: {
-    backgroundColor: "#000000",
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
     fontSize: 15,
-    color: "#e4fbfe",
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   } as TextStyle,
   submitButton: {
-    backgroundColor: "#38a5c9",
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: "center",

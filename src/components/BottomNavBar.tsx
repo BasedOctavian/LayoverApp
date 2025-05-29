@@ -1,4 +1,4 @@
-import React, { useContext, useRef, useEffect } from 'react';
+import React, { useContext, useRef, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform, Text, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, usePathname } from 'expo-router';
@@ -10,6 +10,7 @@ const BottomNavBar = () => {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { theme } = useContext(ThemeContext);
+  const isNavigating = useRef(false);
   
   // Add fade animation
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -18,27 +19,9 @@ const BottomNavBar = () => {
 
   // Animate when theme changes
   useEffect(() => {
-    // First fade out
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 200,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start(() => {
-      // Update animation values for new theme
-      backgroundAnim.setValue(theme === "light" ? 0 : 1);
-      textAnim.setValue(theme === "light" ? 0 : 1);
-      
-      // Fade back in with a slight delay
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: true,
-        }).start();
-      }, 50);
-    });
+    // Update animation values for new theme
+    backgroundAnim.setValue(theme === "light" ? 0 : 1);
+    textAnim.setValue(theme === "light" ? 0 : 1);
   }, [theme]);
 
   // Interpolate colors for smooth transitions
@@ -54,9 +37,21 @@ const BottomNavBar = () => {
     extrapolate: 'clamp'
   });
 
-  const isActive = (path: string) => {
+  const isActive = useCallback((path: string) => {
     return pathname === path;
-  };
+  }, [pathname]);
+
+  const handleNavigation = useCallback((path: string) => {
+    if (isNavigating.current || pathname === path) return;
+    
+    isNavigating.current = true;
+    router.push(path);
+    
+    // Reset navigation lock after animation completes
+    setTimeout(() => {
+      isNavigating.current = false;
+    }, 300);
+  }, [pathname]);
 
   const navItems = [
     {
@@ -112,7 +107,7 @@ const BottomNavBar = () => {
   ];
 
   return (
-    <Animated.View style={{ opacity: fadeAnim }}>
+    <View>
       <LinearGradient
         colors={theme === "light" ? ['#e6e6e6', '#e6e6e6'] : ['#000000', '#000000']}
         style={[
@@ -126,7 +121,8 @@ const BottomNavBar = () => {
           <TouchableOpacity
             key={index}
             style={styles.navItem}
-            onPress={() => router.push(item.path)}
+            onPress={() => handleNavigation(item.path)}
+            activeOpacity={0.7}
           >
             <View style={[
               styles.iconContainer,
@@ -137,7 +133,7 @@ const BottomNavBar = () => {
           </TouchableOpacity>
         ))}
       </LinearGradient>
-    </Animated.View>
+    </View>
   );
 };
 

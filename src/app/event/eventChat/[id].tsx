@@ -9,6 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import TopBar from '../../../components/TopBar';
 import LoadingScreen from '../../../components/LoadingScreen';
 import { Timestamp } from 'firebase/firestore';
+import { ThemeContext } from '../../../context/ThemeContext';
 
 interface Message {
   id: string;
@@ -19,16 +20,27 @@ interface Message {
 }
 
 export default function EventChat() {
-  const { id } = useLocalSearchParams(); // Event ID from navigation params
-  const { user } = useAuth(); // Authenticated user
+  const { id } = useLocalSearchParams();
+  const { user } = useAuth();
   const router = useRouter();
-  const { messages, loading, error, sendMessage } = useChat(id); // Custom chat hook
+  const { messages, error, sendMessage } = useChat(id);
   const [newMessage, setNewMessage] = useState('');
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const marginAnim = useRef(new Animated.Value(50)).current;
   const flatListRef = useRef<FlatList>(null);
+  const { theme } = React.useContext(ThemeContext);
+
+  useEffect(() => {
+    // Simulate initial loading
+    const timer = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
@@ -40,6 +52,12 @@ export default function EventChat() {
           useNativeDriver: false,
         }).start();
         setKeyboardVisible(true);
+        // Add a small delay to ensure the keyboard is fully shown
+        setTimeout(() => {
+          if (messages.length > 0) {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }
+        }, 100);
       }
     );
     const keyboardWillHideListener = Keyboard.addListener(
@@ -58,7 +76,7 @@ export default function EventChat() {
       keyboardWillShowListener.remove();
       keyboardWillHideListener.remove();
     };
-  }, []);
+  }, [messages]);
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !user) return;
@@ -68,49 +86,62 @@ export default function EventChat() {
       userName: user.displayName || 'Anonymous',
     });
     setNewMessage('');
+    flatListRef.current?.scrollToEnd({ animated: true });
   };
 
   const formatTimestamp = (timestamp: Timestamp): string => {
     if (!timestamp) return '';
-    const date = timestamp.toDate(); // Convert Firestore Timestamp to Date
-    const today = new Date();
-    const isToday = date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear();
-    if (isToday) {
-      const hours = date.getHours().toString().padStart(2, '0');
-      const minutes = date.getMinutes().toString().padStart(2, '0');
-      return `${hours}:${minutes}`;
-    } else {
-      const options: Intl.DateTimeFormatOptions = { 
-        month: 'short' as const, 
-        day: 'numeric' as const 
-      };
-      return date.toLocaleDateString(undefined, options) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
+    const date = timestamp.toDate();
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isCurrentUser = item.userId === user?.uid;
     return (
-      <View style={[styles.messageBubble, isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble]}>
+      <View style={[
+        styles.messageBubble, 
+        isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble,
+        { 
+          backgroundColor: isCurrentUser 
+            ? '#37a4c8' 
+            : theme === "light" 
+              ? "#f5f5f5" 
+              : "#2a2a2a",
+          borderColor: isCurrentUser 
+            ? '#37a4c8' 
+            : theme === "light" 
+              ? "#e0e0e0" 
+              : "#3a3a3a"
+        }
+      ]}>
         {!isCurrentUser && (
-          <Text style={[styles.messageUser, styles.otherUserText]}>{item.userName}</Text>
+          <Text style={[styles.messageUser, { 
+            color: theme === "light" ? "#1a1a1a" : "#ffffff",
+            fontWeight: "600"
+          }]}>
+            {item.userName}
+          </Text>
         )}
-        <Text style={[styles.messageText, isCurrentUser ? styles.currentUserText : styles.otherUserText]}>
+        <Text style={[styles.messageText, { 
+          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#1a1a1a" : "#ffffff",
+          fontWeight: "500"
+        }]}>
           {item.text}
         </Text>
-        <Text style={[styles.messageTimestamp, isCurrentUser ? styles.currentUserText : styles.otherUserText]}>
+        <Text style={[styles.messageTimestamp, { 
+          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#666666" : "#a0a0a0",
+          opacity: 0.8
+        }]}>
           {formatTimestamp(item.timestamp)}
         </Text>
       </View>
     );
   };
 
-  if (loading) {
+  if (isInitialLoading) {
     return (
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <LoadingScreen message="Loading chat..." />
       </LinearGradient>
     );
@@ -118,12 +149,23 @@ export default function EventChat() {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-        <TopBar />
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          showBackButton={true}
+          title="Event Chat"
+          showNotifications={true}
+          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+        />
         {error ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>{error}</Text>
+          <View style={styles.centerContainer}>
+            <Text style={[styles.errorText, { color: theme === "light" ? "#FF3B30" : "#FF3B30" }]}>{error}</Text>
+            <TouchableOpacity 
+              style={[styles.retryButton, { backgroundColor: "#37a4c8" }]}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.retryButtonText}>Return to Event</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
@@ -132,7 +174,7 @@ export default function EventChat() {
               renderItem={renderMessage}
               keyExtractor={item => item.id}
               style={styles.messageList}
-              keyboardShouldPersistTaps="always"
+              keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.messageListContent}
               onContentSizeChange={() => {
                 if (messages.length > 0) {
@@ -141,21 +183,29 @@ export default function EventChat() {
               }}
               ref={flatListRef}
             />
-            <Animated.View style={[styles.inputContainer, { marginBottom: marginAnim }]}>
+            <Animated.View style={[styles.inputContainer, { 
+              marginBottom: marginAnim,
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+              borderTopColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
+            }]}>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { 
+                  backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                  color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                  borderColor: theme === "light" ? "#e0e0e0" : "#3a3a3a"
+                }]}
                 value={newMessage}
                 onChangeText={setNewMessage}
                 placeholder="Type a message..."
-                placeholderTextColor="#64748B"
-                accessibilityLabel="Message input"
+                placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
+                multiline
+                maxLength={1000}
               />
               <TouchableOpacity
                 onPress={handleSendMessage}
-                style={styles.sendButton}
-                accessibilityLabel="Send message"
+                style={[styles.sendButton, { backgroundColor: "#37a4c8" }]}
               >
-                <Feather name="send" size={24} color="#000000" />
+                <Feather name="send" size={24} color="#ffffff" />
               </TouchableOpacity>
             </Animated.View>
           </KeyboardAvoidingView>
@@ -166,7 +216,16 @@ export default function EventChat() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, marginBottom: -20 },
+  flex: { 
+    flex: 1, 
+    marginBottom: -20 
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
   messageList: { 
     flex: 1,
     paddingHorizontal: 16,
@@ -174,74 +233,102 @@ const styles = StyleSheet.create({
   messageListContent: {
     flexGrow: 1,
     justifyContent: 'flex-end',
-    paddingBottom: 16,
+    paddingVertical: 16,
   },
   messageBubble: {
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 20,
     marginVertical: 4,
     maxWidth: '80%',
+    minWidth: '30%',
     borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
   },
   currentUserBubble: {
-    backgroundColor: '#38a5c9',
     alignSelf: 'flex-end',
-    borderColor: '#38a5c9',
+    borderTopRightRadius: 4,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    borderTopLeftRadius: 20,
   },
   otherUserBubble: {
-    backgroundColor: '#1a1a1a',
     alignSelf: 'flex-start',
-    borderColor: '#38a5c9',
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    borderTopRightRadius: 20,
   },
   messageText: {
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: 0.2,
   },
   messageUser: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 13,
     marginBottom: 4,
+    letterSpacing: 0.2,
   },
   messageTimestamp: {
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 4,
-    opacity: 0.7,
-  },
-  currentUserText: {
-    color: '#000000',
-  },
-  otherUserText: {
-    color: '#e4fbfe',
+    textAlign: "right",
+    fontWeight: "500",
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#1a1a1a',
+    padding: 12,
     borderTopWidth: 1,
-    borderTopColor: '#38a5c9',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   input: {
     flex: 1,
-    padding: 12,
-    borderRadius: 20,
-    backgroundColor: '#000000',
-    marginRight: 12,
-    color: '#e4fbfe',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    fontSize: 15,
+    marginRight: 10,
     borderWidth: 1,
-    borderColor: '#38a5c9',
+    letterSpacing: 0.2,
+    maxHeight: 100,
   },
   sendButton: {
-    backgroundColor: '#38a5c9',
     padding: 12,
-    borderRadius: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    borderRadius: 24,
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+    minWidth: 48,
+    height: 48,
     alignItems: 'center',
   },
-  loadingText: {
+  errorText: {
     fontSize: 16,
-    color: '#e4fbfe',
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  retryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  retryButtonText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 });

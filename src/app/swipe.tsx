@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import useUsers from "./../hooks/useUsers";
-import { arrayUnion, doc, onSnapshot } from "firebase/firestore";
+import { arrayUnion, doc, onSnapshot, getDoc } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import useAuth from "../hooks/auth";
@@ -28,12 +28,14 @@ import Animated, {
   interpolate,
   Extrapolate,
   runOnJS,
+  useAnimatedReaction,
 } from "react-native-reanimated";
 import {
   Gesture,
   GestureDetector,
   PanGestureHandler,
 } from "react-native-gesture-handler";
+import { ThemeContext } from "../context/ThemeContext";
 
 interface TravelHistory {
   id: string;
@@ -83,6 +85,7 @@ const Swipe = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showMessageOptions, setShowMessageOptions] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const { theme } = React.useContext(ThemeContext);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -90,14 +93,19 @@ const Swipe = () => {
   const isAnimating = useSharedValue(false);
   const lastDirection = useSharedValue<'left' | 'right' | null>(null);
   const currentIndex = useSharedValue(0);
-  const currentUser = useSharedValue<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Update currentUser when users or currentIndex changes
-  useEffect(() => {
-    if (users.length > 0) {
-      currentUser.value = users[currentIndex.value];
-    }
-  }, [users, currentIndex.value]);
+  useAnimatedReaction(
+    () => currentIndex.value,
+    (current) => {
+      if (users.length > 0 && current < users.length) {
+        runOnJS(setCurrentUser)(users[current]);
+      } else {
+        runOnJS(setCurrentUser)(null);
+      }
+    },
+    [users]
+  );
 
   const resetCard = () => {
     if (isAnimating.value) return;
@@ -174,13 +182,19 @@ const Swipe = () => {
     });
 
   const handleSwipe = (direction: "left" | "right") => {
-    if (isAnimating.value) return;
+    if (isAnimating.value || !users.length) return;
     isAnimating.value = true;
 
+    const currentUserIndex = currentIndex.value;
+    if (currentUserIndex >= users.length) {
+      isAnimating.value = false;
+      return;
+    }
+
     if (direction === "right") {
-      onSwipedRight(currentIndex.value);
+      onSwipedRight(currentUserIndex);
     } else {
-      onSwipedLeft(currentIndex.value);
+      onSwipedLeft(currentUserIndex);
     }
     
     translateX.value = withSpring(direction === "right" ? width * 1.5 : -width * 1.5, {
@@ -202,7 +216,18 @@ const Swipe = () => {
         translateX.value = 0;
         translateY.value = 0;
         cardRotation.value = 0;
-        currentIndex.value = (currentIndex.value + 1) % users.length;
+        
+        // Update currentIndex only if there are more users
+        if (currentUserIndex + 1 < users.length) {
+          currentIndex.value = currentUserIndex + 1;
+        } else {
+          // If we've reached the end, reset to 0 or handle empty state
+          currentIndex.value = 0;
+          if (users.length === 0) {
+            setShowSwiper(false);
+          }
+        }
+        
         isAnimating.value = false;
       }, 300);
     });
@@ -360,14 +385,44 @@ const Swipe = () => {
   const fetchUsers = async () => {
     try {
       setIsLoadingUsers(true);
-      const fetchedUsers = await getUsers() as User[];
+      
+      // Get current user's airport code
+      const currentUserDoc = await doc(db, "users", currentUserUID);
+      const currentUserSnapshot = await getDoc(currentUserDoc);
+      const currentUserAirport = currentUserSnapshot.data()?.airportCode;
+
+      if (!currentUserAirport) {
+        Alert.alert("Error", "Please set your airport code in your profile.");
+        return;
+      }
+
+      // Calculate timestamp for 1 hour ago
+      const oneHourAgo = new Date();
+      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+
+      // Query users with the same airport code and recent updates
+      const usersRef = collection(db, "users");
+      const q = query(
+        usersRef,
+        where("airportCode", "==", currentUserAirport),
+        where("updatedAt", ">=", oneHourAgo)
+      );
+
+      const querySnapshot = await getDocs(q);
+      const fetchedUsers = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as User[];
+
       const likedAndDisliked = [
         ...(currentUserData?.likedUsers || []),
         ...(currentUserData?.dislikedUsers || []),
       ];
+      
       const filteredUsers = fetchedUsers.filter(
         (user) => user.id !== currentUserUID && !likedAndDisliked.includes(user.id)
       );
+      
       setUsers(filteredUsers);
       setShowSwiper(filteredUsers.length > 0);
     } catch (err) {
@@ -383,10 +438,10 @@ const Swipe = () => {
     if (!users?.[index] || isProcessing) return;
     setIsProcessing(true);
 
-    const swipedUser = users[index];
-    const swipedUserUID = swipedUser.id;
-
     try {
+      const swipedUser = users[index];
+      const swipedUserUID = swipedUser.id;
+
       await updateUser(currentUserUID, {
         likedUsers: arrayUnion(swipedUserUID),
       });
@@ -422,7 +477,6 @@ const Swipe = () => {
         }
       }
     } catch (err) {
-      Alert.alert("Error", "Failed to process swipe. Please try again.");
       console.error("Error processing right swipe:", err);
     } finally {
       setIsProcessing(false);
@@ -434,16 +488,14 @@ const Swipe = () => {
     if (!users?.[index] || isProcessing) return;
     setIsProcessing(true);
 
-    const swipedUser = users[index];
-    const swipedUserUID = swipedUser.id;
-
     try {
+      const swipedUser = users[index];
+      const swipedUserUID = swipedUser.id;
+
       await updateUser(currentUserUID, {
         dislikedUsers: arrayUnion(swipedUserUID),
       });
-      console.log("Swiped left on user:", swipedUser.name);
     } catch (err) {
-      Alert.alert("Error", "Failed to process swipe. Please try again.");
       console.error("Error processing left swipe:", err);
     } finally {
       setIsProcessing(false);
@@ -462,7 +514,7 @@ const Swipe = () => {
 
     return (
       <Animated.View style={[styles.cardContainer, styles.cardShadow]}>
-        <View style={styles.cardContent}>
+        <View style={[styles.cardContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
           {/* Profile Image Section */}
           <View style={styles.imageContainer}>
             <Image
@@ -470,15 +522,15 @@ const Swipe = () => {
               style={styles.profileImage}
             />
             <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.8)']}
+              colors={['transparent', theme === "light" ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.8)']}
               style={styles.imageOverlay}
             >
               <View style={styles.profileHeader}>
                 <Text style={styles.nameText}>
                   {user.name}, {user.age}
                 </Text>
-                <View style={styles.locationContainer}>
-                  <MaterialIcons name="location-on" size={16} color="#38a5c9" />
+                <View style={[styles.locationContainer, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]}>
+                  <MaterialIcons name="location-on" size={16} color="#37a4c8" />
                   <Text style={styles.locationText}>{user.airportCode}</Text>
                 </View>
               </View>
@@ -486,15 +538,15 @@ const Swipe = () => {
           </View>
 
           {/* Content Section */}
-          <View style={styles.contentContainer}>
+          <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
             {/* Bio Section */}
             {user.bio && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <MaterialIcons name="person" size={18} color="#38a5c9" />
-                  <Text style={styles.sectionContent}>{user.bio}</Text>
+                  <MaterialIcons name="person" size={18} color="#37a4c8" />
+                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{user.bio}</Text>
                 </View>
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
               </View>
             )}
 
@@ -502,12 +554,12 @@ const Swipe = () => {
             {user.languages && user.languages.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <MaterialIcons name="translate" size={18} color="#38a5c9" />
-                  <Text style={styles.sectionContent}>
+                  <MaterialIcons name="translate" size={18} color="#37a4c8" />
+                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     {user.languages.join(" • ")}
                   </Text>
                 </View>
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
               </View>
             )}
 
@@ -515,12 +567,12 @@ const Swipe = () => {
             {user.interests && user.interests.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <MaterialIcons name="favorite" size={18} color="#38a5c9" />
-                  <Text style={styles.sectionContent}>
+                  <MaterialIcons name="favorite" size={18} color="#37a4c8" />
+                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     {user.interests.join(" • ")}
                   </Text>
                 </View>
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
               </View>
             )}
 
@@ -528,12 +580,12 @@ const Swipe = () => {
             {user.goals && user.goals.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <MaterialIcons name="flight-takeoff" size={18} color="#38a5c9" />
-                  <Text style={styles.sectionContent}>
+                  <MaterialIcons name="flight-takeoff" size={18} color="#37a4c8" />
+                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     Wants to visit: {user.goals.join(" • ")}
                   </Text>
                 </View>
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
               </View>
             )}
 
@@ -541,19 +593,19 @@ const Swipe = () => {
             {user.travelHistory && user.travelHistory.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <MaterialIcons name="history" size={18} color="#38a5c9" />
-                  <Text style={styles.sectionContent}>
+                  <MaterialIcons name="history" size={18} color="#37a4c8" />
+                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     Visited: {user.travelHistory.map(trip => trip.name).join(" • ")}
                   </Text>
                 </View>
-                <View style={styles.divider} />
+                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
               </View>
             )}
 
             {/* Mood Status */}
             {user.moodStatus && (
-              <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={16} color="#38a5c9" />
+              <View style={[styles.moodContainer, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)" }]}>
+                <MaterialIcons name="mood" size={16} color="#37a4c8" />
                 <Text style={styles.moodText}>{user.moodStatus}</Text>
               </View>
             )}
@@ -578,11 +630,11 @@ const Swipe = () => {
   if (error) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
           <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
+            <Text style={[styles.errorText, { color: theme === "light" ? "#FF3B30" : "#FF3B30" }]}>{error}</Text>
+            <TouchableOpacity style={[styles.retryButton, { backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8" }]} onPress={fetchUsers}>
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -595,11 +647,11 @@ const Swipe = () => {
   if (!users.length) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40  }}>
+        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
           <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={styles.stateContainer}>
-            <Text style={styles.emptyStateText}>No users found nearby.</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchUsers}>
+            <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>No users found nearby.</Text>
+            <TouchableOpacity style={[styles.retryButton, { backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8" }]} onPress={fetchUsers}>
               <Text style={styles.retryButtonText}>Refresh</Text>
             </TouchableOpacity>
           </View>
@@ -611,15 +663,18 @@ const Swipe = () => {
   /** Main Swiper view */
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40  }}>
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
         <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
         <View style={{ flex: 1 }}>
           {showSwiper && users.length > 0 ? (
             <>
               <View style={styles.cardsContainer}>
                 <GestureDetector gesture={gesture}>
-                  <Animated.View style={[styles.cardContainer, cardStyle]}>
-                    {users[currentIndex.value] && renderCard(users[currentIndex.value])}
+                  <Animated.View style={[styles.cardContainer, cardStyle, { 
+                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                    borderColor: "#37a4c8"
+                  }]}>
+                    {currentUser && renderCard(currentUser)}
                     <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
                       <View style={styles.labelContainer}>
                         <MaterialIcons name="people" size={32} color="#4CD964" />
@@ -640,10 +695,13 @@ const Swipe = () => {
               <View style={styles.quickMessageButtonContainer}>
                 <Animated.View style={buttonStyle}>
                   <TouchableOpacity 
-                    style={styles.quickMessageButton}
+                    style={[styles.quickMessageButton, { 
+                      backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8",
+                      borderColor: theme === "light" ? "#37a4c8" : "#37a4c8"
+                    }]}
                     onPress={() => {
-                      if (users.length > 0) {
-                        handleShowMessageOptions(users[currentIndex.value]);
+                      if (currentUser) {
+                        handleShowMessageOptions(currentUser);
                       }
                     }}
                   >
@@ -659,39 +717,54 @@ const Swipe = () => {
           
           {/* Message Options Modal */}
           {showMessageOptions && selectedUser && (
-            <View style={styles.messageOptionsContainer}>
-              <View style={styles.messageOptionsContent}>
-                <View style={styles.messageOptionsHeader}>
-                  <Text style={styles.messageOptionsTitle}>Quick Messages</Text>
-                  <Text style={styles.messageOptionsSubtitle}>Send a message to {selectedUser.name}</Text>
+            <View style={[styles.messageOptionsContainer, { backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.5)" : "rgba(0, 0, 0, 0.8)" }]}>
+              <View style={[styles.messageOptionsContent, { 
+                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                borderColor: "#37a4c8"
+              }]}>
+                <View style={[styles.messageOptionsHeader, { 
+                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}>
+                  <Text style={[styles.messageOptionsTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Quick Messages</Text>
+                  <Text style={[styles.messageOptionsSubtitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Send a message to {selectedUser.name}</Text>
                   <TouchableOpacity 
-                    style={styles.closeButton}
+                    style={[styles.closeButton, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: "#37a4c8"
+                    }]}
                     onPress={() => setShowMessageOptions(false)}
                   >
-                    <MaterialIcons name="close" size={20} color="#e4fbfe" />
+                    <MaterialIcons name="close" size={20} color={theme === "light" ? "#000000" : "#e4fbfe"} />
                   </TouchableOpacity>
                 </View>
                 
                 <View style={styles.messagesContainer}>
                   <View style={styles.messageSection}>
-                    <Text style={styles.messageSectionTitle}>Preset Messages</Text>
+                    <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Preset Messages</Text>
                     {presetMessages.map((message, index) => (
                       <TouchableOpacity
                         key={index}
-                        style={styles.presetMessageButton}
+                        style={[styles.presetMessageButton, { 
+                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                          borderColor: "#37a4c8"
+                        }]}
                         onPress={() => {
                           sendQuickMessage(message, selectedUser.id);
                         }}
                       >
-                        <Text style={styles.presetMessageText}>{message}</Text>
+                        <Text style={[styles.presetMessageText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{message}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                   
                   <View style={styles.messageSection}>
-                    <Text style={styles.messageSectionTitle}>Chat Options</Text>
+                    <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Chat Options</Text>
                     <TouchableOpacity
-                      style={[styles.presetMessageButton, styles.chatButton]}
+                      style={[styles.presetMessageButton, styles.chatButton, { 
+                        backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8",
+                        borderColor: theme === "light" ? "#37a4c8" : "#37a4c8"
+                      }]}
                       onPress={() => {
                         const findOrCreateChat = async () => {
                           try {
@@ -794,7 +867,6 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     flex: 1,
-    backgroundColor: "#1a1a1a",
   },
   imageContainer: {
     width: '100%',
@@ -845,7 +917,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     padding: 12,
-    backgroundColor: "#1a1a1a",
   },
   section: {
     marginBottom: 8,
@@ -857,7 +928,6 @@ const styles = StyleSheet.create({
   },
   sectionContent: {
     fontSize: 14,
-    color: "#e4fbfe",
     marginLeft: 8,
     flex: 1,
     lineHeight: 18,

@@ -15,7 +15,7 @@ import {
   StatusBar,
   Animated,
 } from "react-native";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import useUsers from "../../hooks/useUsers";
 import useChats from "../../hooks/useChats";
 import useAuth from "../../hooks/auth";
@@ -27,6 +27,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
+import { ThemeContext } from "../../context/ThemeContext";
 
 interface Chat {
   id: string;
@@ -41,12 +42,17 @@ interface Message {
   };
   sender: string;
   receiver: string;
+  status?: 'sent' | 'delivered' | 'read';
 }
 
 interface Partner {
   id: string;
   name: string;
   profilePicture?: string;
+  age?: number;
+  airportCode?: string;
+  moodStatus?: string;
+  bio?: string;
 }
 
 export default function Chat() {
@@ -55,7 +61,7 @@ export default function Chat() {
   const chatId = id as string;
 
   const { user: authUser } = useAuth();
-  const { getUser, loading: usersLoading, error: usersError } = useUsers();
+  const { getUser, error: usersError } = useUsers();
   const {
     getChat,
     subscribeToChat,
@@ -63,7 +69,6 @@ export default function Chat() {
     subscribeToMessages,
     addMessage,
     deleteMessage,
-    loading: loadingChat,
     error: chatError,
   } = useChats();
 
@@ -71,9 +76,7 @@ export default function Chat() {
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [isSending, setIsSending] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const marginAnim = useRef(new Animated.Value(50)).current;
   const scrollViewRef = useRef<ScrollView>(null);
@@ -82,6 +85,9 @@ export default function Chat() {
   const insets = useSafeAreaInsets();
   const globalTopBarHeight = 50 + insets.top;
   const chatHeaderHeight = 70;
+
+  // Access ThemeContext
+  const { theme } = React.useContext(ThemeContext);
 
   // Get chat document and partner details on mount
   useEffect(() => {
@@ -115,6 +121,26 @@ export default function Chat() {
     loadInitialData();
   }, [chatId, authUser]);
 
+  // Subscribe to real-time updates for messages
+  useEffect(() => {
+    if (chatId) {
+      const unsubscribeMessages = subscribeToMessages(chatId, (msgs: Message[]) => {
+        // Sort messages from oldest to newest
+        const sorted = msgs.sort(
+          (a: Message, b: Message) => (a.date?.seconds || 0) - (b.date?.seconds || 0)
+        );
+        setMessages(sorted);
+        
+        // If the last message is from the partner, scroll to bottom
+        const lastMessage = sorted[sorted.length - 1];
+        if (lastMessage && lastMessage.sender === partner?.id) {
+          scrollToBottom();
+        }
+      });
+      return () => unsubscribeMessages();
+    }
+  }, [chatId, partner?.id]);
+
   // Subscribe to real-time updates for the chat document
   useEffect(() => {
     if (chatId) {
@@ -139,22 +165,6 @@ export default function Chat() {
       isInitialScrollDone.current = true;
     }
   }, [messages]);
-
-  // Subscribe to real-time updates for messages
-  useEffect(() => {
-    if (chatId) {
-      const unsubscribeMessages = subscribeToMessages(chatId, (msgs: Message[]) => {
-        // Sort messages from oldest to newest
-        const sorted = msgs.sort(
-          (a: Message, b: Message) => (a.date?.seconds || 0) - (b.date?.seconds || 0)
-        );
-        setMessages(sorted);
-        // Scroll to bottom when new messages arrive
-        scrollToBottom();
-      });
-      return () => unsubscribeMessages();
-    }
-  }, [chatId]);
 
   // Scroll to bottom when keyboard appears
   useEffect(() => {
@@ -197,25 +207,22 @@ export default function Chat() {
   };
 
   const handleSendMessage = async () => {
-    if (newMessage.trim() === "" || isSending || !authUser || !partner) return;
+    if (newMessage.trim() === "" || !authUser || !partner) return;
     
-    setIsSending(true);
     const messageData = {
       content: newMessage,
       date: new Date(),
       sender: authUser.uid,
       receiver: partner.id,
+      status: 'sent'
     };
     
     try {
-      const messageId = await addMessage(chatId, messageData);
-      if (messageId) {
-        setNewMessage("");
-      }
+      await addMessage(chatId, messageData);
+      setNewMessage("");
+      scrollToBottom();
     } catch (error) {
       console.error("Error sending message:", error);
-    } finally {
-      setIsSending(false);
     }
   };
 
@@ -233,10 +240,10 @@ export default function Chat() {
     ]);
   };
 
-  if (isInitialLoading || usersLoading || loadingChat) {
+  if (isInitialLoading) {
     return (
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <LoadingScreen message="Loading chat..." />
       </LinearGradient>
     );
@@ -244,8 +251,8 @@ export default function Chat() {
 
   if (usersError || chatError) {
     return (
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>Error: {usersError || chatError}</Text>
           <TouchableOpacity 
@@ -261,8 +268,8 @@ export default function Chat() {
 
   if (!chat || !partner || !authUser) {
     return (
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>Chat not found</Text>
           <TouchableOpacity 
@@ -277,19 +284,28 @@ export default function Chat() {
   }
 
   return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+    <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
           showBackButton={true}
           title="Chat"
-          showNotifications={false}
+          showNotifications={true}
+          onProfilePress={() => router.push(`/profile/${authUser.uid}`)}
         />
 
         {/* Chat Header Top Bar */}
-        <TouchableOpacity onPress={() => router.push(`/profile/${partner.id}`)}>
-          <View style={[styles.chatHeader, { height: chatHeaderHeight }]}>
-            <View style={styles.avatarContainer}>
+        <View style={[styles.chatHeader, { 
+          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+          borderBottomColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
+        }]}>
+          <TouchableOpacity 
+            onPress={() => router.push(`/profile/${partner.id}`)}
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+          >
+            <View style={[styles.avatarContainer, { 
+              backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
+            }]}>
               {partner.profilePicture ? (
                 <Image
                   source={{ uri: partner.profilePicture }}
@@ -302,10 +318,52 @@ export default function Chat() {
                   </Text>
                 </View>
               )}
+              <View style={styles.onlineIndicator} />
             </View>
-            <Text style={styles.partnerName}>{partner.name || "Unknown User"}</Text>
-          </View>
-        </TouchableOpacity>
+            <View style={styles.headerTextContainer}>
+              <View style={styles.nameRow}>
+                <Text style={[styles.partnerName, { 
+                  color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                }]}>
+                  {partner.name || "Unknown User"}
+                </Text>
+                {partner.age && (
+                  <Text style={[styles.ageText, { 
+                    color: theme === "light" ? "#666666" : "#a0a0a0"
+                  }]}>
+                    {partner.age}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.infoRow}>
+                {partner.airportCode && (
+                  <View style={[styles.infoBadge, { 
+                    backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
+                  }]}>
+                    <Ionicons name="airplane" size={14} color="#37a4c8" />
+                    <Text style={[styles.infoText, { 
+                      color: theme === "light" ? "#666666" : "#a0a0a0"
+                    }]}>
+                      {partner.airportCode}
+                    </Text>
+                  </View>
+                )}
+                {partner.moodStatus && (
+                  <View style={[styles.infoBadge, { 
+                    backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
+                  }]}>
+                    <Ionicons name="happy" size={14} color="#37a4c8" />
+                    <Text style={[styles.infoText, { 
+                      color: theme === "light" ? "#666666" : "#a0a0a0"
+                    }]}>
+                      {partner.moodStatus}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
 
         <KeyboardAvoidingView
           style={styles.flex}
@@ -322,6 +380,7 @@ export default function Chat() {
                 keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => scrollToBottom()}
                 onLayout={() => scrollToBottom()}
+                showsVerticalScrollIndicator={false}
               >
                 {messages.map((message) => {
                   const isSender = message.sender === authUser.uid;
@@ -333,24 +392,57 @@ export default function Chat() {
                       activeOpacity={0.7}
                     >
                       <View
-                        style={
-                          isSender
-                            ? styles.messageBubbleRight
-                            : styles.messageBubbleLeft
-                        }
+                        style={[
+                          isSender ? styles.messageBubbleRight : styles.messageBubbleLeft,
+                          !isSender && { 
+                            backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                            borderColor: theme === "light" ? "#e0e0e0" : "#3a3a3a"
+                          }
+                        ]}
                       >
                         <Text
-                          style={
-                            isSender
-                              ? [styles.messageText, styles.rightMessageText]
-                              : styles.messageText
-                          }
+                          style={[
+                            styles.messageText,
+                            isSender ? styles.rightMessageText : { 
+                              color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                              fontWeight: "500"
+                            }
+                          ]}
                         >
                           {message.content}
                         </Text>
-                        <Text style={styles.timestamp}>
-                          {formatTimestamp(message.date)}
-                        </Text>
+                        <View style={styles.messageFooter}>
+                          <Text style={[styles.timestamp, { 
+                            color: isSender 
+                              ? "#ffffff"
+                              : (theme === "light" ? "#1a1a1a" : "#ffffff")
+                          }]}>
+                            {formatTimestamp(message.date)}
+                          </Text>
+                          {isSender && (
+                            <View style={styles.messageStatus}>
+                              {message.status === 'read' ? (
+                                <Ionicons 
+                                  name="checkmark-done" 
+                                  size={18} 
+                                  color="#ffffff"
+                                />
+                              ) : message.status === 'delivered' ? (
+                                <Ionicons 
+                                  name="checkmark-done" 
+                                  size={18} 
+                                  color="#ffffff"
+                                />
+                              ) : (
+                                <Ionicons 
+                                  name="checkmark" 
+                                  size={18} 
+                                  color="#ffffff"
+                                />
+                              )}
+                            </View>
+                          )}
+                        </View>
                       </View>
                     </TouchableOpacity>
                   );
@@ -358,23 +450,29 @@ export default function Chat() {
               </ScrollView>
 
               {/* Chat Input Area */}
-              <Animated.View style={[styles.inputContainer, { marginBottom: marginAnim }]}>
+              <Animated.View style={[styles.inputContainer, { 
+                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                borderTopColor: theme === "light" ? "#e0e0e0" : "#2a2a2a",
+                marginBottom: marginAnim 
+              }]}>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { 
+                    backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                    color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                    borderColor: theme === "light" ? "#e0e0e0" : "#3a3a3a"
+                  }]}
                   placeholder="Type your message..."
-                  placeholderTextColor="#64748B"
+                  placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
                   value={newMessage}
                   onChangeText={setNewMessage}
-                  editable={!isSending}
+                  multiline
+                  maxLength={1000}
                 />
                 <TouchableOpacity
-                  style={[styles.sendButton, isSending && styles.sendButtonDisabled]}
+                  style={styles.sendButton}
                   onPress={handleSendMessage}
-                  disabled={isSending}
                 >
-                  <Text style={styles.sendButtonText}>
-                    {isSending ? "Sending..." : "Send"}
-                  </Text>
+                  <Text style={styles.sendButtonText}>Send</Text>
                 </TouchableOpacity>
               </Animated.View>
             </View>
@@ -399,28 +497,28 @@ const styles = StyleSheet.create({
   chatHeader: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1a1a1a",
-    borderBottomWidth: 1,
-    borderBottomColor: "#38a5c9",
     paddingHorizontal: 16,
+    paddingVertical: 12,
     marginBottom: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
     marginTop: 5,
+    borderBottomWidth: 1,
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginRight: 12,
   },
   partnerName: {
-    fontSize: 20,
-    color: "#e4fbfe",
+    fontSize: 16,
     fontWeight: "600",
+    letterSpacing: 0.2,
+    marginBottom: 2,
   },
   inner: {
     flex: 1,
@@ -430,83 +528,101 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   messagesContent: {
-    paddingVertical: 10,
+    paddingVertical: 16,
     flexGrow: 1,
     justifyContent: 'flex-end',
   },
   messageBubbleLeft: {
     alignSelf: "flex-start",
-    backgroundColor: "#1a1a1a",
-    borderRadius: 15,
+    borderRadius: 20,
     padding: 12,
-    marginVertical: 5,
+    marginVertical: 4,
+    marginLeft: 8,
     maxWidth: "80%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  messageBubbleRight: {
+    alignSelf: "flex-end",
+    backgroundColor: "#37a4c8",
+    borderRadius: 20,
+    padding: 12,
+    marginVertical: 4,
+    marginRight: 8,
+    maxWidth: "80%",
+    minWidth: "30%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-  },
-  messageBubbleRight: {
-    alignSelf: "flex-end",
-    backgroundColor: "#38a5c9",
-    borderRadius: 15,
-    padding: 12,
-    marginVertical: 5,
-    maxWidth: "80%",
-    minWidth: "30%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    elevation: 2,
+    borderTopRightRadius: 4,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    borderTopLeftRadius: 20,
   },
   messageText: {
-    fontSize: 16,
-    color: "#e4fbfe",
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: 0.2,
   },
   rightMessageText: {
-    color: "#000000",
+    color: "#ffffff",
+    fontWeight: "500",
   },
   timestamp: {
-    fontSize: 10,
-    color: "#e4fbfe",
+    fontSize: 12,
     marginTop: 4,
     textAlign: "right",
+    opacity: 0.8,
+    fontWeight: "500",
   },
   inputContainer: {
     flexDirection: "row",
-    padding: 16,
+    padding: 12,
     borderTopWidth: 1,
-    borderTopColor: "#38a5c9",
-    backgroundColor: "#1a1a1a",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   input: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: "#000000",
-    borderRadius: 25,
-    fontSize: 16,
-    color: "#e4fbfe",
+    borderRadius: 24,
+    fontSize: 15,
     marginRight: 10,
     borderWidth: 1,
-    borderColor: "#38a5c9",
+    letterSpacing: 0.2,
+    maxHeight: 100,
   },
   sendButton: {
-    backgroundColor: "#38a5c9",
-    paddingVertical: 10,
+    backgroundColor: "#37a4c8",
+    paddingVertical: 12,
     paddingHorizontal: 20,
-    borderRadius: 25,
+    borderRadius: 24,
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+    minWidth: 70,
+    alignItems: 'center',
   },
   sendButtonText: {
-    color: "#000000",
+    color: "#ffffff",
     fontWeight: "600",
-    fontSize: 16,
+    fontSize: 15,
+    letterSpacing: 0.3,
   },
   errorText: {
     color: "#FF3B30",
@@ -514,38 +630,96 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   infoText: {
-    fontSize: 16,
-    color: "#FF3B30",
-    textAlign: "center",
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
+    fontSize: 13,
+    fontWeight: "500",
   },
   retryButton: {
-    backgroundColor: "#38a5c9",
+    backgroundColor: "#37a4c8",
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 12,
     marginTop: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   retryButtonText: {
     color: "#FFF",
     fontSize: 16,
     fontWeight: "600",
+    letterSpacing: 0.3,
   },
   avatarContainer: {
-    width: 50,
-    height: 50,
+    width: 40,
+    height: 40,
     marginRight: 12,
+    borderRadius: 20,
+    overflow: "hidden",
   },
   placeholderAvatar: {
-    backgroundColor: "#38a5c9",
+    backgroundColor: "#37a4c8",
     alignItems: "center",
     justifyContent: "center",
   },
   placeholderText: {
     color: "#FFF",
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "600",
+  },
+  headerTextContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  onlineStatus: {
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+    gap: 4,
+  },
+  messageStatus: {
+    marginLeft: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ageText: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  infoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
 });

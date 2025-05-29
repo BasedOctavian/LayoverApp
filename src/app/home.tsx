@@ -18,6 +18,7 @@ import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopBar from "../components/TopBar";
 import LoadingScreen from "../components/LoadingScreen";
+import { ThemeContext } from "../context/ThemeContext";
 
 interface Location {
   latitude: number;
@@ -59,6 +60,7 @@ export default function EventCreation() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const insets = useSafeAreaInsets();
+  const { theme } = React.useContext(ThemeContext);
 
   // Fetch current location and events
   useEffect(() => {
@@ -160,11 +162,14 @@ export default function EventCreation() {
 
     return (
       <TouchableOpacity
-        style={styles.eventCard}
+        style={[styles.eventCard, { 
+          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+          borderColor: "#37a4c8"
+        }]}
         onPress={() => router.push("/event/" + item.id)}
       >
         <View style={styles.eventDetails}>
-          <Text style={styles.eventTitle} numberOfLines={1}>
+          <Text style={[styles.eventTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]} numberOfLines={1}>
             {item.name}
           </Text>
           <View style={styles.organizerContainer}>
@@ -177,13 +182,19 @@ export default function EventCreation() {
             {item.description}
           </Text>
           <View style={styles.metaContainer}>
-            <View style={styles.metaItem}>
-              <MaterialIcons name="location-pin" size={18} color="#2F80ED" />
-              <Text style={styles.metaText}>{formattedDistance}</Text>
+            <View style={[styles.metaItem, { 
+              backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+              borderColor: "#37a4c8"
+            }]}>
+              <MaterialIcons name="location-pin" size={18} color="#37a4c8" />
+              <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{formattedDistance}</Text>
             </View>
-            <View style={styles.metaItem}>
-              <MaterialIcons name="group" size={18} color="#2F80ED" />
-              <Text style={styles.metaText}>{item.attendees?.length || 0} going</Text>
+            <View style={[styles.metaItem, { 
+              backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+              borderColor: "#37a4c8"
+            }]}>
+              <MaterialIcons name="group" size={18} color="#37a4c8" />
+              <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{item.attendees?.length || 0} going</Text>
             </View>
           </View>
         </View>
@@ -194,8 +205,8 @@ export default function EventCreation() {
   return (
     <>
       <TopBar onProfilePress={() => router.push("profile")} />
-      <SafeAreaView style={styles.flex}>
-        <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]}>
+        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
           <FlatList
             data={sortedEvents}
             renderItem={renderItem}
@@ -203,7 +214,7 @@ export default function EventCreation() {
             contentContainerStyle={styles.listContent}
             ListHeaderComponent={
               <>
-                <View style={styles.mapContainer}>
+                <View style={[styles.mapContainer, { borderColor: "#37a4c8" }]}>
                   <MapView
                     mapType="hybrid"
                     style={styles.map}
@@ -228,13 +239,13 @@ export default function EventCreation() {
                           title={event.name}
                           description={event.description}
                         >
-                          <MaterialIcons name="event" size={24} color="#38a5c9" />
+                          <MaterialIcons name="event" size={24} color="#37a4c8" />
                         </Marker>
                       </React.Fragment>
                     ))}
                   </MapView>
                 </View>
-                <Text style={styles.headerText}>Nearby Events</Text>
+                <Text style={[styles.headerText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Nearby Events</Text>
               </>
             }
             ListEmptyComponent={
@@ -252,7 +263,6 @@ export default function EventCreation() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: "#000000",
   },
   mapContainer: {
     height: 300,
@@ -267,7 +277,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   map: {
     flex: 1,
@@ -275,7 +284,6 @@ const styles = StyleSheet.create({
   headerText: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#e4fbfe",
     marginBottom: 20,
     paddingHorizontal: 8,
     letterSpacing: 0.3,
@@ -284,7 +292,6 @@ const styles = StyleSheet.create({
     paddingBottom: 80,
   },
   eventCard: {
-    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     marginBottom: 16,
     elevation: 4,
@@ -293,7 +300,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     borderWidth: 1,
-    borderColor: "#38a5c9",
     overflow: "hidden",
   },
   eventDetails: {
@@ -302,7 +308,6 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#e4fbfe",
     marginBottom: 8,
   },
   organizerContainer: {
@@ -312,12 +317,12 @@ const styles = StyleSheet.create({
   },
   organizerText: {
     fontSize: 14,
-    color: "#38a5c9",
+    color: "#37a4c8",
     marginLeft: 6,
   },
   eventDescription: {
     fontSize: 14,
-    color: "#38a5c9",
+    color: "#37a4c8",
     lineHeight: 20,
     marginBottom: 16,
   },
@@ -329,16 +334,13 @@ const styles = StyleSheet.create({
   metaItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#000000",
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   metaText: {
     fontSize: 13,
-    color: "#e4fbfe",
     marginLeft: 6,
   },
   loadingContainer: {
@@ -354,7 +356,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#38a5c9',
+    color: '#37a4c8',
     textAlign: 'center',
   },
 });
