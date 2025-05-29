@@ -19,7 +19,10 @@ export default function RootLayout() {
         <View style={styles.container}>
           <Stack
             screenOptions={{
-              animation: "none"
+              animation: "none",
+              contentStyle: { backgroundColor: '#070707' },
+              headerStyle: { backgroundColor: '#070707' },
+              headerTintColor: '#fff'
             }}>
             {/* Main Screen (index) */}
             <Stack.Screen

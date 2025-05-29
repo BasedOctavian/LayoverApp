@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useContext } from 'react';
 import { View, Image, StyleSheet, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ThemeContext } from '../context/ThemeContext';
 
 interface LoadingScreenProps {
   message?: string;
@@ -10,6 +11,7 @@ interface LoadingScreenProps {
 const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
   const insets = useSafeAreaInsets();
   const spinValue = new Animated.Value(0);
+  const { theme } = useContext(ThemeContext);
 
   useEffect(() => {
     // Create infinite spinning animation
@@ -31,13 +33,13 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
 
   return (
     <LinearGradient
-      colors={['#000000', '#1a1a1a']}
+      colors={theme === "light" ? ['#e6e6e6', '#ffffff'] : ['#000000', '#1a1a1a']}
       style={[styles.container, { paddingTop: insets.top }]}
     >
       <View style={styles.content}>
         <Image
           source={require('../../assets/adaptive-icon.png')}
-          style={styles.logo}
+          style={[styles.logo, { tintColor: theme === "light" ? "#000000" : "#ffffff" }]}
           resizeMode="contain"
         />
         <Animated.View
@@ -45,15 +47,16 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
             styles.loadingRing,
             {
               transform: [{ rotate: spin }],
+              borderColor: theme === "light" ? "#000000" : "#37a4c8",
             },
           ]}
         >
-          <View style={styles.ringInner} />
+          <View style={[styles.ringInner, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
         </Animated.View>
         {message && <View style={styles.messageContainer}>
-          <View style={styles.messageDot} />
-          <View style={styles.messageDot} />
-          <View style={styles.messageDot} />
+          <View style={[styles.messageDot, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
+          <View style={[styles.messageDot, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
+          <View style={[styles.messageDot, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
         </View>}
       </View>
     </LinearGradient>
@@ -63,7 +66,6 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
   },
   content: {
     flex: 1,
@@ -73,7 +75,6 @@ const styles = StyleSheet.create({
   logo: {
     width: 120,
     height: 120,
-    tintColor: '#e4fbfe',
     marginBottom: 30,
   },
   loadingRing: {
@@ -81,7 +82,6 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     borderWidth: 3,
-    borderColor: '#38a5c9',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -89,7 +89,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#38a5c9',
     opacity: 0.3,
   },
   messageContainer: {
@@ -101,7 +100,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#38a5c9',
     opacity: 0.6,
   },
 });

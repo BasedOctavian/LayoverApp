@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import LoadingScreen from "../../components/LoadingScreen";
 import useChats from "../../hooks/useChats";
 import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
 import { DocumentData } from "firebase/firestore";
+import { ThemeContext } from "../../context/ThemeContext";
 
 interface UserData {
   name: string;
@@ -74,6 +75,9 @@ const Profile = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const headerFadeAnim = useState(new Animated.Value(0))[0];
+  const sectionsFadeAnim = useState(new Animated.Value(0))[0];
+  const socialFadeAnim = useState(new Animated.Value(0))[0];
   const { user, userId } = useAuth();
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -91,6 +95,34 @@ const Profile = () => {
   const topBarHeight = 50 + insets.top;
   const [uploadingImage, setUploadingImage] = useState(false);
   const { addChat, addMessage } = useChats();
+  const scaleAnim = useState(new Animated.Value(0.95))[0];
+  const cardScaleAnim = useState(new Animated.Value(0.98))[0];
+  const [activeTab, setActiveTab] = useState('about');
+  const [isScrolled, setIsScrolled] = useState(false);
+  const tabFadeAnim = useState(new Animated.Value(1))[0];
+  const tabScaleAnim = useState(new Animated.Value(1))[0];
+  const { theme } = React.useContext(ThemeContext);
+  const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+  const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+
+  // Interpolate colors for smooth transitions
+  const backgroundColor = backgroundAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#e6e6e6', '#000000'],
+    extrapolate: 'clamp'
+  });
+
+  const textColor = textAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#000000', '#ffffff'],
+    extrapolate: 'clamp'
+  });
+
+  const secondaryTextColor = textAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#666666', '#ffffff'],
+    extrapolate: 'clamp'
+  });
 
   // Add focus effect to refresh data
   useFocusEffect(
@@ -102,6 +134,13 @@ const Profile = () => {
     }, [userId, id])
   );
 
+  // Add scroll handler
+  const handleScroll = (event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    setIsScrolled(offsetY > 20);
+  };
+
+  // Enhanced fetch with animations
   const fetchUserData = async () => {
     if (userId && id) {
       setLoading(true);
@@ -110,6 +149,40 @@ const Profile = () => {
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
           setUserData(convertToUserData(userDoc.data()));
+          // Enhanced animation sequence
+          Animated.parallel([
+            Animated.sequence([
+              Animated.timing(headerFadeAnim, {
+                toValue: 1,
+                duration: 800,
+                useNativeDriver: true,
+              }),
+              Animated.spring(scaleAnim, {
+                toValue: 1,
+                tension: 50,
+                friction: 7,
+                useNativeDriver: true,
+              }),
+            ]),
+            Animated.sequence([
+              Animated.timing(sectionsFadeAnim, {
+                toValue: 1,
+                duration: 800,
+                useNativeDriver: true,
+              }),
+              Animated.spring(cardScaleAnim, {
+                toValue: 1,
+                tension: 50,
+                friction: 7,
+                useNativeDriver: true,
+              }),
+            ]),
+            Animated.timing(socialFadeAnim, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ]).start();
         } else {
           setError("No user data found.");
         }
@@ -118,11 +191,6 @@ const Profile = () => {
         console.error(error);
       } finally {
         setLoading(false);
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }).start();
       }
     }
   };
@@ -357,6 +425,197 @@ const Profile = () => {
   // Add type guard for editedData
   const isEditing = isEditMode && editedData !== null;
 
+  // Add tab change handler with animation
+  const handleTabChange = (tab: string) => {
+    // Animate out
+    Animated.parallel([
+      Animated.timing(tabFadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(tabScaleAnim, {
+        toValue: 0.95,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setActiveTab(tab);
+      // Animate in
+      Animated.parallel([
+        Animated.timing(tabFadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(tabScaleAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  };
+
+  // Add render content based on active tab
+  const renderTabContent = () => {
+    if (!userData) return null;
+
+    switch (activeTab) {
+      case 'about':
+        return (
+          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
+            <View style={[styles.card, styles.aboutCard, { 
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+              shadowOpacity: theme === "light" ? 0.2 : 0.1,
+            }]}>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>About</Text>
+              <Text style={[styles.cardContent, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{userData.bio || "No bio provided"}</Text>
+            </View>
+            <View style={[styles.card, styles.languagesCard, { 
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+              shadowOpacity: theme === "light" ? 0.2 : 0.1,
+            }]}>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Languages</Text>
+              <View style={styles.tagsContainer}>
+                {userData.languages.map((language, index) => (
+                  <View key={index} style={[styles.tag, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                    shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                    shadowOpacity: theme === "light" ? 0.1 : 0,
+                  }]}>
+                    <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{language}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </Animated.View>
+        );
+      case 'interests':
+        return (
+          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
+            <View style={[styles.card, styles.interestsCard, { 
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+              shadowOpacity: theme === "light" ? 0.2 : 0.1,
+            }]}>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Interests</Text>
+              <View style={styles.tagsContainer}>
+                {userData.interests.map((interest, index) => (
+                  <View key={index} style={[styles.tag, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                    shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                    shadowOpacity: theme === "light" ? 0.1 : 0,
+                  }]}>
+                    <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{interest}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View style={[styles.card, styles.goalsCard, { 
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+              shadowOpacity: theme === "light" ? 0.2 : 0.1,
+            }]}>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Goals</Text>
+              <View style={styles.tagsContainer}>
+                {userData.goals.map((goal, index) => (
+                  <View key={index} style={[styles.tag, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                    shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                    shadowOpacity: theme === "light" ? 0.1 : 0,
+                  }]}>
+                    <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{goal}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </Animated.View>
+        );
+      case 'social':
+        return (
+          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
+            {userData.socialMedia && Object.keys(userData.socialMedia).length > 0 ? (
+              <View style={[styles.card, styles.socialMediaCard, { 
+                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+                shadowOpacity: theme === "light" ? 0.2 : 0.1,
+              }]}>
+                <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Social Media</Text>
+                <View style={styles.socialMediaLinks}>
+                  {userData.socialMedia?.instagram && (
+                    <TouchableOpacity 
+                      style={[styles.socialLink, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.1 : 0,
+                      }]}
+                      onPress={() => Linking.openURL(`https://instagram.com/${userData.socialMedia?.instagram}`)}
+                    >
+                      <MaterialIcons name="photo-camera" size={24} color={theme === "light" ? "#333333" : "#ffffff"} />
+                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>@{userData.socialMedia.instagram}</Text>
+                    </TouchableOpacity>
+                  )}
+                  {userData.socialMedia?.linkedin && (
+                    <TouchableOpacity 
+                      style={[styles.socialLink, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.1 : 0,
+                      }]}
+                      onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
+                    >
+                      <MaterialIcons name="work" size={24} color={theme === "light" ? "#333333" : "#ffffff"} />
+                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>LinkedIn Profile</Text>
+                    </TouchableOpacity>
+                  )}
+                  {userData.socialMedia?.twitter && (
+                    <TouchableOpacity 
+                      style={[styles.socialLink, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.1 : 0,
+                      }]}
+                      onPress={() => Linking.openURL(`https://twitter.com/${userData.socialMedia?.twitter}`)}
+                    >
+                      <MaterialIcons name="chat" size={24} color={theme === "light" ? "#333333" : "#ffffff"} />
+                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>@{userData.socialMedia.twitter}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.card, styles.socialMediaCard, { 
+                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+                shadowOpacity: theme === "light" ? 0.2 : 0.1,
+              }]}>
+                <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Social Media</Text>
+                <Text style={[styles.noContentText, { color: theme === "light" ? "#666666" : "#ffffff" }]}>No social media links provided</Text>
+              </View>
+            )}
+          </Animated.View>
+        );
+      default:
+        return null;
+    }
+  };
+
   if (authLoading || loading) {
     return <LoadingScreen message="Loading profile" />;
   }
@@ -389,251 +648,193 @@ const Profile = () => {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-        <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
+      <LinearGradient 
+        colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} 
+        style={styles.flex}
+      >
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <Animated.View style={[
+          styles.topBarContainer,
+          {
+            backgroundColor: isScrolled ? (theme === "light" ? 'rgba(230, 230, 230, 0.95)' : 'rgba(26, 26, 26, 0.95)') : 'transparent',
+            borderBottomWidth: isScrolled ? 1 : 0,
+            borderBottomColor: "#37a4c8",
+          }
+        ]}>
+          <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
+        </Animated.View>
 
-        <ScrollView
-          style={styles.scrollContainer}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
-            {/* Profile Header with Depth */}
-            <View style={styles.profileHeader}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#38a5c9" />
+            <Text style={styles.loadingText}>Loading profile...</Text>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollContainer}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+          >
+            {/* Profile Header with Enhanced Fade */}
+            <Animated.View 
+              style={[
+                styles.profileHeader, 
+                { 
+                  opacity: headerFadeAnim,
+                  transform: [{ scale: scaleAnim }]
+                }
+              ]}
+            >
               <TouchableOpacity 
                 style={styles.avatarContainer}
                 onPress={id === authUser?.uid ? handleProfilePictureUpload : undefined}
                 disabled={uploadingImage}
+                activeOpacity={0.8}
               >
                 {uploadingImage ? (
                   <View style={[styles.profileImage, styles.uploadingContainer]}>
-                    <ActivityIndicator size="large" color="#e4fbfe" />
+                    <ActivityIndicator size="large" color={theme === "light" ? "#000000" : "#ffffff"} />
                   </View>
                 ) : (
                   <Image
-                    source={{ uri: userData.profilePicture || "https://via.placeholder.com/150" }}
-                    style={styles.profileImage}
+                    source={{ uri: userData?.profilePicture || "https://via.placeholder.com/150" }}
+                    style={[styles.profileImage, { borderColor: "#37a4c8" }]}
                   />
                 )}
                 {id === authUser?.uid && (
-                  <View style={styles.editImageOverlay}>
-                    <MaterialIcons name="camera-alt" size={24} color="#e4fbfe" />
-                  </View>
+                  <Animated.View 
+                    style={[
+                      styles.editImageOverlay,
+                      {
+                        opacity: headerFadeAnim,
+                        transform: [{ scale: scaleAnim }],
+                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                        borderColor: "#37a4c8",
+                      }
+                    ]}
+                  >
+                    <MaterialIcons name="camera-alt" size={24} color="#ffffff" />
+                  </Animated.View>
                 )}
-                <View style={styles.statusIndicator} />
+                <View style={[styles.statusIndicator, { borderColor: theme === "light" ? "#e6e6e6" : "#000000" }]} />
               </TouchableOpacity>
-              {isEditing ? (
-                <View style={styles.editInputContainer}>
-                  <TextInput
-                    style={styles.editInput}
-                    value={editedData!.name}
-                    onChangeText={(value) => handleInputChange("name", value)}
-                    placeholder="Name"
-                    placeholderTextColor="#e4fbfe80"
-                  />
-                  <TextInput
-                    style={styles.editInput}
-                    value={editedData!.age}
-                    onChangeText={(value) => handleInputChange("age", value)}
-                    placeholder="Age"
-                    placeholderTextColor="#e4fbfe80"
-                    keyboardType="numeric"
-                  />
-                  <TextInput
-                    style={styles.editInput}
-                    value={editedData!.pronouns || ''}
-                    onChangeText={(value) => handleInputChange("pronouns", value)}
-                    placeholder="Pronouns"
-                    placeholderTextColor="#e4fbfe80"
-                  />
-                </View>
-              ) : (
-                <Text style={styles.nameText}>
-                  {userData.name}, {userData.age}
-                  <Text style={styles.pronounsText}>
-                    {userData.pronouns && ` (${userData.pronouns})`}
-                  </Text>
-                </Text>
-              )}
-              <View style={styles.moodContainer}>
-                <MaterialIcons name="mood" size={16} color="#38a5c9" />
-                {isEditing ? (
-                  <TextInput
-                    style={styles.moodInput}
-                    value={editedData!.moodStatus}
-                    onChangeText={(value) => handleInputChange("moodStatus", value)}
-                    placeholder="How are you feeling?"
-                    placeholderTextColor="#e4fbfe80"
-                    maxLength={50}
-                  />
-                ) : (
-                  <Text style={styles.moodText} numberOfLines={1} ellipsizeMode="tail">
-                    {userData.moodStatus || "No status set"}
-                  </Text>
-                )}
-              </View>
-            </View>
 
-            {/* Profile Sections with Microinteractions */}
-            <View style={styles.sectionsContainer}>
-              {isEditing ? (
-                <View style={[styles.card, styles.aboutCard]}>
-                  <TextInput
-                    style={styles.bioInput}
-                    value={editedData!.bio || ''}
-                    onChangeText={(value) => handleInputChange("bio", value)}
-                    placeholder="Tell us about yourself..."
-                    placeholderTextColor="#e4fbfe80"
-                    multiline
-                    numberOfLines={4}
-                  />
+              {/* Enhanced Name and Info Section */}
+              <Animated.View 
+                style={[
+                  styles.nameContainer,
+                  {
+                    opacity: headerFadeAnim,
+                    transform: [{ scale: scaleAnim }]
+                  }
+                ]}
+              >
+                <Animated.Text style={[styles.nameText, { color: textColor }]}>
+                  {userData?.name}, {userData?.age}
+                  <Animated.Text style={[styles.pronounsText, { color: secondaryTextColor }]}>
+                    {userData?.pronouns && ` (${userData.pronouns})`}
+                  </Animated.Text>
+                </Animated.Text>
+                <View style={[styles.moodContainer, { 
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
+                  borderColor: "#37a4c8"
+                }]}>
+                  <MaterialIcons name="mood" size={16} color="#37a4c8" />
+                  <Animated.Text style={[styles.moodText, { color: "#37a4c8" }]} numberOfLines={1} ellipsizeMode="tail">
+                    {userData?.moodStatus || "No status set"}
+                  </Animated.Text>
                 </View>
-              ) : (
-                <ProfileSection
-                  icon="info"
-                  title="About"
-                  content={userData.bio}
-                  cardStyle={styles.aboutCard}
+              </Animated.View>
+            </Animated.View>
+
+            {/* Navigation Tabs */}
+            <Animated.View 
+              style={[
+                styles.tabContainer,
+                {
+                  opacity: sectionsFadeAnim,
+                  transform: [{ scale: cardScaleAnim }]
+                }
+              ]}
+            >
+              {['about', 'interests', 'social'].map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[
+                    styles.tab,
+                    activeTab === tab && styles.activeTab
+                  ]}
+                  onPress={() => handleTabChange(tab)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.tabText,
+                    activeTab === tab && styles.activeTabText,
+                    { color: theme === "light" ? "#000000" : "#ffffff" }
+                  ]}>
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </Animated.View>
+
+            {/* Tab Content */}
+            {renderTabContent()}
+
+            {/* Trip Galleries with Conditional Rendering */}
+            {userData.travelHistory && Array.isArray(userData.travelHistory) && userData.travelHistory.length > 1 ? (
+              userData.travelHistory.map((trip: any, index: number) => (
+                <TripGallery
+                  key={index}
+                  trip={trip}
+                  onPhotoPress={handlePhotoPress}
                 />
-              )}
+              ))
+            ) : null}
+          </ScrollView>
+        )}
 
-              <View style={styles.gridContainer}>
-                {isEditing ? (
-                  <>
-                    <View style={[styles.card, styles.gridCard]}>
-                      <TextInput
-                        style={styles.editInput}
-                        value={editedData!.languages.join(", ")}
-                        onChangeText={(value) => handleInputChange("languages", value.split(", "))}
-                        placeholder="Languages (comma separated)"
-                        placeholderTextColor="#e4fbfe80"
-                      />
-                    </View>
-                    <View style={[styles.card, styles.gridCard]}>
-                      <TextInput
-                        style={styles.editInput}
-                        value={editedData!.interests.join(", ")}
-                        onChangeText={(value) => handleInputChange("interests", value.split(", "))}
-                        placeholder="Interests (comma separated)"
-                        placeholderTextColor="#e4fbfe80"
-                      />
-                    </View>
-                    <View style={[styles.card, styles.gridCard]}>
-                      <TextInput
-                        style={styles.editInput}
-                        value={editedData!.goals.join(", ")}
-                        onChangeText={(value) => handleInputChange("goals", value.split(", "))}
-                        placeholder="Goals (comma separated)"
-                        placeholderTextColor="#e4fbfe80"
-                      />
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <ProfileSection
-                      icon="language"
-                      title="Languages"
-                      content={userData.languages.join(", ")}
-                      cardStyle={styles.gridCard}
-                    />
-                    <ProfileSection
-                      icon="favorite"
-                      title="Interests"
-                      content={userData.interests.join(", ")}
-                      cardStyle={styles.gridCard}
-                    />
-                    <ProfileSection
-                      icon="crisis-alert"
-                      title="Goals"
-                      content={userData.goals.join(", ")}
-                      cardStyle={styles.gridCard}
-                    />
-                  </>
-                )}
-              </View>
-
-              {/* Social Media Section */}
-              {userData.socialMedia && Object.keys(userData.socialMedia).length > 0 && (
-                <View style={[styles.card, styles.socialMediaCard]}>
-                  <Text style={styles.cardTitle}>Social Media</Text>
-                  <View style={styles.socialMediaLinks}>
-                    {userData.socialMedia?.instagram && (
-                      <TouchableOpacity 
-                        style={styles.socialLink}
-                        onPress={() => Linking.openURL(`https://instagram.com/${userData.socialMedia?.instagram}`)}
-                      >
-                        <MaterialIcons name="photo-camera" size={24} color="#e4fbfe" />
-                        <Text style={styles.socialLinkText}>@{userData.socialMedia.instagram}</Text>
-                      </TouchableOpacity>
-                    )}
-                    {userData.socialMedia?.linkedin && (
-                      <TouchableOpacity 
-                        style={styles.socialLink}
-                        onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
-                      >
-                        <MaterialIcons name="work" size={24} color="#e4fbfe" />
-                        <Text style={styles.socialLinkText}>LinkedIn Profile</Text>
-                      </TouchableOpacity>
-                    )}
-                    {userData.socialMedia?.twitter && (
-                      <TouchableOpacity 
-                        style={styles.socialLink}
-                        onPress={() => Linking.openURL(`https://twitter.com/${userData.socialMedia?.twitter}`)}
-                      >
-                        <MaterialIcons name="chat" size={24} color="#e4fbfe" />
-                        <Text style={styles.socialLinkText}>@{userData.socialMedia.twitter}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Trip Galleries with Conditional Rendering */}
-              {userData.travelHistory && Array.isArray(userData.travelHistory) && userData.travelHistory.length > 1 ? (
-                userData.travelHistory.map((trip: any, index: number) => (
-                  <TripGallery
-                    key={index}
-                    trip={trip}
-                    onPhotoPress={handlePhotoPress}
-                  />
-                ))
-              ) : null}
-            </View>
-
-            {/* Subtle Metadata */}
-            <View style={styles.metaContainer}>
-              <Text style={styles.metaText}>
-                <MaterialIcons name="verified" size={14} color="#e4fbfe" /> Joined{" "}
-                {new Date(userData.createdAt?.toDate()).toLocaleDateString()}
-              </Text>
-            </View>
-          </Animated.View>
-        </ScrollView>
-
-        {/* Floating Action Container */}
+        {/* Enhanced Floating Action Container */}
         {id === authUser?.uid ? (
-          <View style={styles.actionContainer}>
+          <Animated.View 
+            style={[
+              styles.actionContainer,
+              {
+                opacity: headerFadeAnim,
+                transform: [{ scale: scaleAnim }]
+              }
+            ]}
+          >
             <TouchableOpacity
               style={styles.editFab}
-              activeOpacity={0.9}
+              activeOpacity={0.8}
               onPress={() => router.push('/profile/editProfile')}
             >
               <MaterialIcons name="edit" size={24} color="#e4fbfe" />
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         ) : (
-          <View style={styles.actionContainer}>
+          <Animated.View 
+            style={[
+              styles.actionContainer,
+              {
+                opacity: headerFadeAnim,
+                transform: [{ scale: scaleAnim }]
+              }
+            ]}
+          >
             <TouchableOpacity
-              style={styles.fab}
+              style={[styles.fab, { borderColor: "#37a4c8" }]}
               activeOpacity={0.9}
               onPress={togglePrompts}
             >
               <LinearGradient
-                colors={["#070707", "#38a5c9"]}
+                colors={theme === "light" ? ["#e6e6e6", "#37a4c8"] : ["#000000", "#37a4c8"]}
                 style={styles.fabGradient}
               >
-                <MaterialIcons name="chat" size={24} color="#e4fbfe" />
+                <MaterialIcons name="chat" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
               </LinearGradient>
             </TouchableOpacity>
 
@@ -675,7 +876,7 @@ const Profile = () => {
                 </View>
               </Animated.View>
             )}
-          </View>
+          </Animated.View>
         )}
 
         {/* Image Viewing Modal */}
@@ -727,13 +928,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000000",
   },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    backgroundColor: "transparent",
-    borderBottomWidth: 0,
+  topBarContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    borderBottomColor: 'rgba(56, 165, 201, 0.2)',
   },
   logo: {
     fontSize: 20,
@@ -766,19 +967,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   profileHeader: {
-    alignItems: "center",
+    alignItems: 'center',
     marginBottom: 32,
+    paddingTop: 60,
   },
   avatarContainer: {
-    position: "relative",
+    position: 'relative',
     marginBottom: 16,
+    shadowColor: '#38a5c9',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    marginTop: 30,
   },
   profileImage: {
     width: 128,
     height: 128,
     borderRadius: 64,
     borderWidth: 3,
-    borderColor: "#38a5c9",
+    borderColor: '#38a5c9',
   },
   statusIndicator: {
     position: "absolute",
@@ -791,16 +999,18 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#070707",
   },
+  nameContainer: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
   nameText: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#ffffff",
     marginBottom: 4,
     letterSpacing: -0.5,
   },
   pronounsText: {
     fontSize: 16,
-    color: "#e4fbfe",
     fontWeight: "400",
   },
   moodContainer: {
@@ -817,7 +1027,6 @@ const styles = StyleSheet.create({
   },
   moodText: {
     fontSize: 13,
-    color: "#38a5c9",
     marginLeft: 6,
     fontWeight: "500",
   },
@@ -825,11 +1034,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    backgroundColor: "#1a1a1a",
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
   },
   aboutCard: {
     marginBottom: 24,
@@ -852,12 +1062,10 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#e4fbfe",
     marginBottom: 8,
   },
   cardContent: {
     fontSize: 14,
-    color: "#38a5c9",
     lineHeight: 22,
   },
   metaContainer: {
@@ -877,7 +1085,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   fab: {
-    shadowColor: "#070707",
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
@@ -891,7 +1099,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#38a5c9",
+    borderColor: "#37a4c8",
   },
   promptSheet: {
     position: "absolute",
@@ -1027,6 +1235,11 @@ const styles = StyleSheet.create({
     padding: 8,
     borderWidth: 1,
     borderColor: '#38a5c9',
+    shadowColor: '#38a5c9',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   socialMediaCard: {
     marginBottom: 24,
@@ -1037,17 +1250,91 @@ const styles = StyleSheet.create({
   socialLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(56, 165, 201, 0.1)',
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#38a5c9',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
   },
   socialLinkText: {
-    color: '#e4fbfe',
     marginLeft: 12,
     fontSize: 14,
     fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  loadingText: {
+    color: '#e4fbfe',
+    fontSize: 16,
+    marginTop: 16,
+    fontWeight: '500',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(55, 164, 200, 0.2)',
+  },
+  activeTab: {
+    backgroundColor: 'rgba(55, 164, 200, 0.2)',
+    borderColor: '#37a4c8',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  activeTabText: {
+    fontWeight: '600',
+  },
+  tabContent: {
+    marginTop: 16,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  tag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tagText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  noContentText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  languagesCard: {
+    marginTop: 16,
+  },
+  interestsCard: {
+    marginBottom: 16,
+  },
+  goalsCard: {
+    marginBottom: 16,
   },
 });
 

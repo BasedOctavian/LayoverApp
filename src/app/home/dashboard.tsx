@@ -100,6 +100,7 @@ const getCategoryIcon = (category: string) => {
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
+  const fadeAnim = useState(new Animated.Value(0))[0];
 
   const { user } = useAuth();
   const [userId, setUserId] = useState<string | null>(null);
@@ -480,6 +481,18 @@ export default function Dashboard() {
     ...features.map((feature, index) => ({ type: "feature", id: index.toString(), data: feature })),
   ];
 
+  useEffect(() => {
+    if (!loading && initialLoadComplete) {
+      setTimeout(() => {
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+      }, 400);
+    }
+  }, [loading, initialLoadComplete]);
+
   // Show black screen during auth check
   if (!userId) {
     return <View style={{ flex: 1, backgroundColor: '#000000' }} />;
@@ -497,10 +510,10 @@ export default function Dashboard() {
 
   return (
     <LinearGradient colors={["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar onProfilePress={() => router.push(`profile/${authUser?.uid}`)}  />
+      <TopBar onProfilePress={() => router.push(`profile/${authUser?.uid}`)} />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-          <View style={{ flex: 1, position: "relative" }}>
+          <Animated.View style={{ flex: 1, position: "relative", opacity: fadeAnim }}>
             <Animated.View 
               style={[
                 styles.searchHeaderContainer,
@@ -780,7 +793,7 @@ export default function Dashboard() {
               handleUpdateMoodStatus={handleUpdateMoodStatus}
               toggleStatusSheet={toggleStatusSheet}
             />
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </LinearGradient>
@@ -1219,6 +1232,26 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 1,
     backgroundColor: 'transparent',
+  },
+  noDataText: {
+    fontSize: 16,
+    color: "#64748B",
+    textAlign: "center",
+    marginTop: 20,
+    letterSpacing: 0.3,
+  },
+  organizedEventName: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  organizedEventDescription: {
+    fontSize: 14,
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
+    lineHeight: 20,
   },
 });
 

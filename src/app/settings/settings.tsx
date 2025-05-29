@@ -8,6 +8,7 @@ import {
   Image,
   Animated,
   StatusBar,
+  Easing,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, Feather } from "@expo/vector-icons";
@@ -35,6 +36,11 @@ export default function Settings() {
   
   // Animation for theme toggle
   const [toggleAnimation] = useState(new Animated.Value(theme === "light" ? 0 : 1));
+  
+  // New fade animations
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+  const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
 
   // Auth state listener
   useEffect(() => {
@@ -73,16 +79,53 @@ export default function Settings() {
     }).start();
   }, [theme]);
 
-  // Handle theme toggle
+  // Handle theme toggle with fade effect
   const handleThemeToggle = () => {
-    toggleTheme();
+    // First fade out
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
+      // After fade out, change theme and start fade in
+      toggleTheme();
+      
+      // Update animation values for new theme
+      backgroundAnim.setValue(theme === "light" ? 1 : 0);
+      textAnim.setValue(theme === "light" ? 1 : 0);
+      toggleAnimation.setValue(theme === "light" ? 1 : 0);
+      
+      // Fade back in with a slight delay
+      setTimeout(() => {
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      }, 50);
+    });
   };
+
+  // Interpolate colors for smooth transitions
+  const backgroundColor = backgroundAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#e6e6e6', '#000000'],
+    extrapolate: 'clamp'
+  });
+
+  const textColor = textAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#000000', '#ffffff'],
+    extrapolate: 'clamp'
+  });
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: "#000000" }]}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-        <Text style={[styles.loadingText, { color: "#e4fbfe" }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme === "light" ? "#e6e6e6" : "#000000" }]}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <Text style={[styles.loadingText, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
           Loading...
         </Text>
       </SafeAreaView>
@@ -96,135 +139,149 @@ export default function Settings() {
   });
 
   return (
-    <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.flex}>
-      <SafeAreaView style={styles.flex} edges={["bottom"]}>
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-        <TopBar />
-        {/* Settings Content */}
-        <ScrollView contentContainerStyle={styles.settingsContainer}>
-          {/* Header with Settings Title */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>
-              Settings
-            </Text>
-          </View>
-          {/* User Information Section */}
-          {userData && (
-            <TouchableOpacity onPress={() => router.push("profile/" + userId)}>
-              <View style={styles.userHeader}>
-                {userData.profilePicture ? (
-                  <Image source={{ uri: userData.profilePicture }} style={styles.profilePicture} />
-                ) : (
-                  <Ionicons name="person-circle" size={50} color="#38a5c9" />
-                )}
-                <Text style={styles.userName}>
-                  {userData.name}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          {/* Account Section */}
-          <View style={styles.settingsSection}>
-            <Text style={styles.sectionTitle}>
-              Account
-            </Text>
-            <TouchableOpacity
-              style={styles.settingsItem}
-              onPress={() => router.push("profile/editProfile")}
-            >
-              <LinearGradient colors={["#1a1a1a", "#1a1a1a"]} style={styles.settingsGradient}>
-                <Ionicons name="person" size={24} color="#38a5c9" />
-                <Text style={styles.settingsText}>Edit Profile</Text>
-                <Feather name="chevron-right" size={24} color="#38a5c9" style={styles.chevronIcon} />
+    <Animated.View style={[styles.flex, { opacity: fadeAnim }]}>
+      <LinearGradient 
+        colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} 
+        style={styles.flex}
+      >
+        <SafeAreaView style={styles.flex} edges={["bottom"]}>
+          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+          <TopBar />
+          {/* Settings Content */}
+          <ScrollView contentContainerStyle={styles.settingsContainer}>
+            {/* Header with Settings Title */}
+            <View style={styles.header}>
+              <Animated.Text style={[styles.headerTitle, { color: textColor }]}>
+                Settings
+              </Animated.Text>
+            </View>
+            {/* User Information Section */}
+            {userData && (
+              <TouchableOpacity onPress={() => router.push("profile/" + userId)}>
+                <Animated.View style={[styles.userHeader, { 
+                  backgroundColor: backgroundColor,
+                  borderColor: "#37a4c8"
+                }]}>
+                  {userData.profilePicture ? (
+                    <Image source={{ uri: userData.profilePicture }} style={styles.profilePicture} />
+                  ) : (
+                    <Ionicons name="person-circle" size={50} color="#37a4c8" />
+                  )}
+                  <Animated.Text style={[styles.userName, { color: textColor }]}>
+                    {userData.name}
+                  </Animated.Text>
+                </Animated.View>
+              </TouchableOpacity>
+            )}
+            {/* Account Section */}
+            <View style={styles.settingsSection}>
+              <Animated.Text style={[styles.sectionTitle, { color: textColor }]}>
+                Account
+              </Animated.Text>
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => router.push("profile/editProfile")}
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="person" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Edit Profile</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => router.push("/settings/updatePassword")}
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="lock-closed" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Change Password</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
+            {/* Privacy Section */}
+            <View style={styles.settingsSection}>
+              <Animated.Text style={[styles.sectionTitle, { color: textColor }]}>
+                Privacy
+              </Animated.Text>
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => router.push("locked/lockedScreen")}
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="eye-off" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Privacy Settings</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
+            {/* Notifications Section */}
+            <View style={styles.settingsSection}>
+              <Animated.Text style={[styles.sectionTitle, { color: textColor }]}>
+                Notifications
+              </Animated.Text>
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => router.push("locked/lockedScreen")}
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="notifications" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Notification Preferences</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
+            {/* App Settings Section */}
+            <View style={styles.settingsSection}>
+              <Animated.Text style={[styles.sectionTitle, { color: textColor }]}>
+                App Settings
+              </Animated.Text>
+              {/* Theme Toggle */}
+              <TouchableOpacity 
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]} 
+                onPress={handleThemeToggle}
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="color-palette" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Theme</Animated.Text>
+                  <View style={[styles.toggleContainer, { 
+                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                    borderColor: "#37a4c8"
+                  }]}>
+                    <Animated.View
+                      style={[
+                        styles.toggleCircle,
+                        { transform: [{ translateX: slideInterpolate }] },
+                      ]}
+                    />
+                    <Animated.Text style={[styles.toggleText, { color: textColor }]}>
+                      {theme === "light" ? "Light" : "Dark"}
+                    </Animated.Text>
+                  </View>
+                </Animated.View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => router.push("locked/lockedScreen")}
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="language" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Language</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
+            {/* Logout Button */}
+            <TouchableOpacity style={[styles.logoutButton, { borderColor: "#37a4c8" }]} onPress={logout}>
+              <LinearGradient colors={["#37a4c8", "#37a4c8"]} style={styles.logoutGradient}>
+                <Ionicons name="log-out" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
+                <Animated.Text style={[styles.logoutText, { color: textColor }]}>Logout</Animated.Text>
               </LinearGradient>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.settingsItem}
-              onPress={() => router.push("/settings/updatePassword")}
-            >
-              <LinearGradient colors={["#1a1a1a", "#1a1a1a"]} style={styles.settingsGradient}>
-                <Ionicons name="lock-closed" size={24} color="#38a5c9" />
-                <Text style={styles.settingsText}>Change Password</Text>
-                <Feather name="chevron-right" size={24} color="#38a5c9" style={styles.chevronIcon} />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          {/* Privacy Section */}
-          <View style={styles.settingsSection}>
-            <Text style={styles.sectionTitle}>
-              Privacy
-            </Text>
-            <TouchableOpacity
-              style={styles.settingsItem}
-              onPress={() => router.push("locked/lockedScreen")}
-            >
-              <LinearGradient colors={["#1a1a1a", "#1a1a1a"]} style={styles.settingsGradient}>
-                <Ionicons name="eye-off" size={24} color="#38a5c9" />
-                <Text style={styles.settingsText}>Privacy Settings</Text>
-                <Feather name="chevron-right" size={24} color="#38a5c9" style={styles.chevronIcon} />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          {/* Notifications Section */}
-          <View style={styles.settingsSection}>
-            <Text style={styles.sectionTitle}>
-              Notifications
-            </Text>
-            <TouchableOpacity
-              style={styles.settingsItem}
-              onPress={() => router.push("locked/lockedScreen")}
-            >
-              <LinearGradient colors={["#1a1a1a", "#1a1a1a"]} style={styles.settingsGradient}>
-                <Ionicons name="notifications" size={24} color="#38a5c9" />
-                <Text style={styles.settingsText}>Notification Preferences</Text>
-                <Feather name="chevron-right" size={24} color="#38a5c9" style={styles.chevronIcon} />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          {/* App Settings Section */}
-          <View style={styles.settingsSection}>
-            <Text style={styles.sectionTitle}>
-              App Settings
-            </Text>
-            {/* Theme Toggle */}
-            <TouchableOpacity style={styles.settingsItem} onPress={handleThemeToggle}>
-              <LinearGradient colors={["#1a1a1a", "#1a1a1a"]} style={styles.settingsGradient}>
-                <Ionicons name="color-palette" size={24} color="#38a5c9" />
-                <Text style={styles.settingsText}>Theme</Text>
-                <View style={styles.toggleContainer}>
-                  <Animated.View
-                    style={[
-                      styles.toggleCircle,
-                      { transform: [{ translateX: slideInterpolate }] },
-                    ]}
-                  />
-                  <Text style={styles.toggleText}>
-                    {theme === "light" ? "Light" : "Dark"}
-                  </Text>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.settingsItem}
-              onPress={() => router.push("locked/lockedScreen")}
-            >
-              <LinearGradient colors={["#1a1a1a", "#1a1a1a"]} style={styles.settingsGradient}>
-                <Ionicons name="language" size={24} color="#38a5c9" />
-                <Text style={styles.settingsText}>Language</Text>
-                <Feather name="chevron-right" size={24} color="#38a5c9" style={styles.chevronIcon} />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          {/* Logout Button */}
-          <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-            <LinearGradient colors={["#38a5c9", "#38a5c9"]} style={styles.logoutGradient}>
-              <Ionicons name="log-out" size={24} color="#000000" />
-              <Text style={styles.logoutText}>Logout</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </ScrollView>
-      </SafeAreaView>
-    </LinearGradient>
+          </ScrollView>
+        </SafeAreaView>
+      </LinearGradient>
+    </Animated.View>
   );
 }
 
@@ -246,17 +303,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#e4fbfe",
   },
   userHeader: {
     flexDirection: "row",
     alignItems: "center",
     padding: 20,
-    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   profilePicture: {
     width: 50,
@@ -267,7 +321,6 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#e4fbfe",
   },
   settingsSection: {
     marginBottom: 24,
@@ -276,14 +329,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     marginBottom: 12,
-    color: "#e4fbfe",
   },
   settingsItem: {
     marginBottom: 12,
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   settingsGradient: {
     flexDirection: "row",
@@ -291,7 +342,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   settingsText: {
-    color: "#e4fbfe",
     fontSize: 16,
     marginLeft: 12,
     flex: 1,
@@ -303,23 +353,20 @@ const styles = StyleSheet.create({
     width: 80,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "#000000",
     justifyContent: "center",
     marginLeft: "auto",
     position: "relative",
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   toggleCircle: {
     width: 40,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "#38a5c9",
+    backgroundColor: "#37a4c8",
     position: "absolute",
   },
   toggleText: {
-    color: "#e4fbfe",
     fontSize: 12,
     textAlign: "center",
     position: "absolute",
@@ -330,6 +377,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
     borderRadius: 16,
     overflow: "hidden",
+    borderWidth: 1,
   },
   logoutGradient: {
     flexDirection: "row",
@@ -337,7 +385,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   logoutText: {
-    color: "#000000",
     fontSize: 16,
     marginLeft: 12,
     fontWeight: "600",

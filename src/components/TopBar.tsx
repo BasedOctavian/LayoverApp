@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, Text, Platform } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ThemeContext } from '../context/ThemeContext';
 
 // Define props interface
 interface TopBarProps {
@@ -25,6 +26,7 @@ const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
+  const { theme } = useContext(ThemeContext);
 
   const handleLogoPress = () => {
     router.replace("/home/dashboard");
@@ -40,30 +42,38 @@ const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <LinearGradient
-      colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.6)']}
-      style={[styles.topBar, { paddingTop: insets.top, height: topBarHeight }]}
+      colors={theme === "light" ? ['#e6e6e6', '#e6e6e6'] : ['#000000', '#000000']}
+      style={[styles.topBar, { 
+        paddingTop: insets.top, 
+        height: topBarHeight,
+        backgroundColor: theme === "light" ? '#e6e6e6' : '#000000'
+      }]}
     >
       <View style={styles.leftSection}>
         {showBackButton && (
           <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color="#e4fbfe" />
+            <Ionicons name="chevron-back" size={28} color={theme === "light" ? "#000000" : "#ffffff"} />
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={handleLogoPress}>
           <Image
             source={require('../../assets/adaptive-icon.png')}
-            style={[styles.logo, showBackButton && styles.logoWithBack]}
+            style={[
+              styles.logo, 
+              showBackButton && styles.logoWithBack,
+              { tintColor: theme === "light" ? "#000000" : "#ffffff" }
+            ]}
             resizeMode="contain"
           />
         </TouchableOpacity>
-        {title && <Text style={styles.title}>{title}</Text>}
+        {title && <Text style={[styles.title, { color: theme === "light" ? "#000000" : "#ffffff" }]}>{title}</Text>}
       </View>
       
       <View style={styles.rightSection}>
         {showNotifications && (
           <TouchableOpacity onPress={handleNotificationPress} style={styles.iconButton}>
             <View style={styles.notificationContainer}>
-              <Ionicons name="notifications" size={24} color="#e4fbfe" />
+              <Ionicons name="notifications" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
               {notificationCount > 0 && (
                 <View style={styles.notificationBadge}>
                   <Text style={styles.notificationText}>
@@ -77,7 +87,7 @@ const TopBar: React.FC<TopBarProps> = ({
         
         {onProfilePress && (
           <TouchableOpacity onPress={onProfilePress} style={styles.profileButton}>
-            <Ionicons name="person-circle" size={32} color="#e4fbfe" />
+            <Ionicons name="person-circle" size={32} color={theme === "light" ? "#000000" : "#ffffff"} />
           </TouchableOpacity>
         )}
       </View>
@@ -92,12 +102,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
     paddingHorizontal: 16,
-    backgroundColor: '#000000',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(56, 165, 201, 0.3)',
+    borderBottomColor: 'rgba(55, 164, 200, 0.3)',
+    marginTop: 0,
     ...Platform.select({
       ios: {
-        shadowColor: '#38a5c9',
+        shadowColor: '#37a4c8',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
@@ -114,7 +124,6 @@ const styles = StyleSheet.create({
   logo: {
     width: 85,
     height: 85,
-    tintColor: '#e4fbfe',
   },
   logoWithBack: {
     width: 65,
@@ -127,7 +136,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#e4fbfe',
     marginLeft: 8,
   },
   rightSection: {

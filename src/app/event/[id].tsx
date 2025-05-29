@@ -50,6 +50,7 @@ export default function Event() {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   // Existing useEffect hooks
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function Event() {
           } else {
             setOrganizer(null);
           }
+          setInitialLoadComplete(true);
         }
       })();
     }
@@ -91,12 +93,14 @@ export default function Event() {
   }, []);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start();
-  }, [fadeAnim]);
+    if (!loading && initialLoadComplete && event) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [loading, initialLoadComplete, event, fadeAnim]);
 
   // Existing handler functions
   const formatDateTime = (timestamp: any) => {
@@ -199,8 +203,8 @@ export default function Event() {
     }
   };
 
-  if (!event || loading) {
-    return <LoadingScreen message={loadingMessage} />;
+  if (!event) {
+    return null;
   }
 
   const isOrganizer = user?.uid === event.organizer;
