@@ -28,7 +28,6 @@ import LoadingScreen from "../../components/LoadingScreen";
 interface Trip {
   id: string;
   name: string;
-  photos: string[];
 }
 
 interface FormData {
@@ -71,6 +70,7 @@ const EditProfile = () => {
   });
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [saveProgress, setSaveProgress] = useState(0);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -109,7 +109,6 @@ const EditProfile = () => {
                   ? data.travelHistory.map((name) => ({
                       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                       name,
-                      photos: [],
                     }))
                   : data.travelHistory
                 : [],
@@ -169,7 +168,6 @@ const EditProfile = () => {
     const newTrip = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: "",
-      photos: [],
     };
     setFormData((prev) => ({
       ...prev,
@@ -190,39 +188,6 @@ const EditProfile = () => {
       updatedTrips[index] = { ...updatedTrips[index], name: text };
       return { ...prev, travelHistory: updatedTrips };
     });
-  };
-
-  const handleAddPhoto = async (tripIndex: number) => {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert("Permission required", "We need access to your photos");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled) {
-        const selectedUri = result.assets[0].uri ?? "";
-        setFormData((prev) => {
-          const updatedTrips = [...prev.travelHistory];
-          const currentPhotos = updatedTrips[tripIndex].photos;
-          if (currentPhotos.includes(selectedUri)) {
-            Alert.alert("Photo already added", "This photo is already in the gallery.");
-            return prev; // Skip adding the duplicate
-          }
-          updatedTrips[tripIndex].photos = [...currentPhotos, selectedUri];
-          return { ...prev, travelHistory: updatedTrips };
-        });
-      }
-    } catch (err) {
-      console.log("Image picker error:", err);
-      Alert.alert("Error", "Failed to select image");
-    }
   };
 
   // Add URL formatting functions
@@ -268,15 +233,18 @@ const EditProfile = () => {
       return;
     }
     setUpdating(true);
+    setSaveProgress(0);
     try {
       let profilePicUrl = formData.profilePicture;
 
       // Format social media URLs before saving
       const formattedSocialMedia = {
-        instagram: formatSocialUrl('instagram', formData.socialMedia.instagram),
-        linkedin: formatSocialUrl('linkedin', formData.socialMedia.linkedin),
-        twitter: formatSocialUrl('twitter', formData.socialMedia.twitter),
+        instagram: formatSocialUrl('instagram', formData.socialMedia.instagram || ''),
+        linkedin: formatSocialUrl('linkedin', formData.socialMedia.linkedin || ''),
+        twitter: formatSocialUrl('twitter', formData.socialMedia.twitter || ''),
       };
+
+      setSaveProgress(20);
 
       if (profilePicUrl && !profilePicUrl.startsWith("http")) {
         const response = await fetch(profilePicUrl);
@@ -286,27 +254,7 @@ const EditProfile = () => {
         profilePicUrl = await getDownloadURL(storageRef);
       }
 
-      const updatedTravelHistory = await Promise.all(
-        formData.travelHistory.map(async (trip) => {
-          const updatedPhotos = await Promise.all(
-            trip.photos.map(async (photo) => {
-              if (photo.startsWith("http")) {
-                return photo;
-              } else {
-                const response = await fetch(photo);
-                const blob = await response.blob();
-                const storageRef = ref(
-                  storage,
-                  `trips/${userId}/${trip.id}/${Date.now()}.jpg`
-                );
-                await uploadBytes(storageRef, blob);
-                return await getDownloadURL(storageRef);
-              }
-            })
-          );
-          return { ...trip, photos: updatedPhotos };
-        })
-      );
+      setSaveProgress(60);
 
       const updatedData = {
         ...formData,
@@ -315,23 +263,43 @@ const EditProfile = () => {
         languages: formData.languages.filter((l) => l.trim() !== ""),
         interests: formData.interests.filter((i) => i.trim() !== ""),
         goals: formData.goals.filter((g) => g.trim() !== ""),
-        travelHistory: updatedTravelHistory,
         socialMedia: formattedSocialMedia,
         updatedAt: serverTimestamp(),
       };
 
+      setSaveProgress(80);
+
       await updateUser(userId, updatedData);
-      Alert.alert("Success", "Profile updated successfully", [
-        {
-          text: "OK",
-          onPress: () => router.back()
-        }
-      ]);
+      setSaveProgress(100);
+
+      // Show success message and smoothly transition back
+      Alert.alert(
+        "Success",
+        "Profile updated successfully",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // Add a small delay for better UX
+              setTimeout(() => {
+                router.back();
+              }, 300);
+            }
+          }
+        ],
+        { cancelable: false }
+      );
     } catch (error) {
-      Alert.alert("Error", "Failed to update profile");
+      Alert.alert(
+        "Error",
+        "Failed to update profile. Please try again.",
+        [{ text: "OK" }],
+        { cancelable: false }
+      );
       console.error(error);
     } finally {
       setUpdating(false);
+      setSaveProgress(0);
     }
   };
 
@@ -393,6 +361,7 @@ const EditProfile = () => {
           {/* Basic Info Section */}
           <View style={[styles.card, styles.sectionCard]}>
             <Text style={styles.cardTitle}>Basic Information</Text>
+            <Text style={styles.fieldLabel}>Your Full Name</Text>
             <TextInput
               style={styles.input}
               placeholder="Name"
@@ -402,16 +371,7 @@ const EditProfile = () => {
               }
               placeholderTextColor="#e4fbfe80"
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Age"
-              value={formData.age}
-              onChangeText={(text) =>
-                setFormData({ ...formData, age: text })
-              }
-              keyboardType="numeric"
-              placeholderTextColor="#e4fbfe80"
-            />
+            <Text style={styles.fieldLabel}>Your Current Mood</Text>
             <TextInput
               style={styles.input}
               placeholder="Mood Status"
@@ -421,6 +381,7 @@ const EditProfile = () => {
               }
               placeholderTextColor="#e4fbfe80"
             />
+            <Text style={styles.fieldLabel}>Tell us about yourself</Text>
             <TextInput
               style={[styles.input, styles.multilineInput]}
               placeholder="Bio"
@@ -439,6 +400,13 @@ const EditProfile = () => {
               <View key={field} style={[styles.card, styles.sectionCard]}>
                 <Text style={styles.cardTitle}>
                   {field.charAt(0).toUpperCase() + field.slice(1)}
+                </Text>
+                <Text style={styles.fieldLabel}>
+                  {field === "languages" 
+                    ? "Languages you speak" 
+                    : field === "interests" 
+                    ? "Your interests and hobbies"
+                    : "Your travel goals"}
                 </Text>
                 {formData[field].map((value, index) => (
                   <View key={index} style={styles.fieldRow}>
@@ -483,6 +451,7 @@ const EditProfile = () => {
           {/* Travel History Section */}
           <View style={[styles.card, styles.sectionCard]}>
             <Text style={styles.cardTitle}>Travel History</Text>
+            <Text style={styles.fieldLabel}>Places you've visited</Text>
             {formData.travelHistory.map((trip, index) => (
               <View key={trip.id} style={styles.tripContainer}>
                 <TextInput
@@ -492,18 +461,6 @@ const EditProfile = () => {
                   onChangeText={(text) => handleTripNameChange(index, text)}
                   placeholderTextColor="#e4fbfe80"
                 />
-                <View style={styles.photosContainer}>
-                  {trip.photos.map((photo, photoIndex) => (
-                    <Image
-                      key={photoIndex}
-                      source={{ uri: photo }}
-                      style={styles.photoThumbnail}
-                    />
-                  ))}
-                </View>
-                <TouchableOpacity onPress={() => handleAddPhoto(index)}>
-                  <Text style={styles.addPhotoText}>Add Photo</Text>
-                </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleRemoveTrip(index)}>
                   <MaterialIcons
                     name="remove-circle"
@@ -521,13 +478,14 @@ const EditProfile = () => {
           {/* Social Media Section */}
           <View style={[styles.card, styles.sectionCard]}>
             <Text style={styles.cardTitle}>Social Media</Text>
+            <Text style={styles.fieldLabel}>Connect your social media accounts</Text>
             <View style={styles.socialMediaContainer}>
               <View style={styles.socialMediaInput}>
                 <MaterialIcons name="photo-camera" size={24} color="#38a5c9" style={styles.socialIcon} />
                 <TextInput
                   style={[styles.input, styles.socialInput]}
                   placeholder="Instagram Username"
-                  value={extractUsername(formData.socialMedia.instagram, 'instagram')}
+                  value={extractUsername(formData.socialMedia.instagram || '', 'instagram')}
                   onChangeText={(text) =>
                     setFormData((prev) => ({
                       ...prev,
@@ -542,7 +500,7 @@ const EditProfile = () => {
                 <TextInput
                   style={[styles.input, styles.socialInput]}
                   placeholder="LinkedIn Username"
-                  value={extractUsername(formData.socialMedia.linkedin, 'linkedin')}
+                  value={extractUsername(formData.socialMedia.linkedin || '', 'linkedin')}
                   onChangeText={(text) =>
                     setFormData((prev) => ({
                       ...prev,
@@ -557,7 +515,7 @@ const EditProfile = () => {
                 <TextInput
                   style={[styles.input, styles.socialInput]}
                   placeholder="Twitter Username"
-                  value={extractUsername(formData.socialMedia.twitter, 'twitter')}
+                  value={extractUsername(formData.socialMedia.twitter || '', 'twitter')}
                   onChangeText={(text) =>
                     setFormData((prev) => ({
                       ...prev,
@@ -572,12 +530,17 @@ const EditProfile = () => {
 
           {/* Save Button */}
           <TouchableOpacity
-            style={styles.saveButton}
+            style={[styles.saveButton, updating && styles.saveButtonDisabled]}
             onPress={handleUpdateProfile}
             disabled={updating}
           >
             {updating ? (
-              <ActivityIndicator color="#e4fbfe" />
+              <View style={styles.saveButtonContent}>
+                <ActivityIndicator color="#e4fbfe" />
+                <Text style={[styles.saveButtonText, styles.saveButtonTextLoading]}>
+                  Saving... {saveProgress}%
+                </Text>
+              </View>
             ) : (
               <Text style={styles.saveButtonText}>Save Changes</Text>
             )}
@@ -689,11 +652,23 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  saveButtonDisabled: {
+    opacity: 0.7,
+    borderColor: "#38a5c980",
+  },
+  saveButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   saveButtonText: {
     color: "#e4fbfe",
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: 0.5,
+  },
+  saveButtonTextLoading: {
+    fontSize: 16,
   },
   tripContainer: {
     marginBottom: 24,
@@ -702,26 +677,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#38a5c9",
-  },
-  photosContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 12,
-    gap: 8,
-  },
-  photoThumbnail: {
-    width: 70,
-    height: 70,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-  },
-  addPhotoText: {
-    color: "#38a5c9",
-    marginTop: 12,
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: 0.3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   socialMediaContainer: {
     gap: 16,
@@ -744,6 +702,13 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     backgroundColor: 'transparent',
     fontSize: 16,
+  },
+  fieldLabel: {
+    color: '#e4fbfe',
+    fontSize: 14,
+    marginBottom: 8,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
 });
 

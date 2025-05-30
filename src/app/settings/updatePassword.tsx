@@ -1,11 +1,14 @@
-import React, { useState, useContext } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import React, { useState, useContext, useRef } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Animated, Easing, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import { getAuth, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
-import { ThemeContext } from "../../context/ThemeContext"; // Import ThemeContext
+import { ThemeContext } from "../../context/ThemeContext";
+import { SafeAreaView } from "react-native-safe-area-context";
+import TopBar from "../../components/TopBar";
+import * as Haptics from 'expo-haptics';
 
 export default function UpdatePassword() {
   const { changePassword } = useAuth();
@@ -17,8 +20,39 @@ export default function UpdatePassword() {
 
   // Access ThemeContext
   const { theme } = useContext(ThemeContext);
+  
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+  const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+
+  // Start fade in animation
+  React.useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  // Interpolate colors for smooth transitions
+  const backgroundColor = backgroundAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#e6e6e6', '#000000'],
+    extrapolate: 'clamp'
+  });
+
+  const textColor = textAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#000000', '#ffffff'],
+    extrapolate: 'clamp'
+  });
 
   const handleUpdatePassword = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
     // Basic validation
     if (!currentPassword) {
       setError("Please enter your current password.");
@@ -44,15 +78,14 @@ export default function UpdatePassword() {
     }
 
     try {
-      // Create a credential using the user's email and the entered current password
       const credential = EmailAuthProvider.credential(user.email!, currentPassword);
-      
-      // Reauthenticate the user
       await reauthenticateWithCredential(user, credential);
-      console.log("Reauthenticated successfully.");
-
-      // Now update the password using the custom hook function
       await changePassword(newPassword);
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
       Alert.alert("Success", "Password updated successfully.", [
         { text: "OK", onPress: () => router.back() },
       ]);
@@ -64,57 +97,75 @@ export default function UpdatePassword() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme === "light" ? "#F8FAFC" : "#1E293B" }]}>
-      <Text style={[styles.header, { color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}>
-        Update Password
-      </Text>
-      <View style={styles.form}>
-        <TextInput
-          placeholder="Current Password"
-          placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
-          secureTextEntry
-          style={[styles.input, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748", color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}
-          value={currentPassword}
-          onChangeText={setCurrentPassword}
-        />
-        <TextInput
-          placeholder="New Password"
-          placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
-          secureTextEntry
-          style={[styles.input, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748", color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}
-          value={newPassword}
-          onChangeText={setNewPassword}
-        />
-        <TextInput
-          placeholder="Confirm New Password"
-          placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
-          secureTextEntry
-          style={[styles.input, { backgroundColor: theme === "light" ? "#FFFFFF" : "#2D3748", color: theme === "light" ? "#1E293B" : "#FFFFFF" }]}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-        />
-        {error ? <Text style={[styles.errorText, { color: "#FF5A5F" }]}>{error}</Text> : null}
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleUpdatePassword}
-          disabled={loading}
-        >
-          <LinearGradient colors={["#2F80ED", "#1A5FB4"]} style={styles.buttonGradient}>
-            <Ionicons name="lock-closed" size={24} color="#FFFFFF" />
-            <Text style={styles.buttonText}>
-              {loading ? "Updating..." : "Update Password"}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-    </View>
+    <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+      <TopBar />
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+          <Text style={[styles.header, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
+            Update Password
+          </Text>
+          <View style={styles.form}>
+            <Animated.View style={[styles.inputContainer, { backgroundColor: backgroundColor }]}>
+              <Ionicons name="lock-closed" size={24} color="#37a4c8" style={styles.inputIcon} />
+              <TextInput
+                placeholder="Current Password"
+                placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
+                secureTextEntry
+                style={[styles.input, { color: theme === "light" ? "#000000" : "#ffffff" }]}
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+              />
+            </Animated.View>
+            <Animated.View style={[styles.inputContainer, { backgroundColor: backgroundColor }]}>
+              <Ionicons name="key" size={24} color="#37a4c8" style={styles.inputIcon} />
+              <TextInput
+                placeholder="New Password"
+                placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
+                secureTextEntry
+                style={[styles.input, { color: theme === "light" ? "#000000" : "#ffffff" }]}
+                value={newPassword}
+                onChangeText={setNewPassword}
+              />
+            </Animated.View>
+            <Animated.View style={[styles.inputContainer, { backgroundColor: backgroundColor }]}>
+              <Ionicons name="key" size={24} color="#37a4c8" style={styles.inputIcon} />
+              <TextInput
+                placeholder="Confirm New Password"
+                placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
+                secureTextEntry
+                style={[styles.input, { color: theme === "light" ? "#000000" : "#ffffff" }]}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+              />
+            </Animated.View>
+            {error ? (
+              <View style={[styles.errorContainer, { backgroundColor: theme === "light" ? "#ffebee" : "#1a1a1a" }]}>
+                <Ionicons name="alert-circle" size={24} color="#ff5252" />
+                <Text style={[styles.errorText, { color: "#ff5252" }]}>{error}</Text>
+              </View>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.button, { borderColor: "#37a4c8" }]}
+              onPress={handleUpdatePassword}
+              disabled={loading}
+            >
+              <LinearGradient colors={["#37a4c8", "#37a4c8"]} style={styles.buttonGradient}>
+                <Ionicons name="lock-closed" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
+                <Text style={[styles.buttonText, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
+                  {loading ? "Updating..." : "Update Password"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1, 
-    justifyContent: "center", // Centers vertically
+    flex: 1,
     padding: 20,
   },
   header: {
@@ -125,20 +176,40 @@ const styles = StyleSheet.create({
   form: {
     marginTop: 20,
   },
-  input: {
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#37a4c8",
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+  },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#ff5252",
   },
   errorText: {
-    marginBottom: 16,
-    textAlign: "center",
+    marginLeft: 8,
+    fontSize: 14,
+    flex: 1,
   },
   button: {
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: "hidden",
+    borderWidth: 1,
   },
   buttonGradient: {
     flexDirection: "row",
@@ -147,8 +218,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   buttonText: {
-    color: "#FFFFFF",
     fontSize: 16,
     marginLeft: 12,
+    fontWeight: "600",
   },
 });

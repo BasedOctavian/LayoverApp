@@ -40,6 +40,7 @@ type FeatureButton = {
   icon: React.ReactNode;
   title: string;
   screen: string;
+  description: string;
 };
 
 type NearbyUser = {
@@ -82,20 +83,90 @@ const AnimatedFlatList = Animated.createAnimatedComponent(FlatList) as unknown a
 const getCategoryIcon = (category: string) => {
   switch (category) {
     case 'Wellness':
-      return <MaterialIcons name="spa" size={20} color="#38a5c9" />;
+      return <MaterialIcons name="self-improvement" size={20} color="#38a5c9" />;
     case 'Food & Drink':
       return <MaterialIcons name="restaurant" size={20} color="#38a5c9" />;
     case 'Entertainment':
-      return <MaterialIcons name="movie" size={20} color="#38a5c9" />;
+      return <MaterialIcons name="theater-comedy" size={20} color="#38a5c9" />;
     case 'Travel Tips':
-      return <MaterialIcons name="flight" size={20} color="#38a5c9" />;
+      return <MaterialIcons name="flight-takeoff" size={20} color="#38a5c9" />;
     case 'Activity':
       return <MaterialIcons name="sports-basketball" size={20} color="#38a5c9" />;
+    case 'Networking':
+      return <MaterialIcons name="groups" size={20} color="#38a5c9" />;
+    case 'Social':
+      return <MaterialIcons name="people-alt" size={20} color="#38a5c9" />;
+    case 'Learning':
+      return <MaterialIcons name="school" size={20} color="#38a5c9" />;
+    case 'Business':
+      return <MaterialIcons name="business" size={20} color="#38a5c9" />;
     case 'Misc':
-      return <MaterialIcons name="more-horiz" size={20} color="#38a5c9" />;
+      return <MaterialIcons name="category" size={20} color="#38a5c9" />;
     default:
       return <MaterialIcons name="event" size={20} color="#38a5c9" />;
   }
+};
+
+const getEventIcon = (eventName: string) => {
+  const name = eventName.toLowerCase();
+  if (name.includes('startup') || name.includes('pitch')) {
+    return <MaterialIcons name="rocket-launch" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('mindful') || name.includes('meditation')) {
+    return <MaterialIcons name="self-improvement" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('coffee') || name.includes('career')) {
+    return <MaterialIcons name="coffee" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('mentor')) {
+    return <MaterialIcons name="psychology" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('industry') || name.includes('roundtable')) {
+    return <MaterialIcons name="forum" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('speed')) {
+    return <MaterialIcons name="speed" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('creative')) {
+    return <MaterialIcons name="palette" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('global') || name.includes('international')) {
+    return <MaterialIcons name="public" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('entrepreneur')) {
+    return <MaterialIcons name="trending-up" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('resume')) {
+    return <MaterialIcons name="description" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('travel')) {
+    return <MaterialIcons name="luggage" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('cultural')) {
+    return <MaterialIcons name="emoji-people" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('freelancer')) {
+    return <MaterialIcons name="work" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('book')) {
+    return <MaterialIcons name="menu-book" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('tech')) {
+    return <MaterialIcons name="computer" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('problem') || name.includes('solve')) {
+    return <MaterialIcons name="lightbulb" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('story')) {
+    return <MaterialIcons name="record-voice-over" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('side') || name.includes('hustle')) {
+    return <MaterialIcons name="rocket" size={20} color="#38a5c9" />;
+  }
+  if (name.includes('leadership')) {
+    return <MaterialIcons name="leaderboard" size={20} color="#38a5c9" />;
+  }
+  return getCategoryIcon('Misc');
 };
 
 export default function Dashboard() {
@@ -179,6 +250,10 @@ export default function Dashboard() {
     outputRange: [0, -20],
     extrapolate: 'clamp',
   });
+
+  const searchTransitionAnim = useRef(new Animated.Value(0)).current;
+  const listOpacityAnim = useRef(new Animated.Value(0)).current;
+  const listTranslateYAnim = useRef(new Animated.Value(20)).current;
 
   const showPopup = (title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
@@ -369,12 +444,42 @@ export default function Dashboard() {
   }, [selectedAirport?.airportCode, userId]);
 
   const features: FeatureButton[] = [
-    { icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, title: "Nearby Users", screen: "swipe" },
-    { icon: <Feather name="plus" size={24} color="#38a5c9" />, title: "Create Event", screen: "eventCreation" },
-    { icon: <MaterialIcons name="event" size={24} color="#38a5c9" />, title: "Events", screen: "home" },
-    { icon: <MaterialIcons name="message" size={24} color="#38a5c9" />, title: "Messages", screen: "chat/chatInbox" },
-    { icon: <Feather name="user" size={24} color="#38a5c9" />, title: "Profile", screen: userId ? `profile/${userId}` : "profile" },
-    { icon: <Ionicons name="settings" size={24} color="#38a5c9" />, title: "Settings", screen: "settings/settings" },
+    { 
+      icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, 
+      title: "Nearby Users", 
+      screen: "swipe",
+      description: "Connect with travelers at your airport"
+    },
+    { 
+      icon: <Feather name="plus" size={24} color="#38a5c9" />, 
+      title: "Create Event", 
+      screen: "eventCreation",
+      description: "Start a new event or activity"
+    },
+    { 
+      icon: <MaterialIcons name="event" size={24} color="#38a5c9" />, 
+      title: "Events", 
+      screen: "home",
+      description: "Browse all events at your airport"
+    },
+    { 
+      icon: <MaterialIcons name="message" size={24} color="#38a5c9" />, 
+      title: "Messages", 
+      screen: "chat/chatInbox",
+      description: "View your conversations"
+    },
+    { 
+      icon: <Feather name="user" size={24} color="#38a5c9" />, 
+      title: "Profile", 
+      screen: userId ? `profile/${userId}` : "profile",
+      description: "Manage your account settings"
+    },
+    { 
+      icon: <Ionicons name="settings" size={24} color="#38a5c9" />, 
+      title: "Settings", 
+      screen: "settings/settings",
+      description: "Customize your app preferences"
+    },
   ];
 
   const refreshData = async () => {
@@ -422,6 +527,76 @@ export default function Dashboard() {
 
   const handleLoadMore = () => {
     setVisibleAirportCount(prev => prev + AIRPORTS_PER_PAGE);
+  };
+
+  const handleSearchPress = () => {
+    setShowSearch(true);
+    Animated.parallel([
+      Animated.timing(searchTransitionAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(listOpacityAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(listTranslateYAnim, {
+        toValue: 20,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // After search transition completes, animate the list in
+      Animated.parallel([
+        Animated.timing(listOpacityAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(listTranslateYAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  };
+
+  const handleSearchClose = () => {
+    Animated.parallel([
+      Animated.timing(searchTransitionAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(listOpacityAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(listTranslateYAnim, {
+        toValue: 20,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowSearch(false);
+      // After closing search, animate the dashboard back in
+      Animated.parallel([
+        Animated.timing(listOpacityAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(listTranslateYAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
   };
 
   const renderSearchResult = (item: any) => {
@@ -585,11 +760,21 @@ export default function Dashboard() {
               ]}
             >
               {showSearch ? (
-                <View
-                  style={[styles.searchHeader, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                  }]}
+                <Animated.View
+                  style={[
+                    styles.searchHeader,
+                    {
+                      opacity: searchTransitionAnim,
+                      transform: [
+                        {
+                          scale: searchTransitionAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.95, 1],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
                   onLayout={(event) => {
                     const { height } = event.nativeEvent.layout;
                     setSearchHeaderHeight(height);
@@ -620,7 +805,7 @@ export default function Dashboard() {
                       style={[styles.cancelButton, { 
                         backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
                       }]} 
-                      onPress={() => setShowSearch(false)}
+                      onPress={handleSearchClose}
                     >
                       <Feather name="x" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                     </TouchableOpacity>
@@ -649,11 +834,11 @@ export default function Dashboard() {
                       </View>
                     </TouchableOpacity>
                   </View>
-                </View>
+                </Animated.View>
               ) : (
                 <TouchableOpacity
                   activeOpacity={0.9}
-                  onPress={() => setShowSearch(true)}
+                  onPress={handleSearchPress}
                   style={styles.defaultSearchContainer}
                   onLayout={(event) => {
                     const { height } = event.nativeEvent.layout;
@@ -691,12 +876,21 @@ export default function Dashboard() {
                 paddingHorizontal: 16, 
                 paddingBottom: Platform.OS === 'ios' ? 100 : 80 
               }}
-              renderItem={({ item }) => {
+              renderItem={({ item, index }) => {
                 if (showSearch) {
                   if (item === 'load-more') {
                     return renderLoadMore();
                   }
-                  return renderSearchResult(item);
+                  return (
+                    <Animated.View
+                      style={{
+                        opacity: listOpacityAnim,
+                        transform: [{ translateY: listTranslateYAnim }],
+                      }}
+                    >
+                      {renderSearchResult(item)}
+                    </Animated.View>
+                  );
                 } else if (item.type === "section") {
                   if (item.id === "users") {
                     return (
@@ -776,15 +970,24 @@ export default function Dashboard() {
                                 activeOpacity={0.8}
                                 onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
                               >
-                                {event.eventImage && (
+                                {event.eventImage ? (
                                   <Image 
                                     source={{ uri: event.eventImage }} 
                                     style={styles.eventImage}
                                   />
+                                ) : (
+                                  <View style={[styles.eventImagePlaceholder, { 
+                                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}>
+                                    {React.cloneElement(getEventIcon(event.name), { size: 24 })}
+                                  </View>
                                 )}
                                 <View style={styles.eventContent}>
-                                  <View style={styles.eventHeader}>
-                                    {getCategoryIcon(event.category || 'Misc')}
+                                  <View style={[styles.eventHeader, { 
+                                    borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                  }]}>
+                                    {React.cloneElement(getEventIcon(event.name), { size: 24 })}
                                     <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                                       {event.name}
                                     </Text>
@@ -799,7 +1002,7 @@ export default function Dashboard() {
                                       }]}>
                                         <Feather name="clock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
                                         <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                          {new Date(event.startTime).toLocaleDateString()}
+                                          {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </Text>
                                       </View>
                                     )}
@@ -823,6 +1026,26 @@ export default function Dashboard() {
                                         </Text>
                                       </View>
                                     )}
+                                    {event.category && (
+                                      <View style={[styles.eventMetaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      }]}>
+                                        {React.cloneElement(getEventIcon(event.name), { size: 24 })}
+                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                                          {event.category}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {event.airportCode && (
+                                      <View style={[styles.eventMetaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      }]}>
+                                        <Feather name="airplay" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                                          {event.airportCode}
+                                        </Text>
+                                      </View>
+                                    )}
                                   </View>
                                 </View>
                               </TouchableOpacity>
@@ -837,20 +1060,29 @@ export default function Dashboard() {
                   }
                 } else if (item.type === "feature") {
                   return (
-                    <TouchableOpacity
-                      style={[styles.featureItem, { 
-                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                      }]}
-                      activeOpacity={0.8}
-                      onPress={() => router.push(item.data.screen)}
-                    >
-                      <View style={styles.featureItemContent}>
-                        {item.data.icon}
-                        <Text style={[styles.featureItemText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{item.data.title}</Text>
-                      </View>
-                      <Feather name="chevron-right" size={18} color={theme === "light" ? "#37a4c8" : "#CBD5E1"} />
-                    </TouchableOpacity>
+                    <View style={styles.featureItem}>
+                      <TouchableOpacity
+                        style={[styles.featureItemContent, { 
+                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                          borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                        }]}
+                        activeOpacity={0.8}
+                        onPress={() => router.push(item.data.screen)}
+                      >
+                        <View style={styles.featureItemLeft}>
+                          {item.data.icon}
+                          <View style={styles.featureItemTextContainer}>
+                            <Text style={[styles.featureItemText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                              {item.data.title}
+                            </Text>
+                            <Text style={[styles.featureItemDescription, { color: theme === "light" ? "#64748B" : "#64748B" }]}>
+                              {item.data.description}
+                            </Text>
+                          </View>
+                        </View>
+                        <Feather name="chevron-right" size={18} color={theme === "light" ? "#37a4c8" : "#CBD5E1"} />
+                      </TouchableOpacity>
+                    </View>
                   );
                 } else if (item.type === "spacer") {
                   return <View style={styles.spacer} />;
@@ -922,19 +1154,20 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 0,
-    marginTop: 20,
+    marginTop: 24,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
   headerIcon: {
-    marginRight: 10,
+    marginRight: 12,
     marginTop: -30,
   },
   sectionHeader: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
     color: "#e4fbfe",
     marginTop: -30,
@@ -986,9 +1219,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   eventCard: {
-    width: 280,
+    width: 320,
     backgroundColor: "#1a1a1a",
-    borderRadius: 16,
+    borderRadius: 20,
     marginRight: 16,
     elevation: 4,
     shadowColor: "#38a5c9",
@@ -1001,51 +1234,55 @@ const styles = StyleSheet.create({
   },
   eventImage: {
     width: '100%',
-    height: 140,
+    height: 180,
     resizeMode: 'cover',
   },
   eventContent: {
-    padding: 20,
+    padding: 24,
   },
   eventHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    gap: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(56, 165, 201, 0.1)',
   },
   eventName: {
-    fontSize: 17,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#e4fbfe",
-    marginBottom: 4,
+    marginBottom: 8,
     letterSpacing: 0.3,
+    flex: 1,
   },
   eventDescription: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#38a5c9",
-    marginBottom: 8,
+    marginBottom: 16,
     letterSpacing: 0.2,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   eventMetaContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginTop: 12,
+    gap: 10,
+    marginTop: 20,
   },
   eventMetaItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     backgroundColor: "rgba(56, 165, 201, 0.1)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   eventMeta: {
     fontSize: 13,
     color: "#64748B",
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   featureItem: {
@@ -1067,12 +1304,25 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+  },
+  featureItemLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  featureItemTextContainer: {
+    marginLeft: 14,
+    flex: 1,
   },
   featureItemText: {
-    marginLeft: 14,
     fontSize: 16,
-    color: "#e4fbfe",
     fontWeight: "600",
+    marginBottom: 4,
+  },
+  featureItemDescription: {
+    fontSize: 13,
+    letterSpacing: 0.2,
   },
   searchHeader: {
     marginHorizontal: 16,
@@ -1329,8 +1579,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748B",
     textAlign: "center",
-    marginTop: 20,
+    marginTop: 24,
     letterSpacing: 0.3,
+    fontStyle: 'italic',
   },
   organizedEventName: {
     fontSize: 17,
@@ -1344,6 +1595,13 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: 0.2,
     lineHeight: 20,
+  },
+  eventImagePlaceholder: {
+    width: '100%',
+    height: 180,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderBottomWidth: 1,
   },
 });
 

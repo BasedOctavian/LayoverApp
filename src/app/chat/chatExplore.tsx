@@ -250,7 +250,11 @@ export default function ChatExplore() {
     <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <TopBar showBackButton={true} title="New Chat" />
+        <TopBar 
+          showBackButton={true} 
+          title="New Chat" 
+          onProfilePress={() => router.push("/profile/profile")}
+        />
         <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
           <TextInput
             style={[styles.searchInput, { 

@@ -35,7 +35,8 @@ import { ThemeContext } from "../../context/ThemeContext";
 
 interface UserData {
   name: string;
-  age: string;
+  dateOfBirth?: Date;
+  age?: string;
   pronouns?: string;
   bio?: string;
   profilePicture?: string;
@@ -54,9 +55,20 @@ interface UserData {
 
 // Helper function to convert Firestore data to UserData
 const convertToUserData = (data: DocumentData): UserData => {
+  // Calculate age from dateOfBirth if it exists
+  let age = '';
+  if (data.dateOfBirth) {
+    const birthDate = data.dateOfBirth.toDate();
+    const today = new Date();
+    const ageInMilliseconds = today.getTime() - birthDate.getTime();
+    const ageInYears = Math.floor(ageInMilliseconds / (365.25 * 24 * 60 * 60 * 1000));
+    age = ageInYears.toString();
+  }
+
   return {
     name: data.name || '',
-    age: data.age || '',
+    dateOfBirth: data.dateOfBirth?.toDate(),
+    age: age,
     pronouns: data.pronouns,
     bio: data.bio,
     profilePicture: data.profilePicture,
@@ -104,6 +116,9 @@ const Profile = () => {
   const { theme } = React.useContext(ThemeContext);
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
   const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isLoadingContent, setIsLoadingContent] = useState(true);
+  const skeletonAnim = useRef(new Animated.Value(0)).current;
 
   // Interpolate colors for smooth transitions
   const backgroundColor = backgroundAnim.interpolate({
@@ -140,10 +155,29 @@ const Profile = () => {
     setIsScrolled(offsetY > 20);
   };
 
+  // Add skeleton animation
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
   // Enhanced fetch with animations
   const fetchUserData = async () => {
     if (userId && id) {
-      setLoading(true);
+      setIsLoadingProfile(true);
+      setIsLoadingContent(true);
       try {
         const userDocRef = doc(db, "users", id);
         const userDoc = await getDoc(userDocRef);
@@ -182,7 +216,13 @@ const Profile = () => {
               duration: 800,
               useNativeDriver: true,
             }),
-          ]).start();
+          ]).start(() => {
+            setIsLoadingProfile(false);
+            // Add a slight delay before showing content
+            setTimeout(() => {
+              setIsLoadingContent(false);
+            }, 300);
+          });
         } else {
           setError("No user data found.");
         }
@@ -190,7 +230,8 @@ const Profile = () => {
         setError("Failed to fetch user data.");
         console.error(error);
       } finally {
-        setLoading(false);
+        setIsLoadingProfile(false);
+        setIsLoadingContent(false);
       }
     }
   };
@@ -242,6 +283,7 @@ const Profile = () => {
       if (userData) {
         const newEditedData: UserData = {
           name: userData.name,
+          dateOfBirth: userData.dateOfBirth,
           age: userData.age,
           pronouns: userData.pronouns,
           bio: userData.bio,
@@ -268,6 +310,7 @@ const Profile = () => {
       const userDocRef = doc(db, "users", id);
       const updateData = {
         name: editedData.name,
+        dateOfBirth: editedData.dateOfBirth,
         age: editedData.age,
         pronouns: editedData.pronouns,
         bio: editedData.bio,
@@ -616,8 +659,42 @@ const Profile = () => {
     }
   };
 
-  if (authLoading || loading) {
-    return <LoadingScreen message="Loading profile" />;
+  // Add Skeleton Loading Component
+  const SkeletonLoader = () => (
+    <Animated.View style={[
+      styles.skeletonContainer,
+      {
+        opacity: skeletonAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.3, 0.7],
+        }),
+      },
+    ]}>
+      <View style={styles.skeletonHeader}>
+        <View style={styles.skeletonAvatar} />
+        <View style={styles.skeletonName} />
+        <View style={styles.skeletonMood} />
+      </View>
+      <View style={styles.skeletonTabs} />
+      <View style={styles.skeletonContent}>
+        <View style={styles.skeletonCard} />
+        <View style={styles.skeletonCard} />
+      </View>
+    </Animated.View>
+  );
+
+  if (authLoading || isLoadingProfile) {
+    return (
+      <SafeAreaView style={styles.flex} edges={["bottom"]}>
+        <LinearGradient 
+          colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} 
+          style={styles.flex}
+        >
+          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+          <SkeletonLoader />
+        </LinearGradient>
+      </SafeAreaView>
+    );
   }
 
   if (error) {
@@ -664,11 +741,8 @@ const Profile = () => {
           <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
         </Animated.View>
 
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#38a5c9" />
-            <Text style={styles.loadingText}>Loading profile...</Text>
-          </View>
+        {isLoadingContent ? (
+          <SkeletonLoader />
         ) : (
           <ScrollView
             style={styles.scrollContainer}
@@ -732,19 +806,49 @@ const Profile = () => {
                 ]}
               >
                 <Animated.Text style={[styles.nameText, { color: textColor }]}>
-                  {userData?.name}, {userData?.age}
+                  {userData?.name}
                   <Animated.Text style={[styles.pronounsText, { color: secondaryTextColor }]}>
                     {userData?.pronouns && ` (${userData.pronouns})`}
                   </Animated.Text>
                 </Animated.Text>
-                <View style={[styles.moodContainer, { 
-                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
-                  borderColor: "#37a4c8"
-                }]}>
-                  <MaterialIcons name="mood" size={16} color="#37a4c8" />
-                  <Animated.Text style={[styles.moodText, { color: "#37a4c8" }]} numberOfLines={1} ellipsizeMode="tail">
-                    {userData?.moodStatus || "No status set"}
-                  </Animated.Text>
+                {userData?.createdAt && (() => {
+                  const createdAt = userData.createdAt.toDate();
+                  const now = new Date();
+                  const diffTime = Math.abs(now.getTime() - createdAt.getTime());
+                  const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44));
+                  
+                  if (diffMonths === 0) {
+                    return (
+                      <View style={[styles.newUserBadge, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
+                        borderColor: "#37a4c8"
+                      }]}>
+                        <MaterialIcons name="fiber-new" size={16} color="#37a4c8" />
+                        <Text style={[styles.newUserText, { color: "#37a4c8" }]}>New User</Text>
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
+                <View style={styles.infoContainer}>
+                  <View style={[styles.ageContainer, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
+                    borderColor: "#37a4c8"
+                  }]}>
+                    <MaterialIcons name="cake" size={16} color="#37a4c8" />
+                    <Animated.Text style={[styles.ageText, { color: "#37a4c8" }]}>
+                      {userData?.age} years old
+                    </Animated.Text>
+                  </View>
+                  <View style={[styles.moodContainer, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
+                    borderColor: "#37a4c8"
+                  }]}>
+                    <MaterialIcons name="mood" size={16} color="#37a4c8" />
+                    <Animated.Text style={[styles.moodText, { color: "#37a4c8" }]} numberOfLines={1} ellipsizeMode="tail">
+                      {userData?.moodStatus || "No status set"}
+                    </Animated.Text>
+                  </View>
                 </View>
               </Animated.View>
             </Animated.View>
@@ -793,6 +897,36 @@ const Profile = () => {
                 />
               ))
             ) : null}
+
+            {/* Footer with Logo and Membership Duration */}
+            <View style={styles.footer}>
+              <Image
+                source={require('../../../assets/adaptive-icon.png')}
+                style={[
+                  styles.footerLogo,
+                  { tintColor: theme === "light" ? "#000000" : "#ffffff" }
+                ]}
+                resizeMode="contain"
+              />
+              <Text style={[styles.membershipText, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                {userData.createdAt ? (
+                  (() => {
+                    const createdAt = userData.createdAt.toDate();
+                    const now = new Date();
+                    const diffTime = Math.abs(now.getTime() - createdAt.getTime());
+                    const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44));
+                    
+                    if (diffMonths === 0) {
+                      return "Joined this month";
+                    } else if (diffMonths === 1) {
+                      return "1 month on Wingman";
+                    } else {
+                      return `${diffMonths} months on Wingman`;
+                    }
+                  })()
+                ) : "Member of Wingman"}
+              </Text>
+            </View>
           </ScrollView>
         )}
 
@@ -1002,33 +1136,68 @@ const styles = StyleSheet.create({
   nameContainer: {
     alignItems: 'center',
     marginTop: 16,
+    width: '100%',
   },
   nameText: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "700",
-    marginBottom: 4,
+    marginBottom: 8,
     letterSpacing: -0.5,
+    textAlign: 'center',
   },
   pronounsText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "400",
+    opacity: 0.8,
+  },
+  infoContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+    flexWrap: 'wrap',
+    width: '100%',
+  },
+  ageContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(56, 165, 201, 0.1)",
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    minWidth: 160,
+    justifyContent: 'center',
   },
   moodContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(56, 165, 201, 0.1)",
-    paddingVertical: 6,
+    height: 36,
     paddingHorizontal: 12,
-    borderRadius: 16,
-    marginTop: 8,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: "#38a5c9",
-    maxWidth: "80%",
+    minWidth: 160,
+    justifyContent: 'center',
   },
-  moodText: {
-    fontSize: 13,
+  ageText: {
+    fontSize: 14,
     marginLeft: 6,
     fontWeight: "500",
+    flex: 1,
+    textAlign: 'center',
+    lineHeight: 36,
+  },
+  moodText: {
+    fontSize: 14,
+    marginLeft: 6,
+    fontWeight: "500",
+    flex: 1,
+    textAlign: 'center',
+    lineHeight: 36,
   },
   sectionsContainer: {
     flex: 1,
@@ -1335,6 +1504,86 @@ const styles = StyleSheet.create({
   },
   goalsCard: {
     marginBottom: 16,
+  },
+  skeletonContainer: {
+    flex: 1,
+    padding: 24,
+    paddingTop: 100,
+  },
+  skeletonHeader: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  skeletonAvatar: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    marginBottom: 16,
+  },
+  skeletonName: {
+    width: 200,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    marginBottom: 12,
+  },
+  skeletonMood: {
+    width: 150,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+  },
+  skeletonTabs: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+  skeletonContent: {
+    gap: 16,
+  },
+  skeletonCard: {
+    height: 120,
+    borderRadius: 20,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    marginBottom: 16,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 40,
+    marginBottom: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(55, 164, 200, 0.2)',
+  },
+  footerLogo: {
+    width: 60,
+    height: 60,
+    marginBottom: 8,
+  },
+  membershipText: {
+    fontSize: 14,
+    opacity: 0.8,
+  },
+  newUserBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+    shadowColor: '#38a5c9',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  newUserText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });
 

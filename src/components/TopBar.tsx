@@ -146,7 +146,7 @@ const TopBar: React.FC<TopBarProps> = ({
                 />
               ) : (
                 <View style={styles.profilePlaceholder}>
-                  <Ionicons name="person" size={20} color={theme === "light" ? "#000000" : "#ffffff"} />
+                  <Ionicons name="person" size={20} color={theme === "light" ? "#ffffff" : "#ffffff"} />
                 </View>
               )}
               <View style={[styles.statusIndicator, { borderColor: theme === "light" ? "#e6e6e6" : "#000000" }]} />

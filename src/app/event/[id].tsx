@@ -153,19 +153,19 @@ export default function Event() {
     setLoading(true);
     setLoadingMessage("Claiming organization...");
     try {
+      const currentAttendees = event.attendees || [];
+      const newAttendees = [...currentAttendees, user.uid];
       await updateEvent(event.id, {
         organizer: user.uid,
         organizedAt: new Date().toISOString(),
+        attendees: newAttendees
       });
       const updatedEvent = await getEvent(eventId) as Event;
       setEvent(updatedEvent);
       const organizerData = await getUser(user.uid) as UserData;
       setOrganizer(organizerData?.name || "You");
-      Alert.alert(
-        "Congratulations!",
-        "You're now the official organizer of this event!",
-        [{ text: "OK", onPress: () => console.log("OK Pressed") }]
-      );
+      setIsAttending(true);
+      
     } catch (error) {
       Alert.alert(
         "Error",
@@ -256,7 +256,7 @@ export default function Event() {
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <TopBar />
+        <TopBar onProfilePress={() => router.push("/profile/profile")} />
         {event.eventImage && (
           <View style={[styles.imageContainer, { top: topBarHeight }]}>
             <Image 

@@ -139,6 +139,7 @@ export default function RootLayout() {
                 animation: 'slide_from_right',
               }}
             />
+
             {/* Sport Event Screen */}
             <Stack.Screen
               name="sport/[id]"
@@ -176,7 +177,7 @@ export default function RootLayout() {
               name="home/dashboard"
               options={{
                 headerShown: false,
-                animation: 'slide_from_right',
+                animation: pathname === '/login/login' ? 'none' : 'slide_from_right',
               }}
             />
             {/* Edit Profile Screen */}
@@ -206,6 +207,22 @@ export default function RootLayout() {
             {/* Settings Screen */}
             <Stack.Screen
               name="settings/settings"
+              options={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            />
+            {/* Feedback Screen */}
+            <Stack.Screen
+              name="settings/feedback"
+              options={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            />
+            {/* About Screen */}
+            <Stack.Screen
+              name="settings/about"
               options={{
                 headerShown: false,
                 animation: 'slide_from_right',

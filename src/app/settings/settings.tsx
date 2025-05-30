@@ -294,27 +294,6 @@ export default function Settings() {
                 </Animated.View>
               </TouchableOpacity>
             </View>
-            {/* Privacy Section */}
-            <View style={styles.settingsSection}>
-              <Animated.Text 
-                style={[styles.sectionTitle, { color: textColor }]}
-                accessibilityRole="header"
-              >
-                Privacy
-              </Animated.Text>
-              <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
-                onPress={() => handleNavigation("locked/lockedScreen")}
-                accessibilityRole="button"
-                accessibilityLabel="Privacy settings"
-              >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
-                  <Ionicons name="eye-off" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Privacy Settings</Animated.Text>
-                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
-              </TouchableOpacity>
-            </View>
             {/* Notifications Section */}
             <View style={styles.settingsSection}>
               <Animated.Text 
@@ -371,15 +350,29 @@ export default function Settings() {
                   </View>
                 </Animated.View>
               </TouchableOpacity>
+              {/* Feedback Button */}
               <TouchableOpacity
                 style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
-                onPress={() => handleNavigation("locked/lockedScreen")}
+                onPress={() => handleNavigation("settings/feedback")}
                 accessibilityRole="button"
-                accessibilityLabel="Language settings"
+                accessibilityLabel="Send feedback"
               >
                 <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
-                  <Ionicons name="language" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Language</Animated.Text>
+                  <Ionicons name="chatbubble-ellipses" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Send Feedback</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
+              {/* About Button */}
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => handleNavigation("settings/about")}
+                accessibilityRole="button"
+                accessibilityLabel="About Wingman"
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="information-circle" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>About Wingman</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
@@ -396,6 +389,21 @@ export default function Settings() {
                 <Animated.Text style={[styles.logoutText, { color: textColor }]}>Logout</Animated.Text>
               </LinearGradient>
             </TouchableOpacity>
+
+            {/* Logo and Copyright Section */}
+            <View style={styles.footer}>
+              <Image
+                source={require('../../../assets/adaptive-icon.png')}
+                style={[
+                  styles.footerLogo,
+                  { tintColor: theme === "light" ? "#000000" : "#ffffff" }
+                ]}
+                resizeMode="contain"
+              />
+              <Animated.Text style={[styles.copyrightText, { color: textColor }]}>
+                © 2025 Wingman. All rights reserved.
+              </Animated.Text>
+            </View>
           </ScrollView>
         </Animated.View>
       </SafeAreaView>
@@ -524,6 +532,20 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     flex: 1,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 40,
+    marginBottom: 20,
+  },
+  footerLogo: {
+    width: 80,
+    height: 80,
+    marginBottom: 12,
+  },
+  copyrightText: {
+    fontSize: 14,
+    opacity: 0.7,
   },
 });
 

@@ -18,6 +18,8 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { MediaType } from "expo-image-picker";
+import DateTimePicker from '@react-native-community/datetimepicker';
 import useAuth from "../hooks/auth";
 import { useRouter } from "expo-router";
 import LoadingScreen from "../components/LoadingScreen";
@@ -41,7 +43,7 @@ interface Field {
   label: string;
   icon: IconName;
   placeholder: string;
-  type?: "text" | "password" | "image" | "tags";
+  type?: "text" | "password" | "image" | "tags" | "date";
   keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
   secure?: boolean;
 }
@@ -56,20 +58,21 @@ type IconName =
   | "globe"
   | "send"
   | "map-pin"
-  | "briefcase";
+  | "briefcase"
+  | "calendar";
 
 interface UserData {
   email?: string;
   password?: string;
   name?: string;
-  age?: string;
+  dateOfBirth?: Date;
   bio?: string;
   profilePicture?: string;
   travelHistory?: string;
   goals?: string;
   interests?: string;
   languages?: string;
-  [key: string]: string | undefined;
+  [key: string]: string | Date | undefined;
 }
 
 const UserOnboarding = () => {
@@ -80,6 +83,8 @@ const UserOnboarding = () => {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [scaleAnim] = useState(new Animated.Value(1));
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState<Date | null>(null);
 
   useEffect(() => {
     if (user !== undefined) {
@@ -88,7 +93,7 @@ const UserOnboarding = () => {
     }
   }, [user]);
 
-  const handleInputChange = useCallback((key: string, value: string) => {
+  const handleInputChange = useCallback((key: string, value: string | Date) => {
     setUserData((prev: UserData) => ({ ...prev, [key]: value }));
   }, []);
 
@@ -138,6 +143,38 @@ const UserOnboarding = () => {
     }
   };
 
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      if (selectedDate) {
+        handleInputChange("dateOfBirth", selectedDate);
+      }
+    } else {
+      if (selectedDate) {
+        setTempDate(selectedDate);
+      }
+    }
+  };
+
+  const handleConfirmDate = () => {
+    if (tempDate) {
+      handleInputChange("dateOfBirth", tempDate);
+    }
+    setShowDatePicker(false);
+    setTempDate(null);
+  };
+
+  const handleCancelDate = () => {
+    setShowDatePicker(false);
+    setTempDate(null);
+  };
+
+  const handleOpenDatePicker = () => {
+    Keyboard.dismiss();
+    setTempDate(userData.dateOfBirth as Date || new Date());
+    setShowDatePicker(true);
+  };
+
   const handleNext = async () => {
     Keyboard.dismiss();
     if (stepIndex < steps.length - 1) {
@@ -169,11 +206,17 @@ const UserOnboarding = () => {
         return;
       }
 
+      // Calculate age from date of birth
+      const age = userData.dateOfBirth 
+        ? Math.floor((new Date().getTime() - (userData.dateOfBirth as Date).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+        : 0;
+
       // First create the user document without the profile picture
       const userProfile = {
         email: userData.email,
         name: userData.name || "",
-        age: parseInt(userData.age ?? "0", 10),
+        dateOfBirth: userData.dateOfBirth,
+        age: age,
         bio: userData.bio || "",
         profilePicture: "", // Will be updated after upload
         travelHistory: userData.travelHistory?.split(/,\s*/) || [],
@@ -248,6 +291,68 @@ const UserOnboarding = () => {
             </View>
           </TouchableOpacity>
         );
+      case "date":
+        return (
+          <View>
+            <TouchableOpacity
+              style={[
+                styles.inputContainer,
+                isFocused && styles.inputContainerFocused
+              ]}
+              onPress={handleOpenDatePicker}
+              activeOpacity={0.7}
+            >
+              <Feather 
+                name={field.icon} 
+                size={20} 
+                color={isFocused ? "#e4fbfe" : "#38a5c9"} 
+              />
+              <Text style={[
+                styles.dateText,
+                !userData.dateOfBirth && styles.datePlaceholder
+              ]}>
+                {userData.dateOfBirth 
+                  ? (userData.dateOfBirth as Date).toLocaleDateString(undefined, {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })
+                  : field.placeholder}
+              </Text>
+            </TouchableOpacity>
+            {showDatePicker && (
+              <View style={styles.datePickerContainer}>
+                <DateTimePicker
+                  value={tempDate || userData.dateOfBirth as Date || new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleDateChange}
+                  maximumDate={new Date()}
+                  textColor="#e4fbfe"
+                  themeVariant="dark"
+                />
+                {Platform.OS === 'ios' && (
+                  <View style={styles.datePickerButtons}>
+                    <TouchableOpacity 
+                      style={styles.datePickerButton} 
+                      onPress={handleCancelDate}
+                    >
+                      <Text style={styles.datePickerButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.datePickerButton, styles.datePickerButtonConfirm]} 
+                      onPress={handleConfirmDate}
+                    >
+                      <Text style={[styles.datePickerButtonText, styles.datePickerButtonTextConfirm]}>
+                        Confirm
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        );
       case "tags":
         return (
           <View style={[
@@ -259,7 +364,7 @@ const UserOnboarding = () => {
               placeholder={field.placeholder}
               placeholderTextColor="#38a5c9"
               onChangeText={(text) => handleInputChange(field.key, text)}
-              value={userData[field.key]}
+              value={userData[field.key] as string}
               onFocus={() => handleFocus(field.key)}
               onBlur={handleBlur}
               multiline={false}
@@ -267,9 +372,9 @@ const UserOnboarding = () => {
               autoCorrect={false}
             />
             <View style={styles.tagsPreview}>
-              {userData[field.key]
+              {(userData[field.key] as string)
                 ?.split(",")
-                .filter(tag => tag.trim())
+                .filter((tag: string) => tag.trim())
                 .map((tag: string, index: number) => (
                   <View key={index} style={styles.tag}>
                     <Text style={styles.tagText}>{tag.trim()}</Text>
@@ -296,11 +401,15 @@ const UserOnboarding = () => {
               secureTextEntry={field.secure}
               keyboardType={field.keyboardType}
               onChangeText={(text) => handleInputChange(field.key, text)}
-              value={userData[field.key]}
+              value={userData[field.key] as string}
               onFocus={() => handleFocus(field.key)}
               onBlur={handleBlur}
-              autoCapitalize={field.key === "name" ? "words" : "none"}
-              autoCorrect={false}
+              autoCapitalize={field.key === "name" ? "words" : "sentences"}
+              autoCorrect={field.key === "bio"}
+              spellCheck={field.key === "bio"}
+              multiline={field.key === "bio"}
+              numberOfLines={field.key === "bio" ? 3 : 1}
+              textAlignVertical={field.key === "bio" ? "top" : "center"}
             />
           </View>
         );
@@ -342,17 +451,18 @@ const UserOnboarding = () => {
           placeholder: "Alex Wanderlust",
         },
         {
-          key: "age",
-          label: "Age",
-          icon: "edit-3",
-          placeholder: "Enter your age",
-          keyboardType: "numeric",
+          key: "dateOfBirth",
+          label: "Date of Birth",
+          icon: "calendar",
+          placeholder: "Select your date of birth",
+          type: "date",
         },
         {
           key: "bio",
           label: "Short Bio",
           icon: "edit-3",
           placeholder: "Digital nomad & coffee enthusiast...",
+          type: "text",
         },
         {
           key: "profilePicture",
@@ -699,6 +809,46 @@ const styles = StyleSheet.create({
     fontFamily: "Inter-Medium",
     fontSize: 14,
     marginTop: 20,
+  },
+  dateText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    color: "#e4fbfe",
+    fontFamily: "Inter-Regular",
+  },
+  datePlaceholder: {
+    color: "#38a5c9",
+  },
+  datePickerContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    marginTop: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  datePickerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 16,
+    gap: 12,
+  },
+  datePickerButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  datePickerButtonConfirm: {
+    backgroundColor: '#38a5c9',
+  },
+  datePickerButtonText: {
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Medium',
+    fontSize: 16,
+  },
+  datePickerButtonTextConfirm: {
+    color: '#000000',
   },
 });
 
