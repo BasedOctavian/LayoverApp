@@ -14,6 +14,7 @@ import { StatusBar, Platform } from "react-native";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
+import useChat from "../../hooks/useChat";
 
 interface Event {
   id: string;
@@ -53,6 +54,8 @@ export default function Event() {
   const topBarHeight = 50 + insets.top;
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const { theme } = React.useContext(ThemeContext);
+  const { messages } = useChat(eventId);
+  const messageCount = messages?.length || 0;
 
   // Existing useEffect hooks
   useEffect(() => {
@@ -165,6 +168,9 @@ export default function Event() {
       const organizerData = await getUser(user.uid) as UserData;
       setOrganizer(organizerData?.name || "You");
       setIsAttending(true);
+      
+      // Show date picker after successful organizer claim
+      setShowDatePicker(true);
       
     } catch (error) {
       Alert.alert(
@@ -334,8 +340,19 @@ export default function Event() {
                   colors={["#37a4c8", "#2F80ED"]} 
                   style={[styles.buttonGradient, { borderRadius: 12 }]}
                 >
-                  <Ionicons name="chatbubbles" size={24} color="#ffffff" />
-                  <Text style={[styles.buttonText, { color: "#ffffff" }]}>Event Chat</Text>
+                  <View style={styles.chatButtonContent}>
+                    <View style={styles.chatIconContainer}>
+                      <Ionicons name="chatbubbles" size={24} color="#ffffff" />
+                      {messageCount > 0 && (
+                        <View style={styles.messageBadge}>
+                          <Text style={styles.messageBadgeText}>
+                            {messageCount > 99 ? '99+' : messageCount}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.buttonText, { color: "#ffffff" }]}>Event Chat</Text>
+                  </View>
                 </LinearGradient>
               </TouchableOpacity>
               <TouchableOpacity
@@ -537,5 +554,34 @@ const styles = StyleSheet.create({
     elevation: 6,
     borderRadius: 12,
     overflow: "hidden",
+  },
+  chatButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  chatIconContainer: {
+    position: 'relative',
+    width: 24,
+    height: 24,
+  },
+  messageBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -12,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  messageBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

@@ -12,6 +12,12 @@ export function useFilteredEvents(selectedAirport, allEvents, allSportEvents) {
         description: event.description || "No description",
         type: "regular",
         organizer: event.organizer,
+        category: event.category,
+        startTime: event.startTime,
+        attendees: event.attendees,
+        eventImage: event.eventImage,
+        private: event.private,
+        airportCode: event.airportCode
       }));
   }, [selectedAirport, allEvents]);
 
@@ -30,6 +36,10 @@ export function useFilteredEvents(selectedAirport, allEvents, allSportEvents) {
         description: `Venue: ${event.venue}, Local Time: ${new Date(event.localTime).toLocaleString()}`,
         type: "sport",
         organizer: null,
+        category: "Sports",
+        startTime: event.localTime,
+        attendees: [],
+        airportCode: selectedAirport.airportCode
       }));
   }, [selectedAirport, allSportEvents]);
 

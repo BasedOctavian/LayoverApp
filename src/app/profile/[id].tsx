@@ -12,15 +12,16 @@ import {
   TextInput,
   Alert,
   Linking,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, deleteDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../../../config/firebaseConfig";
 import { db } from "../../../config/firebaseConfig";
 import useAuth from "../../hooks/auth";
-import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import { useLocalSearchParams, useRouter as useExpoRouter, useFocusEffect } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import ImageViewing from "react-native-image-viewing";
@@ -86,6 +87,8 @@ const Profile = () => {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState<"connected" | "pending" | "not_connected">("not_connected");
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const headerFadeAnim = useState(new Animated.Value(0))[0];
   const sectionsFadeAnim = useState(new Animated.Value(0))[0];
@@ -102,11 +105,11 @@ const Profile = () => {
   const [editedData, setEditedData] = useState<UserData | null>(null);
   const params = useLocalSearchParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const router = useRouter();
+  const router = useExpoRouter();
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const [uploadingImage, setUploadingImage] = useState(false);
-  const { addChat, addMessage } = useChats();
+  const { addChat, addMessage, getExistingChat } = useChats();
   const scaleAnim = useState(new Animated.Value(0.95))[0];
   const cardScaleAnim = useState(new Animated.Value(0.98))[0];
   const [activeTab, setActiveTab] = useState('about');
@@ -119,6 +122,11 @@ const Profile = () => {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isLoadingContent, setIsLoadingContent] = useState(true);
   const skeletonAnim = useRef(new Animated.Value(0)).current;
+  const [connections, setConnections] = useState<any[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
+  const [showConnectionsModal, setShowConnectionsModal] = useState(false);
+  const modalScaleAnim = useRef(new Animated.Value(0.9)).current;
+  const modalOpacityAnim = useRef(new Animated.Value(0)).current;
 
   // Interpolate colors for smooth transitions
   const backgroundColor = backgroundAnim.interpolate({
@@ -415,27 +423,11 @@ const Profile = () => {
     
     try {
       // Check if a chat already exists between these users
-      const chatsCollection = collection(db, "chats");
-      const q = query(
-        chatsCollection, 
-        where("participants", "array-contains", authUser.uid)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      let existingChatId = null;
-      
-      // Check each chat to see if it contains both users
-      for (const doc of querySnapshot.docs) {
-        const chatData = doc.data();
-        if (chatData.participants.includes(id)) {
-          existingChatId = doc.id;
-          break;
-        }
-      }
-      
+      const existingChat = await getExistingChat(authUser.uid, id);
       let chatId;
-      if (existingChatId) {
-        chatId = existingChatId;
+      
+      if (existingChat) {
+        chatId = existingChat.id;
       } else {
         // Create a new chat if none exists
         const chatData = {
@@ -444,8 +436,7 @@ const Profile = () => {
           lastMessage: null,
         };
         
-        const docRef = await addDoc(chatsCollection, chatData);
-        chatId = docRef.id;
+        chatId = await addChat(chatData);
       }
 
       // Add the initial message
@@ -649,7 +640,59 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Social Media</Text>
-                <Text style={[styles.noContentText, { color: theme === "light" ? "#666666" : "#ffffff" }]}>No social media links provided</Text>
+                <Text style={[styles.noContentText, { color: theme === "light" ? "#666666" : "#999999" }]}>No social media links provided</Text>
+              </View>
+            )}
+          </Animated.View>
+        );
+      case 'connections':
+        return (
+          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
+            {loadingConnections ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#37a4c8" />
+              </View>
+            ) : connections.length > 0 ? (
+              <View style={styles.connectionsContainer}>
+                {connections.map((connection) => (
+                  <TouchableOpacity
+                    key={connection.id}
+                    style={[styles.connectionCard, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+                      shadowOpacity: theme === "light" ? 0.2 : 0.1,
+                    }]}
+                    onPress={() => router.push(`/chat/${connection.id}`)}
+                  >
+                    <Image
+                      source={{ uri: connection.otherUser.profilePicture || "https://via.placeholder.com/150" }}
+                      style={styles.connectionAvatar}
+                    />
+                    <View style={styles.connectionInfo}>
+                      <Text style={[styles.connectionName, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
+                        {connection.otherUser.name}
+                      </Text>
+                      <Text style={[styles.connectionType, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                        {connection.connectionType || "Local Experiences"}
+                      </Text>
+                      <Text style={[styles.connectionDate, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                        Connected {connection.createdAt?.toDate().toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={24} color={theme === "light" ? "#666666" : "#999999"} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <View style={[styles.noConnectionsContainer, { 
+                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+              }]}>
+                <MaterialIcons name="people" size={48} color={theme === "light" ? "#666666" : "#999999"} />
+                <Text style={[styles.noConnectionsText, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                  No active connections yet
+                </Text>
               </View>
             )}
           </Animated.View>
@@ -682,6 +725,278 @@ const Profile = () => {
       </View>
     </Animated.View>
   );
+
+  // Add connection status check
+  const checkConnectionStatus = async () => {
+    if (!authUser || !id) return;
+    
+    try {
+      // First check if there's a pending connection
+      const connectionsRef = collection(db, "connections");
+      const q = query(
+        connectionsRef,
+        where("participants", "array-contains", authUser.uid),
+        where("status", "==", "pending")
+      );
+      const querySnapshot = await getDocs(q);
+      
+      // Check if there's a pending connection between these users
+      const hasPendingConnection = querySnapshot.docs.some(doc => {
+        const data = doc.data();
+        return data.participants.includes(id);
+      });
+
+      if (hasPendingConnection) {
+        setIsConnected("pending");
+        return;
+      }
+
+      // If no pending connection, check if they're already connected
+      const currentUserDoc = await getDoc(doc(db, "users", authUser.uid));
+      const currentUserData = currentUserDoc.data();
+      
+      if (currentUserData?.likedUsers?.includes(id)) {
+        setIsConnected("connected");
+      } else {
+        setIsConnected("not_connected");
+      }
+    } catch (error) {
+      console.error("Error checking connection status:", error);
+      setIsConnected("not_connected");
+    }
+  };
+
+  // Add connection handler
+  const handleConnect = async () => {
+    if (!authUser || !id || isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      // Get current user data
+      const currentUserDoc = await getDoc(doc(db, "users", authUser.uid));
+      const currentUserData = currentUserDoc.data();
+
+      // Add to liked users
+      await updateDoc(doc(db, "users", authUser.uid), {
+        likedUsers: arrayUnion(id)
+      });
+
+      // Check if the other user has already liked us
+      const otherUserDoc = await getDoc(doc(db, "users", id));
+      const otherUserData = otherUserDoc.data();
+      const hasMatched = otherUserData?.likedUsers?.includes(authUser.uid);
+
+      // Create a pending connection
+      const connectionData = {
+        participants: [authUser.uid, id],
+        createdAt: new Date(),
+        status: 'pending',
+        initiator: authUser.uid,
+        lastMessage: null,
+      };
+      
+      const connectionsCollection = collection(db, "connections");
+      const docRef = await addDoc(connectionsCollection, connectionData);
+      
+      // Create a chat with pending status
+      const chatData = {
+        participants: [authUser.uid, id],
+        createdAt: new Date(),
+        lastMessage: null,
+        status: 'pending',
+        connectionId: docRef.id
+      };
+      
+      const chatsCollection = collection(db, "chats");
+      await addDoc(chatsCollection, chatData);
+
+      // If it's a match, create notifications for both users
+      if (hasMatched) {
+        // Create notification for the other user
+        const otherUserNotifications = otherUserData?.notifications || [];
+        await updateDoc(doc(db, "users", id), {
+          notifications: [...otherUserNotifications, {
+            id: Date.now().toString(),
+            title: "New Match! 🎉",
+            body: `${currentUserData?.name || 'Someone'} matched with you!`,
+            data: {
+              type: 'match',
+              matchedUserId: authUser.uid,
+              matchedUserName: currentUserData?.name
+            },
+            timestamp: new Date(),
+            read: false
+          }]
+        });
+
+        // Create notification for current user
+        const currentUserNotifications = currentUserData?.notifications || [];
+        
+      }
+
+      setIsConnected("pending");
+    } catch (error) {
+      console.error("Error connecting:", error);
+      Alert.alert("Error", "Failed to send connection request. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Add connection removal handler
+  const handleRemoveConnection = async () => {
+    if (!authUser || !id || isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      // Show confirmation dialog
+      Alert.alert(
+        "Remove Connection",
+        "Are you sure you want to remove this connection?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          {
+            text: "Remove",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                // Remove from liked users
+                const currentUserDoc = await getDoc(doc(db, "users", authUser.uid));
+                const currentUserData = currentUserDoc.data();
+                const updatedLikedUsers = currentUserData?.likedUsers?.filter((userId: string) => userId !== id) || [];
+                
+                await updateDoc(doc(db, "users", authUser.uid), {
+                  likedUsers: updatedLikedUsers
+                });
+
+                // Find and delete the connection document
+                const connectionsRef = collection(db, "connections");
+                const q = query(
+                  connectionsRef,
+                  where("participants", "array-contains", authUser.uid)
+                );
+                const querySnapshot = await getDocs(q);
+                
+                for (const doc of querySnapshot.docs) {
+                  const data = doc.data();
+                  if (data.participants.includes(id)) {
+                    await deleteDoc(doc.ref);
+                    break;
+                  }
+                }
+
+                // Find and delete the associated chat
+                const chatsRef = collection(db, "chats");
+                const chatsQuery = query(
+                  chatsRef,
+                  where("participants", "array-contains", authUser.uid)
+                );
+                const chatsSnapshot = await getDocs(chatsQuery);
+                
+                for (const doc of chatsSnapshot.docs) {
+                  const data = doc.data();
+                  if (data.participants.includes(id)) {
+                    await deleteDoc(doc.ref);
+                    break;
+                  }
+                }
+
+                setIsConnected("not_connected");
+              } catch (error) {
+                console.error("Error removing connection:", error);
+                Alert.alert("Error", "Failed to remove connection. Please try again.");
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error("Error in remove confirmation:", error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Add useEffect to check connection status
+  useEffect(() => {
+    if (authUser && id) {
+      checkConnectionStatus();
+    }
+  }, [authUser, id]);
+
+  // Add fetchConnections function
+  const fetchConnections = async () => {
+    if (!id) return;
+    setLoadingConnections(true);
+    try {
+      const connectionsRef = collection(db, "connections");
+      const q = query(
+        connectionsRef,
+        where("participants", "array-contains", id),
+        where("status", "==", "active")
+      );
+      const querySnapshot = await getDocs(q);
+      const connectionsData = await Promise.all(
+        querySnapshot.docs.map(async (connectionDoc) => {
+          const data = connectionDoc.data();
+          const otherUserId = data.participants.find((participantId: string) => participantId !== id);
+          if (otherUserId) {
+            const userRef = doc(db, "users", otherUserId);
+            const userSnapshot = await getDoc(userRef);
+            const userData = userSnapshot.data();
+            return {
+              id: connectionDoc.id,
+              ...data,
+              otherUser: {
+                id: otherUserId,
+                name: userData?.name || 'Unknown User',
+                profilePicture: userData?.profilePicture || "https://via.placeholder.com/150"
+              }
+            };
+          }
+          return null;
+        })
+      );
+      setConnections(connectionsData.filter(Boolean));
+    } catch (error) {
+      console.error("Error fetching connections:", error);
+    } finally {
+      setLoadingConnections(false);
+    }
+  };
+
+  // Update the useEffect for fetching connections
+  useEffect(() => {
+    if (id) {
+      fetchConnections();
+    }
+  }, [id]);
+
+  // Add modal animation function
+  const animateModal = (show: boolean) => {
+    Animated.parallel([
+      Animated.spring(modalScaleAnim, {
+        toValue: show ? 1 : 0.9,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }),
+      Animated.timing(modalOpacityAnim, {
+        toValue: show ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Update modal visibility handler
+  const handleModalVisibility = (show: boolean) => {
+    setShowConnectionsModal(show);
+    animateModal(show);
+  };
 
   if (authLoading || isLoadingProfile) {
     return (
@@ -811,25 +1126,66 @@ const Profile = () => {
                     {userData?.pronouns && ` (${userData.pronouns})`}
                   </Animated.Text>
                 </Animated.Text>
-                {userData?.createdAt && (() => {
-                  const createdAt = userData.createdAt.toDate();
-                  const now = new Date();
-                  const diffTime = Math.abs(now.getTime() - createdAt.getTime());
-                  const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44));
-                  
-                  if (diffMonths === 0) {
-                    return (
-                      <View style={[styles.newUserBadge, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
-                        borderColor: "#37a4c8"
+                <View style={styles.badgeContainer}>
+                  <TouchableOpacity 
+                    style={[styles.statusButton, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
+                      borderColor: "#37a4c8"
+                    }]}
+                    onPress={() => handleModalVisibility(true)}
+                  >
+                    <MaterialIcons name="people" size={16} color="#37a4c8" />
+                    <Text style={[styles.statusButtonText, { color: "#37a4c8" }]}>
+                      {connections.length} {connections.length === 1 ? 'Connection' : 'Connections'}
+                    </Text>
+                  </TouchableOpacity>
+                  {id !== authUser?.uid && (
+                    <TouchableOpacity 
+                      onPress={isConnected === "not_connected" ? handleConnect : handleRemoveConnection}
+                      disabled={isProcessing}
+                      style={[styles.statusButton, { 
+                        backgroundColor: isConnected === "connected" 
+                          ? (theme === "light" ? "rgba(76, 217, 100, 0.1)" : "rgba(76, 217, 100, 0.2)")
+                          : isConnected === "pending"
+                          ? (theme === "light" ? "rgba(255, 149, 0, 0.1)" : "rgba(255, 149, 0, 0.2)")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)"),
+                        borderColor: isConnected === "connected" 
+                          ? "#4CD964" 
+                          : isConnected === "pending"
+                          ? "#FF9500"
+                          : "#37a4c8",
+                        opacity: isProcessing ? 0.5 : 1
+                      }]}
+                    >
+                      <MaterialIcons 
+                        name={isConnected === "connected" 
+                          ? "people" 
+                          : isConnected === "pending"
+                          ? "hourglass-empty"
+                          : "person-add"} 
+                        size={16} 
+                        color={isConnected === "connected" 
+                          ? "#4CD964" 
+                          : isConnected === "pending"
+                          ? "#FF9500"
+                          : "#37a4c8"} 
+                      />
+                      <Text style={[styles.statusButtonText, { 
+                        color: isConnected === "connected" 
+                          ? "#4CD964" 
+                          : isConnected === "pending"
+                          ? "#FF9500"
+                          : "#37a4c8"
                       }]}>
-                        <MaterialIcons name="fiber-new" size={16} color="#37a4c8" />
-                        <Text style={[styles.newUserText, { color: "#37a4c8" }]}>New User</Text>
-                      </View>
-                    );
-                  }
-                  return null;
-                })()}
+                        {isConnected === "connected" 
+                          ? "Connected" 
+                          : isConnected === "pending"
+                          ? "Pending"
+                          : "Connect"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <View style={styles.infoContainer}>
                   <View style={[styles.ageContainer, { 
                     backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
@@ -868,15 +1224,27 @@ const Profile = () => {
                   key={tab}
                   style={[
                     styles.tab,
-                    activeTab === tab && styles.activeTab
+                    activeTab === tab && styles.activeTab,
+                    { 
+                      backgroundColor: activeTab === tab 
+                        ? (theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"),
+                      borderColor: activeTab === tab 
+                        ? "#37a4c8" 
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"),
+                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+                    }
                   ]}
                   onPress={() => handleTabChange(tab)}
                   activeOpacity={0.7}
                 >
                   <Text style={[
                     styles.tabText,
-                    activeTab === tab && styles.activeTabText,
-                    { color: theme === "light" ? "#000000" : "#ffffff" }
+                    { 
+                      color: activeTab === tab 
+                        ? "#37a4c8" 
+                        : (theme === "light" ? "#666666" : "#999999")
+                    }
                   ]}>
                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </Text>
@@ -949,69 +1317,7 @@ const Profile = () => {
               <MaterialIcons name="edit" size={24} color="#e4fbfe" />
             </TouchableOpacity>
           </Animated.View>
-        ) : (
-          <Animated.View 
-            style={[
-              styles.actionContainer,
-              {
-                opacity: headerFadeAnim,
-                transform: [{ scale: scaleAnim }]
-              }
-            ]}
-          >
-            <TouchableOpacity
-              style={[styles.fab, { borderColor: "#37a4c8" }]}
-              activeOpacity={0.9}
-              onPress={togglePrompts}
-            >
-              <LinearGradient
-                colors={theme === "light" ? ["#e6e6e6", "#37a4c8"] : ["#000000", "#37a4c8"]}
-                style={styles.fabGradient}
-              >
-                <MaterialIcons name="chat" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {showPrompts && (
-              <Animated.View
-                style={[
-                  styles.promptSheet,
-                  {
-                    transform: [
-                      {
-                        scale: promptAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.8, 1],
-                        }),
-                      },
-                      {
-                        translateY: promptAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [20, 0],
-                        }),
-                      },
-                    ],
-                    opacity: promptAnim,
-                  },
-                ]}
-              >
-                <Text style={styles.promptTitle}>Quick starters</Text>
-                <View style={styles.promptGrid}>
-                  {presetPrompts.map((prompt, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.promptChip}
-                      activeOpacity={0.8}
-                      onPress={() => handleMessageStarter(prompt)}
-                    >
-                      <Text style={styles.promptText}>{prompt}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </Animated.View>
-            )}
-          </Animated.View>
-        )}
+        ) : null}
 
         {/* Image Viewing Modal */}
         <ImageViewing
@@ -1020,6 +1326,102 @@ const Profile = () => {
           visible={isModalVisible}
           onRequestClose={() => setIsModalVisible(false)}
         />
+
+        {/* Connections Modal */}
+        <Modal
+          visible={showConnectionsModal}
+          transparent
+          animationType="none"
+          onRequestClose={() => handleModalVisibility(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => handleModalVisibility(false)}
+          >
+            <Animated.View 
+              style={[
+                styles.modalContent,
+                {
+                  opacity: modalOpacityAnim,
+                  transform: [{ scale: modalScaleAnim }],
+                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                }
+              ]}
+            >
+              <View style={styles.modalHeader}>
+                <View style={styles.modalTitleContainer}>
+                  <MaterialIcons name="people" size={24} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
+                  <Text style={[styles.modalTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
+                    Connections
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => handleModalVisibility(false)}
+                  style={[styles.closeButton, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
+                  }]}
+                >
+                  <MaterialIcons name="close" size={20} color={theme === "light" ? "#666666" : "#999999"} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView 
+                style={styles.connectionsList}
+                showsVerticalScrollIndicator={false}
+              >
+                {connections.length > 0 ? (
+                  connections.map((connection) => (
+                    <TouchableOpacity
+                      key={connection.id}
+                      style={[styles.connectionItem, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
+                      }]}
+                      onPress={() => {
+                        handleModalVisibility(false);
+                        router.push(`/profile/${connection.otherUser.id}`);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Image
+                        source={{ uri: connection.otherUser.profilePicture || "https://via.placeholder.com/150" }}
+                        style={styles.connectionItemAvatar}
+                      />
+                      <View style={styles.connectionItemInfo}>
+                        <Text style={[styles.connectionItemName, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
+                          {connection.otherUser.name}
+                        </Text>
+                        <Text style={[styles.connectionItemType, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                          {connection.connectionType || "Local Experiences"}
+                        </Text>
+                      </View>
+                      <View style={[styles.profileButton, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
+                      }]}>
+                        <MaterialIcons 
+                          name="person" 
+                          size={20} 
+                          color={theme === "light" ? "#37a4c8" : "#37a4c8"} 
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={[styles.noConnectionsContainer, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
+                  }]}>
+                    <MaterialIcons name="people" size={48} color={theme === "light" ? "#666666" : "#999999"} />
+                    <Text style={[styles.noConnectionsText, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                      No active connections yet
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </Animated.View>
+          </TouchableOpacity>
+        </Modal>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -1445,28 +1847,41 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 24,
     paddingHorizontal: 16,
+    gap: 12,
   },
   tab: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 20,
+    borderRadius: 16,
     backgroundColor: 'rgba(55, 164, 200, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(55, 164, 200, 0.2)',
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   activeTab: {
     backgroundColor: 'rgba(55, 164, 200, 0.2)',
     borderColor: '#37a4c8',
+    shadowColor: '#37a4c8',
+    shadowOpacity: 0.2,
   },
   tabText: {
     fontSize: 14,
     fontWeight: '500',
+    textAlign: 'center',
   },
   activeTabText: {
     fontWeight: '600',
+    color: '#37a4c8',
   },
   tabContent: {
     marginTop: 16,
@@ -1566,24 +1981,161 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.8,
   },
-  newUserBadge: {
+  badgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
+    justifyContent: 'center',
+    gap: 8,
     marginBottom: 12,
-    shadowColor: '#38a5c9',
+    flexWrap: 'wrap',
+  },
+  statusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+    width: 160,
+    height: 36,
   },
-  newUserText: {
+  statusButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 4,
+    marginLeft: 6,
+    textAlign: 'center',
+    flex: 1,
+  },
+  connectionsContainer: {
+    gap: 16,
+  },
+  connectionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  connectionAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 16,
+  },
+  connectionInfo: {
+    flex: 1,
+  },
+  connectionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  connectionType: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  connectionDate: {
+    fontSize: 12,
+  },
+  noConnectionsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  noConnectionsText: {
+    fontSize: 16,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    maxHeight: '80%',
+    borderRadius: 24,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(55, 164, 200, 0.2)',
+  },
+  modalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  connectionsList: {
+    padding: 16,
+  },
+  connectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  connectionItemAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 16,
+    borderWidth: 2,
+    borderColor: '#37a4c8',
+  },
+  connectionItemInfo: {
+    flex: 1,
+  },
+  connectionItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  connectionItemType: {
+    fontSize: 14,
+  },
+  profileButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
   },
 });
 

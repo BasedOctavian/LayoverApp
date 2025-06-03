@@ -304,7 +304,7 @@ export default function Settings() {
               </Animated.Text>
               <TouchableOpacity
                 style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
-                onPress={() => handleNavigation("locked/lockedScreen")}
+                onPress={() => handleNavigation("notifications/notifications")}
                 accessibilityRole="button"
                 accessibilityLabel="Notification preferences"
               >

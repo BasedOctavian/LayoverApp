@@ -21,14 +21,18 @@ const useChats = () => {
   const getChats = async () => {
     setLoading(true);
     try {
+      console.log("Fetching all chats from Firestore...");
       const chatsCollection = collection(db, "chats");
       const snapshot = await getDocs(chatsCollection);
       const chats = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      console.log("Successfully fetched", chats.length, "chats");
       return chats;
     } catch (error) {
+      console.error("Error in getChats:", error);
       setError("Failed to fetch chats.");
-      console.error(error);
+      throw error; // Re-throw to handle in the component
     } finally {
+      console.log("Setting loading to false in getChats");
       setLoading(false);
     }
   };
@@ -91,7 +95,13 @@ const useChats = () => {
     const unsubscribe = onSnapshot(
       messagesCollectionRef,
       (snapshot) => {
-        const messages = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const messages = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: `${doc.id}_${data.date?.seconds || Date.now()}`,
+            ...data
+          };
+        });
         callback(messages);
       },
       (err) => {
@@ -119,10 +129,42 @@ const useChats = () => {
     }
   };
 
-  // Add a new chat
-  const addChat = async (chatData) => {
+  // Check if a chat exists between two users
+  const getExistingChat = async (userId1: string, userId2: string) => {
     setLoading(true);
     try {
+      const chatsCollection = collection(db, "chats");
+      const q = query(chatsCollection, where("participants", "array-contains", userId1));
+      const snapshot = await getDocs(q);
+      
+      // Check each chat to see if it contains both users
+      for (const doc of snapshot.docs) {
+        const chatData = doc.data();
+        if (chatData.participants.includes(userId2)) {
+          return { id: doc.id, ...chatData };
+        }
+      }
+      return null;
+    } catch (error) {
+      setError("Failed to check for existing chat.");
+      console.error(error);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add a new chat
+  const addChat = async (chatData: any) => {
+    setLoading(true);
+    try {
+      // Check if a chat already exists between these users
+      const existingChat = await getExistingChat(chatData.participants[0], chatData.participants[1]);
+      if (existingChat) {
+        return existingChat.id;
+      }
+
+      // If no existing chat, create a new one
       const chatsCollection = collection(db, "chats");
       const docRef = await addDoc(chatsCollection, chatData);
       return docRef.id;
@@ -168,6 +210,15 @@ const useChats = () => {
     try {
       const messagesCollectionRef = collection(db, "chats", chatId, "messages");
       const docRef = await addDoc(messagesCollectionRef, messageData);
+      
+      // Update the parent chat document with the latest message info
+      const chatDoc = doc(db, "chats", chatId);
+      await updateDoc(chatDoc, {
+        lastMessage: messageData.text || messageData.content,
+        lastMessageTime: messageData.timestamp || new Date(),
+        lastMessageStatus: 'sent'
+      });
+      
       return docRef.id;
     } catch (error) {
       setError("Failed to add message.");
@@ -203,6 +254,7 @@ const useChats = () => {
     deleteChat, 
     addMessage,
     deleteMessage,
+    getExistingChat,
     loading, 
     error 
   };

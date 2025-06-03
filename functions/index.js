@@ -139,3 +139,71 @@ exports.generateDailyAirportEvents = functions.pubsub
       console.error("Unexpected error in generateDailyAirportEvents:", err.message);
     }
   });
+
+/**
+ * Sends a push notification to a specific user
+ * @param {string} userId - The user ID to send the notification to
+ * @param {string} title - The notification title
+ * @param {string} body - The notification body
+ * @param {Object} data - Additional data to send with the notification
+ */
+exports.sendPushNotification = functions.https.onCall(async (data, context) => {
+  try {
+    const { userId, title, body, notificationData } = data;
+
+    // Get the user's push token from Firestore
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    const userData = userDoc.data();
+
+    if (!userData || !userData.expoPushToken) {
+      throw new Error('User not found or no push token available');
+    }
+
+    // Send the notification using Expo's push notification service
+    const message = {
+      to: userData.expoPushToken,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: notificationData || {},
+    };
+
+    await admin.messaging().send(message);
+    return { success: true };
+  } catch (error) {
+    console.error('Error sending push notification:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+/**
+ * Example function to send a notification to all users
+ * This can be triggered by a scheduled function or HTTP request
+ */
+exports.sendNotificationToAllUsers = functions.https.onRequest(async (req, res) => {
+  try {
+    const usersSnapshot = await admin.firestore().collection('users').get();
+    const notifications = [];
+
+    for (const userDoc of usersSnapshot.docs) {
+      const userData = userDoc.data();
+      if (userData.expoPushToken) {
+        notifications.push(
+          admin.messaging().send({
+            to: userData.expoPushToken,
+            sound: 'default',
+            title: 'New Update Available!',
+            body: 'Check out the latest features in Layover App',
+            data: { type: 'update' },
+          })
+        );
+      }
+    }
+
+    await Promise.all(notifications);
+    res.json({ success: true, message: 'Notifications sent successfully' });
+  } catch (error) {
+    console.error('Error sending notifications:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});

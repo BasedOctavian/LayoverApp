@@ -35,6 +35,8 @@ import StatusSheet from "../../components/StatusSheet";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../../config/firebaseConfig";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -169,11 +171,65 @@ const getEventIcon = (eventName: string) => {
   return getCategoryIcon('Misc');
 };
 
+const CountdownTimer = ({ startTime }: { startTime: Date }) => {
+  const [timeLeft, setTimeLeft] = useState<string>('');
+  const { theme } = React.useContext(ThemeContext);
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      const now = new Date();
+      const start = new Date(startTime);
+      const difference = start.getTime() - now.getTime();
+
+      if (difference <= 0) {
+        setTimeLeft('Starting now');
+        return;
+      }
+
+      const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((difference / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((difference / 1000 / 60) % 60);
+
+      let timeString = '';
+      if (days > 0) timeString += `${days}d `;
+      if (hours > 0) timeString += `${hours}h `;
+      if (minutes > 0) timeString += `${minutes}m`;
+      if (!timeString) timeString = 'Starting now';
+
+      setTimeLeft(timeString.trim());
+    };
+
+    calculateTimeLeft();
+    const timer = setInterval(calculateTimeLeft, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, [startTime]);
+
+  return (
+    <View style={[styles.countdownContainer, { 
+      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+    }]}>
+      <Feather 
+        name="clock" 
+        size={14} 
+        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+      />
+      <Text style={[styles.countdownText, { 
+        color: theme === "light" ? "#37a4c8" : "#38a5c9"
+      }]}>
+        {timeLeft}
+      </Text>
+    </View>
+  );
+};
+
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const fadeAnim = useState(new Animated.Value(0))[0];
   const { theme } = React.useContext(ThemeContext);
+
+  const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
 
   // Animation values for theme transitions
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
@@ -206,7 +262,6 @@ export default function Dashboard() {
   const { getEvents } = useEvents();
   const [events, setEvents] = useState<any[]>([]);
   const { updateUser, updateUserLocationAndLogin, getNearbyUsers } = useUsers();
-  const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
   const { getSportEvents } = useSportEvents();
@@ -255,6 +310,8 @@ export default function Dashboard() {
   const listOpacityAnim = useRef(new Animated.Value(0)).current;
   const listTranslateYAnim = useRef(new Animated.Value(20)).current;
 
+  const [notificationCount, setNotificationCount] = useState(0);
+
   const showPopup = (title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
     setTimeout(() => setPopupData((prev) => ({ ...prev, visible: false })), 3000);
@@ -300,20 +357,26 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
+  // Fetch user location on mount
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        console.log("Permission to access location was denied");
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({});
+      setUserLocation({
+        lat: location.coords.latitude,
+        long: location.coords.longitude,
+      });
+    })();
+  }, []);
+
+  // Fetch events, sport events, and airports
   useEffect(() => {
     const initializeDashboard = async () => {
       try {
-        // Request location permission and get location
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === "granted") {
-          const location = await Location.getCurrentPositionAsync({});
-          setUserLocation({
-            lat: location.coords.latitude,
-            long: location.coords.longitude,
-          });
-        }
-
-        // Load events and sport events in parallel
         const [eventsData, sportEventsData] = await Promise.all([
           getEvents(),
           getSportEvents(),
@@ -356,21 +419,6 @@ export default function Dashboard() {
     };
     loadSportEvents();
   }, [getSportEvents]);
-
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        console.log("Permission to access location was denied");
-        return;
-      }
-      const location = await Location.getCurrentPositionAsync({});
-      setUserLocation({
-        lat: location.coords.latitude,
-        long: location.coords.longitude,
-      });
-    })();
-  }, []);
 
   const { getAirports } = useAirports();
   useEffect(() => {
@@ -506,10 +554,41 @@ export default function Dashboard() {
 
   const filteredResults =
     searchType === "airports"
-      ? (allAirports || []).filter((airport: Airport) => 
-          airport?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          airport?.airportCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          airport?.location?.toLowerCase().includes(searchQuery.toLowerCase()))
+      ? (() => {
+          // First filter the airports based on search query
+          const filtered = (allAirports || []).filter((airport: Airport) => 
+            airport?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            airport?.airportCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            airport?.location?.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+
+          // If we have user location, calculate distances and sort
+          if (userLocation) {
+            const withDistances = filtered.map(airport => ({
+              ...airport,
+              distance: haversineDistance(
+                userLocation.lat,
+                userLocation.long,
+                airport.lat,
+                airport.long
+              )
+            }));
+
+            // Sort by distance, but put selected airport at top
+            return withDistances.sort((a, b) => {
+              if (selectedAirport && a.airportCode === selectedAirport.airportCode) return -1;
+              if (selectedAirport && b.airportCode === selectedAirport.airportCode) return 1;
+              return a.distance - b.distance;
+            });
+          }
+
+          // If no user location, just put selected airport at top
+          return filtered.sort((a, b) => {
+            if (selectedAirport && a.airportCode === selectedAirport.airportCode) return -1;
+            if (selectedAirport && b.airportCode === selectedAirport.airportCode) return 1;
+            return 0;
+          });
+        })()
       : [
           ...(allEvents || []).filter((event) => 
             event?.name?.toLowerCase().includes(searchQuery.toLowerCase())),
@@ -601,6 +680,7 @@ export default function Dashboard() {
 
   const renderSearchResult = (item: any) => {
     if (searchType === "airports") {
+      const isSelected = selectedAirport?.airportCode === item.airportCode;
       return (
         <TouchableOpacity
           style={styles.resultItem}
@@ -611,21 +691,58 @@ export default function Dashboard() {
           }}
         >
           <View style={[styles.resultItemView, { 
-            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+            backgroundColor: isSelected 
+              ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+              : (theme === "light" ? "#ffffff" : "#1a1a1a"),
             borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
           }]}>
-            <Feather name="airplay" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.resultIcon} />
+            <Feather 
+              name="airplay" 
+              size={20} 
+              color={isSelected 
+                ? "#FFFFFF" 
+                : (theme === "light" ? "#37a4c8" : "#38a5c9")} 
+              style={styles.resultIcon} 
+            />
             <View style={styles.airportResultContent}>
-              <Text style={[styles.airportName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{item.name}</Text>
-              <Text style={[styles.airportLocation, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>{item.location}</Text>
-              <Text style={[styles.airportCode, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>{item.airportCode}</Text>
+              <Text style={[styles.airportName, { 
+                color: isSelected 
+                  ? "#FFFFFF" 
+                  : (theme === "light" ? "#000000" : "#e4fbfe")
+              }]}>{item.name}</Text>
+              <Text style={[styles.airportLocation, { 
+                color: isSelected 
+                  ? "#FFFFFF" 
+                  : (theme === "light" ? "#37a4c8" : "#38a5c9")
+              }]}>{item.location}</Text>
+              <View style={styles.airportMetaContainer}>
+                <Text style={[styles.airportCode, { 
+                  color: isSelected 
+                    ? "#FFFFFF" 
+                    : (theme === "light" ? "#37a4c8" : "#64748B")
+                }]}>{item.airportCode}</Text>
+                {item.distance !== undefined && (
+                  <Text style={[styles.airportDistance, { 
+                    color: isSelected 
+                      ? "#FFFFFF" 
+                      : (theme === "light" ? "#37a4c8" : "#64748B")
+                  }]}>
+                    {(item.distance * 0.621371).toFixed(1)} mi away
+                  </Text>
+                )}
+              </View>
             </View>
-            <Feather name="chevron-right" size={18} color={theme === "light" ? "#37a4c8" : "#CBD5E1"} />
+            <Feather 
+              name="chevron-right" 
+              size={18} 
+              color={isSelected 
+                ? "#FFFFFF" 
+                : (theme === "light" ? "#37a4c8" : "#CBD5E1")} 
+            />
           </View>
         </TouchableOpacity>
       );
     } else {
-      const isOrganized = item.organizer !== null;
       const isCreateEvent = item.isCreateEvent;
       return (
         <TouchableOpacity
@@ -641,50 +758,56 @@ export default function Dashboard() {
           }}
         >
           <View style={[
-            isCreateEvent ? styles.createEventItemView : (isOrganized ? styles.organizedResultItemView : styles.resultItemView),
+            isCreateEvent ? styles.createEventItemView : styles.resultItemView,
             { 
-              backgroundColor: isOrganized 
-                ? (theme === "light" ? "#37a4c8" : "#38a5c9")
-                : (theme === "light" ? "#ffffff" : "#1a1a1a"),
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
               borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
             }
           ]}>
             <Feather 
               name={isCreateEvent ? "plus-circle" : "calendar"} 
               size={20} 
-              color={isCreateEvent 
-                ? (theme === "light" ? "#37a4c8" : "#38a5c9")
-                : (isOrganized ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9"))} 
+              color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
               style={styles.resultIcon} 
             />
             <View style={styles.eventResultContent}>
-              <Text style={[
-                isCreateEvent ? styles.createEventName : (isOrganized ? styles.organizedEventName : styles.eventName),
-                { 
-                  color: isOrganized 
-                    ? "#FFFFFF" 
-                    : (theme === "light" ? "#000000" : "#e4fbfe")
-                }
-              ]}>
-                {item.name}
-              </Text>
-              <Text style={[
-                isCreateEvent ? styles.createEventDescription : (isOrganized ? styles.organizedEventDescription : styles.eventDescription),
-                { 
-                  color: isOrganized 
-                    ? "#FFFFFF" 
-                    : (theme === "light" ? "#37a4c8" : "#38a5c9")
-                }
-              ]}>
+              <View style={[styles.eventHeader, { 
+                borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+              }]}>
+                {React.cloneElement(getEventIcon(item.name), { size: 24 })}
+                <View style={styles.eventTitleContainer}>
+                  <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                    {item.name}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
                 {item.description}
               </Text>
+              {!isCreateEvent && item.startTime && (
+                <View style={styles.eventMetaContainer}>
+                  <View style={[styles.eventMetaItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                  }]}>
+                    <Feather 
+                      name="clock" 
+                      size={14} 
+                      color={theme === "light" ? "#37a4c8" : "#64748B"} 
+                    />
+                    <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                      {new Date(item.startTime).toLocaleDateString()} at {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  {item.startTime && (
+                    <CountdownTimer startTime={new Date(item.startTime)} />
+                  )}
+                </View>
+              )}
             </View>
             <Feather 
               name="chevron-right" 
               size={18} 
-              color={isCreateEvent 
-                ? (theme === "light" ? "#37a4c8" : "#CBD5E1")
-                : (isOrganized ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#CBD5E1"))} 
+              color={theme === "light" ? "#37a4c8" : "#CBD5E1"} 
             />
           </View>
         </TouchableOpacity>
@@ -729,6 +852,22 @@ export default function Dashboard() {
     }
   }, [loading, initialLoadComplete]);
 
+  useEffect(() => {
+    if (!userId) return;
+
+    const userRef = doc(db, 'users', userId);
+    const unsubscribe = onSnapshot(userRef, (doc) => {
+      if (doc.exists()) {
+        const userData = doc.data();
+        const notifications = userData.notifications || [];
+        const unreadCount = notifications.filter((n: any) => !n.read).length;
+        setNotificationCount(unreadCount);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
+
   // Show black screen during auth check
   if (!userId) {
     return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#e6e6e6" : "#000000" }} />;
@@ -746,7 +885,10 @@ export default function Dashboard() {
 
   return (
     <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar onProfilePress={() => router.push(`profile/${authUser?.uid}`)} />
+      <TopBar 
+        onProfilePress={() => router.push(`profile/${authUser?.uid}`)} 
+        notificationCount={notificationCount}
+      />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <Animated.View style={{ flex: 1, position: "relative", opacity: fadeAnim }}>
@@ -857,6 +999,34 @@ export default function Dashboard() {
                     </Text>
                     <Feather name="chevron-down" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.searchIcon} />
                   </View>
+                  {selectedAirport && (
+                    <TouchableOpacity
+                      style={[styles.directionsButton, { 
+                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                      }]}
+                      onPress={() => {
+                        const url = Platform.select({
+                          ios: `maps://app?daddr=${selectedAirport.lat},${selectedAirport.long}`,
+                          android: `google.navigation:q=${selectedAirport.lat},${selectedAirport.long}`
+                        });
+                        if (url) {
+                          Linking.openURL(url);
+                        }
+                      }}
+                    >
+                      <Feather 
+                        name="navigation" 
+                        size={20} 
+                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                      />
+                      <Text style={[styles.directionsButtonText, { 
+                        color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                      }]}>
+                        Get Directions
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </TouchableOpacity>
               )}
             </Animated.View>
@@ -988,9 +1158,11 @@ export default function Dashboard() {
                                     borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
                                   }]}>
                                     {React.cloneElement(getEventIcon(event.name), { size: 24 })}
-                                    <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                      {event.name}
-                                    </Text>
+                                    <View style={styles.eventTitleContainer}>
+                                      <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                        {event.name}
+                                      </Text>
+                                    </View>
                                   </View>
                                   <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
                                     {event.description}
@@ -1005,6 +1177,9 @@ export default function Dashboard() {
                                           {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </Text>
                                       </View>
+                                    )}
+                                    {event.startTime && (
+                                      <CountdownTimer startTime={new Date(event.startTime)} />
                                     )}
                                     {event.attendees && (
                                       <View style={[styles.eventMetaItem, { 
@@ -1023,16 +1198,6 @@ export default function Dashboard() {
                                         <Feather name="lock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
                                         <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
                                           Private
-                                        </Text>
-                                      </View>
-                                    )}
-                                    {event.category && (
-                                      <View style={[styles.eventMetaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                      }]}>
-                                        {React.cloneElement(getEventIcon(event.name), { size: 24 })}
-                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                          {event.category}
                                         </Text>
                                       </View>
                                     )}
@@ -1060,11 +1225,15 @@ export default function Dashboard() {
                   }
                 } else if (item.type === "feature") {
                   return (
-                    <View style={styles.featureItem}>
+                    <View style={[styles.featureItem, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderWidth: theme === "light" ? 0 : 1,
+                      borderColor: theme === "light" ? "transparent" : "#38a5c9"
+                    }]}>
                       <TouchableOpacity
                         style={[styles.featureItemContent, { 
                           backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                          borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                          borderColor: theme === "light" ? "transparent" : "#38a5c9"
                         }]}
                         activeOpacity={0.8}
                         onPress={() => router.push(item.data.screen)}
@@ -1231,6 +1400,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#38a5c9",
     overflow: 'hidden',
+    marginBottom: 40,
   },
   eventImage: {
     width: '100%',
@@ -1289,7 +1459,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1a1a1a",
-    borderRadius: 16,
+    borderRadius: 17,
     padding: 16,
     marginBottom: 12,
     elevation: 3,
@@ -1297,8 +1467,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
+    borderWidth: 0,
   },
   featureItemContent: {
     flex: 1,
@@ -1418,6 +1587,28 @@ const styles = StyleSheet.create({
   },
   searchIcon: {
     marginLeft: 10,
+  },
+  directionsButton: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    borderWidth: 1,
+  },
+  directionsButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   resultItem: {
     marginHorizontal: 16,
@@ -1602,6 +1793,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 1,
+  },
+  airportMetaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  airportDistance: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "500",
+    letterSpacing: 0.2,
+  },
+  countdownContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  countdownText: {
+    fontSize: 13,
+    color: "#38a5c9",
+    fontWeight: "600",
+    letterSpacing: 0.2,
+  },
+  eventTitleContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  categoryTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  categoryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });
 

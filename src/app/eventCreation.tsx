@@ -15,6 +15,7 @@ import {
   Alert,
   SafeAreaView,
   Animated,
+  StatusBar,
 } from "react-native";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from "expo-linear-gradient";
@@ -82,6 +83,8 @@ const EventCreation: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const screenScale = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
     const loadAirports = async () => {
@@ -273,11 +276,23 @@ const EventCreation: React.FC = () => {
   useEffect(() => {
     if (!authLoading && !loading) {
       setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }).start();
+        Animated.parallel([
+          Animated.timing(screenOpacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(screenScale, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          })
+        ]).start();
         setInitialLoadComplete(true);
       }, 400);
     }
@@ -285,13 +300,28 @@ const EventCreation: React.FC = () => {
 
   // Show black screen during auth check
   if (!user?.uid) {
-    return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#ffffff" : "#000000" }} />;
+    return (
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <LoadingScreen message="Checking authentication..." />
+      </LinearGradient>
+    );
   }
 
   // Show loading state
   if (authLoading || loading || !initialLoadComplete) {
-    return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#ffffff" : "#000000" }} />;
+    return (
+      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <LoadingScreen message="Loading event creation..." />
+      </LinearGradient>
+    );
   }
+
+  const screenStyle = {
+    opacity: screenOpacity,
+    transform: [{ scale: screenScale }],
+  };
 
   return (
     <>
@@ -303,179 +333,181 @@ const EventCreation: React.FC = () => {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+            <Animated.View style={[{ flex: 1 }, screenStyle]}>
               <ScrollView contentContainerStyle={styles.contentContainer}>
-                <LinearGradient
-                  colors={theme === "light" ? ['#ffffff', '#e6e6e6'] : ['#1a1a1a', '#000000']}
-                  style={styles.backgroundGradient}
-                >
-                  {/* Select Airport Section */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
-                    <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Select Airport</Text>
-                    <TouchableOpacity 
-                      style={styles.searchContainer}
-                      onPress={() => setShowSearch(true)}
-                    >
-                      <LinearGradient
-                        colors={theme === "light" ? ['#ffffff', '#e6e6e6'] : ['#1a1a1a', '#000000']}
-                        style={styles.searchInputGradient}
+                <Animated.View style={{ opacity: fadeAnim }}>
+                  <LinearGradient
+                    colors={theme === "light" ? ['#ffffff', '#e6e6e6'] : ['#1a1a1a', '#000000']}
+                    style={styles.backgroundGradient}
+                  >
+                    {/* Select Airport Section */}
+                    <View style={[styles.sectionContainer, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: "#37a4c8"
+                    }]}>
+                      <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Select Airport</Text>
+                      <TouchableOpacity 
+                        style={styles.searchContainer}
+                        onPress={() => setShowSearch(true)}
                       >
-                        <Text style={[styles.searchPlaceholder, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                          {selectedAirport?.name || 'Search airports...'}
-                        </Text>
-                        <Feather name="search" size={20} color="#37a4c8" />
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Event Details Section */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
-                    <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Details</Text>
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Name</Text>
-                      <TextInput
-                        style={[styles.input, styles.textInput, { 
-                          backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
-                          color: theme === "light" ? "#000000" : "#e4fbfe",
-                          borderColor: "#37a4c8"
-                        }]}
-                        placeholder="Enter event name"
-                        placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-                        value={eventData.name}
-                        onChangeText={(text) => setEventData({ ...eventData, name: text })}
-                      />
-                    </View>
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Description</Text>
-                      <TextInput
-                        style={[styles.input, styles.multilineInput, styles.textInput, { 
-                          backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
-                          color: theme === "light" ? "#000000" : "#e4fbfe",
-                          borderColor: "#37a4c8"
-                        }]}
-                        placeholder="Describe your event"
-                        placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-                        multiline
-                        value={eventData.description}
-                        onChangeText={(text) => setEventData({ ...eventData, description: text })}
-                      />
-                    </View>
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Image</Text>
-                      <TouchableOpacity style={[styles.input, { 
-                        backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
-                        borderColor: "#37a4c8"
-                      }]} onPress={handleSelectEventImage}>
-                        <Text style={[styles.dateText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                          {eventData.eventImage ? "Image selected" : "Select an image"}
-                        </Text>
-                        <Feather name="image" size={18} color="#37a4c8" />
+                        <LinearGradient
+                          colors={theme === "light" ? ['#ffffff', '#e6e6e6'] : ['#1a1a1a', '#000000']}
+                          style={styles.searchInputGradient}
+                        >
+                          <Text style={[styles.searchPlaceholder, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                            {selectedAirport?.name || 'Search airports...'}
+                          </Text>
+                          <Feather name="search" size={20} color="#37a4c8" />
+                        </LinearGradient>
                       </TouchableOpacity>
                     </View>
-                  </View>
 
-                  {/* Category Section */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
-                    <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Category</Text>
-                    <View style={styles.categoryContainer}>
-                      {categories.map((category) => (
-                        <TouchableOpacity
-                          key={category}
-                          style={[
-                            styles.categoryButton,
-                            { 
-                              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                              borderColor: "#37a4c8"
-                            },
-                            eventData.category === category && styles.selectedCategory
-                          ]}
-                          onPress={() => setEventData({ ...eventData, category })}
-                        >
-                          <Text style={[
-                            styles.categoryText,
-                            { color: theme === "light" ? "#000000" : "#e4fbfe" },
-                            eventData.category === category && styles.selectedCategoryText
-                          ]}>
-                            {category}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-
-                  {/* Event Time Section */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
-                    <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Time</Text>
-                    <View style={[styles.timeContainer, { 
-                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
+                    {/* Event Details Section */}
+                    <View style={[styles.sectionContainer, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: "#37a4c8"
                     }]}>
-                      <TouchableOpacity 
-                        style={[styles.timeInput, { 
+                      <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Details</Text>
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Name</Text>
+                        <TextInput
+                          style={[styles.input, styles.textInput, { 
+                            backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
+                            color: theme === "light" ? "#000000" : "#e4fbfe",
+                            borderColor: "#37a4c8"
+                          }]}
+                          placeholder="Enter event name"
+                          placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
+                          value={eventData.name}
+                          onChangeText={(text) => setEventData({ ...eventData, name: text })}
+                        />
+                      </View>
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Description</Text>
+                        <TextInput
+                          style={[styles.input, styles.multilineInput, styles.textInput, { 
+                            backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
+                            color: theme === "light" ? "#000000" : "#e4fbfe",
+                            borderColor: "#37a4c8"
+                          }]}
+                          placeholder="Describe your event"
+                          placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
+                          multiline
+                          value={eventData.description}
+                          onChangeText={(text) => setEventData({ ...eventData, description: text })}
+                        />
+                      </View>
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Image</Text>
+                        <TouchableOpacity style={[styles.input, { 
                           backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
                           borderColor: "#37a4c8"
-                        }]} 
-                        onPress={() => {
-                          setTempDate(eventData.startTime);
-                          setShowDatePicker(true);
-                        }}
-                      >
-                        <View style={styles.timeContent}>
-                          <Feather name="calendar" size={20} color="#37a4c8" />
-                          <View style={styles.timeTextContainer}>
-                            <Text style={[styles.timeLabel, { color: theme === "light" ? "#64748B" : "#64748B" }]}>Date & Time</Text>
-                            <Text style={[styles.timeValue, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                              {formatDateTime(eventData.startTime)}
+                        }]} onPress={handleSelectEventImage}>
+                          <Text style={[styles.dateText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                            {eventData.eventImage ? "Image selected" : "Select an image"}
+                          </Text>
+                          <Feather name="image" size={18} color="#37a4c8" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Category Section */}
+                    <View style={[styles.sectionContainer, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: "#37a4c8"
+                    }]}>
+                      <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Category</Text>
+                      <View style={styles.categoryContainer}>
+                        {categories.map((category) => (
+                          <TouchableOpacity
+                            key={category}
+                            style={[
+                              styles.categoryButton,
+                              { 
+                                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                borderColor: "#37a4c8"
+                              },
+                              eventData.category === category && styles.selectedCategory
+                            ]}
+                            onPress={() => setEventData({ ...eventData, category })}
+                          >
+                            <Text style={[
+                              styles.categoryText,
+                              { color: theme === "light" ? "#000000" : "#e4fbfe" },
+                              eventData.category === category && styles.selectedCategoryText
+                            ]}>
+                              {category}
                             </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+
+                    {/* Event Time Section */}
+                    <View style={[styles.sectionContainer, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: "#37a4c8"
+                    }]}>
+                      <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Time</Text>
+                      <View style={[styles.timeContainer, { 
+                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
+                      }]}>
+                        <TouchableOpacity 
+                          style={[styles.timeInput, { 
+                            backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
+                            borderColor: "#37a4c8"
+                          }]} 
+                          onPress={() => {
+                            setTempDate(eventData.startTime);
+                            setShowDatePicker(true);
+                          }}
+                        >
+                          <View style={styles.timeContent}>
+                            <Feather name="calendar" size={20} color="#37a4c8" />
+                            <View style={styles.timeTextContainer}>
+                              <Text style={[styles.timeLabel, { color: theme === "light" ? "#64748B" : "#64748B" }]}>Date & Time</Text>
+                              <Text style={[styles.timeValue, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                {formatDateTime(eventData.startTime)}
+                              </Text>
+                            </View>
+                          </View>
+                          <Feather name="chevron-right" size={20} style={{ marginLeft: -20 }} color="#37a4c8" />
+                        </TouchableOpacity>
+                      </View>
+                      {showDatePicker && (
+                        <View style={[styles.datePickerContainer, { 
+                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                          borderColor: "#37a4c8"
+                        }]}>
+                          <View style={styles.datePickerWrapper}>
+                            <DateTimePicker
+                              value={tempDate}
+                              mode="datetime"
+                              display="spinner"
+                              onChange={handleDateChange}
+                              minimumDate={new Date()}
+                              textColor={theme === "light" ? "#000000" : "#e4fbfe"}
+                            />
+                          </View>
+                          <View style={[styles.datePickerButtons, { borderTopColor: "#37a4c8" }]}>
+                            <TouchableOpacity 
+                              style={[styles.datePickerButton, styles.datePickerCancelButton]} 
+                              onPress={() => setShowDatePicker(false)}
+                            >
+                              <Text style={styles.datePickerCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                              style={[styles.datePickerButton, styles.datePickerDoneButton]} 
+                              onPress={handleDateConfirm}
+                            >
+                              <Text style={styles.datePickerDoneText}>Done</Text>
+                            </TouchableOpacity>
                           </View>
                         </View>
-                        <Feather name="chevron-right" size={20} style={{ marginLeft: -20 }} color="#37a4c8" />
-                      </TouchableOpacity>
+                      )}
                     </View>
-                    {showDatePicker && (
-                      <View style={[styles.datePickerContainer, { 
-                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                        borderColor: "#37a4c8"
-                      }]}>
-                        <View style={styles.datePickerWrapper}>
-                          <DateTimePicker
-                            value={tempDate}
-                            mode="datetime"
-                            display="spinner"
-                            onChange={handleDateChange}
-                            minimumDate={new Date()}
-                            textColor={theme === "light" ? "#000000" : "#e4fbfe"}
-                          />
-                        </View>
-                        <View style={[styles.datePickerButtons, { borderTopColor: "#37a4c8" }]}>
-                          <TouchableOpacity 
-                            style={[styles.datePickerButton, styles.datePickerCancelButton]} 
-                            onPress={() => setShowDatePicker(false)}
-                          >
-                            <Text style={styles.datePickerCancelText}>Cancel</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity 
-                            style={[styles.datePickerButton, styles.datePickerDoneButton]} 
-                            onPress={handleDateConfirm}
-                          >
-                            <Text style={styles.datePickerDoneText}>Done</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                </LinearGradient>
+                  </LinearGradient>
+                </Animated.View>
 
                 {/* Create Button */}
                 <LinearGradient

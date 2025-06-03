@@ -15,6 +15,7 @@ interface TopBarProps {
   showNotifications?: boolean;
   onNotificationPress?: () => void;
   notificationCount?: number;
+  onBackPress?: () => void;
 }
 
 const TopBar: React.FC<TopBarProps> = ({ 
@@ -23,7 +24,8 @@ const TopBar: React.FC<TopBarProps> = ({
   title,
   showNotifications = true,
   onNotificationPress,
-  notificationCount = 0
+  notificationCount = 0,
+  onBackPress
 }) => {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
@@ -88,7 +90,7 @@ const TopBar: React.FC<TopBarProps> = ({
       <View style={styles.leftSection}>
         {showBackButton && (
           <TouchableOpacity 
-            onPress={handleBackPress} 
+            onPress={onBackPress || handleBackPress} 
             style={styles.backButton}
             activeOpacity={0.7}
           >

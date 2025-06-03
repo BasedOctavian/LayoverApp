@@ -37,6 +37,9 @@ const Login = () => {
         setIsRefreshing(false);
         
         if (user) {
+          setEmail("");
+          setPassword("");
+          setFocusedField(null);
           router.replace("/home/dashboard");
         }
       } catch (error) {
@@ -64,6 +67,9 @@ const Login = () => {
     try {
       setIsRefreshing(true);
       await login(email, password);
+      setEmail("");
+      setPassword("");
+      setFocusedField(null);
       router.replace("/home/dashboard");
     } catch (error) {
       const authError = error as AuthError;

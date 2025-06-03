@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import {
   Text,
   View,
@@ -10,6 +10,8 @@ import {
   StatusBar,
   Animated,
   Easing,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import useAuth from "../../hooks/auth";
 import React, { useEffect, useState, useRef } from "react";
@@ -21,6 +23,8 @@ import {
   where,
   getDocs,
   addDoc,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 import { onAuthStateChanged, User } from "firebase/auth";
@@ -30,12 +34,190 @@ import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../../context/ThemeContext";
+import BottomNavBar from "../../components/BottomNavBar";
+import useChats from "../../hooks/useChats";
 
 interface Chat {
   id: string;
   participants: string[];
   createdAt: Date;
+  status: string;
+  connectionType: string | null;
+  connectionId: string | null;
+  lastMessage: string | null;
 }
+
+interface UserCardProps {
+  item: any;
+  onPress: () => void;
+}
+
+const UserCard = ({ item, onPress }: UserCardProps) => {
+  const { user } = useAuth();
+  const { getExistingChat, addChat } = useChats();
+  const { theme } = React.useContext(ThemeContext);
+  const [connectionStatus, setConnectionStatus] = useState<'none' | 'pending' | 'active'>('none');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Check connection status when item changes
+  useEffect(() => {
+    const checkConnectionStatus = async () => {
+      if (!user) return;
+      
+      try {
+        // Check if there's an existing chat
+        const existingChat = await getExistingChat(user.uid, item.id);
+        if (existingChat) {
+          if (existingChat.status === 'pending') {
+            setConnectionStatus('pending');
+          } else if (existingChat.status === 'active') {
+            setConnectionStatus('active');
+          }
+        } else {
+          setConnectionStatus('none');
+        }
+      } catch (error) {
+        console.error('Error checking connection status:', error);
+      }
+    };
+
+    checkConnectionStatus();
+  }, [item.id, user]);
+
+  const handleConnect = async () => {
+    if (!user || isLoading) return;
+    
+    setIsLoading(true);
+    try {
+      // Create a new chat with pending status
+      const chatData = {
+        participants: [user.uid, item.id],
+        createdAt: new Date(),
+        lastMessage: null,
+        status: 'pending',
+        connectionType: null
+      };
+      
+      const chatId = await addChat(chatData);
+      
+      // Create a connection document
+      const connectionData = {
+        initiator: user.uid,
+        createdAt: new Date(),
+        status: 'pending',
+        connectionType: null
+      };
+      
+      const connectionRef = await addDoc(collection(db, 'connections'), connectionData);
+      
+      // Update the chat with the connection ID
+      await updateDoc(doc(db, 'chats', chatId), {
+        connectionId: connectionRef.id
+      });
+
+      setConnectionStatus('pending');
+    } catch (error) {
+      console.error('Error creating connection:', error);
+      Alert.alert('Error', 'Failed to create connection. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCardPress = async () => {
+    if (connectionStatus === 'active') {
+      const existingChat = await getExistingChat(user?.uid || '', item.id);
+      if (existingChat) {
+        router.push("/chat/" + existingChat.id);
+      }
+    } else if (connectionStatus === 'none') {
+      handleConnect();
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      style={[styles.userCard, { 
+        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+        borderColor: "#37a4c8"
+      }]}
+      onPress={handleCardPress}
+    >
+      <View style={styles.userCardContent}>
+        <View style={styles.userHeader}>
+          <Image
+            source={{ uri: item.profilePicture || "https://via.placeholder.com/150" }}
+            style={styles.profileImage}
+          />
+          <View style={styles.userMainInfo}>
+            <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+              {item.name}
+            </Text>
+            <View style={styles.userDetails}>
+              <Text style={[styles.userAge, { color: "#37a4c8" }]}>{item.age} years old</Text>
+              <Text style={[styles.userLocation, { color: "#37a4c8" }]}>• {item.airportCode}</Text>
+            </View>
+          </View>
+        </View>
+        
+        <View style={styles.userBioContainer}>
+          <Text style={[styles.userBio, { color: theme === "light" ? "#64748B" : "#94A3B8" }]} numberOfLines={2}>
+            {item.bio || "No bio available"}
+          </Text>
+        </View>
+
+        <View style={styles.userInterestsContainer}>
+          {item.interests?.slice(0, 3).map((interest: string, index: number) => (
+            <View key={index} style={styles.interestTag}>
+              <Text style={styles.interestText}>{interest}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.userMoodContainer}>
+          <View style={styles.moodIndicator} />
+          <Text style={[styles.moodText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+            {item.moodStatus || "Available"}
+          </Text>
+        </View>
+
+        {connectionStatus === 'none' && (
+          <TouchableOpacity
+            style={[styles.connectButton, { backgroundColor: '#37a4c8' }]}
+            onPress={handleConnect}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.connectButtonText}>Connect</Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {connectionStatus === 'pending' && (
+          <View style={[styles.statusContainer, { backgroundColor: '#FFA500' }]}>
+            <Text style={styles.statusText}>Connection Pending</Text>
+          </View>
+        )}
+
+        {connectionStatus === 'active' && (
+          <TouchableOpacity
+            style={[styles.connectButton, { backgroundColor: '#4CAF50' }]}
+            onPress={async () => {
+              const existingChat = await getExistingChat(user?.uid || '', item.id);
+              if (existingChat) {
+                router.push("/chat/" + existingChat.id);
+              }
+            }}
+          >
+            <Text style={styles.connectButtonText}>Open Chat</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 export default function ChatExplore() {
   const insets = useSafeAreaInsets();
@@ -74,18 +256,51 @@ export default function ChatExplore() {
     return unsubscribe;
   }, []);
 
-  // Add effect for fade in animation
+  // Add entrance animation
   useEffect(() => {
     if (!loading && !usersLoading && !chatLoading && initialLoadComplete) {
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }).start();
-      }, 400);
+      // Start with opacity 0
+      fadeAnim.setValue(0);
+      // Animate in
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }).start();
     }
   }, [loading, usersLoading, chatLoading, initialLoadComplete]);
+
+  // Add focus effect for smooth transitions
+  useFocusEffect(
+    React.useCallback(() => {
+      // Reset and start fade in animation when screen comes into focus
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }).start();
+
+      return () => {
+        // Cleanup animation when screen loses focus
+        fadeAnim.setValue(0);
+      };
+    }, [])
+  );
+
+  // Handle back gesture
+  const handleBack = () => {
+    // Animate out
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      router.back();
+    });
+  };
 
   // Function to fetch chats where the current user is a participant
   const getUserChats = async (userId: string) => {
@@ -166,62 +381,7 @@ export default function ChatExplore() {
   }, [users, chatPartnerIds, searchQuery]);
 
   const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={[styles.userCard, { 
-        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-        borderColor: "#37a4c8"
-      }]}
-      onPress={async () => {
-        if (!user) return;
-        const chatData = {
-          participants: [user.uid, item.id],
-          createdAt: new Date(),
-        };
-        const chatId = await addChat(chatData);
-        if (chatId) {
-          router.push("/chat/" + chatId);
-        }
-      }}
-    >
-      <View style={styles.userCardContent}>
-        <View style={styles.userHeader}>
-          <Image
-            source={{ uri: item.profilePicture || "https://via.placeholder.com/150" }}
-            style={styles.profileImage}
-          />
-          <View style={styles.userMainInfo}>
-            <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-              {item.name}
-            </Text>
-            <View style={styles.userDetails}>
-              <Text style={[styles.userAge, { color: "#37a4c8" }]}>{item.age} years old</Text>
-              <Text style={[styles.userLocation, { color: "#37a4c8" }]}>• {item.airportCode}</Text>
-            </View>
-          </View>
-        </View>
-        
-        <View style={styles.userBioContainer}>
-          <Text style={[styles.userBio, { color: theme === "light" ? "#64748B" : "#94A3B8" }]} numberOfLines={2}>
-            {item.bio || "No bio available"}
-          </Text>
-        </View>
-
-        <View style={styles.userInterestsContainer}>
-          {item.interests?.slice(0, 3).map((interest: string, index: number) => (
-            <View key={index} style={styles.interestTag}>
-              <Text style={styles.interestText}>{interest}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.userMoodContainer}>
-          <View style={styles.moodIndicator} />
-          <Text style={[styles.moodText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-            {item.moodStatus || "Available"}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
+    <UserCard item={item} onPress={() => {}} />
   );
 
   // Interpolate colors for smooth transitions
@@ -253,9 +413,23 @@ export default function ChatExplore() {
         <TopBar 
           showBackButton={true} 
           title="New Chat" 
-          onProfilePress={() => router.push("/profile/profile")}
+          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          onBackPress={handleBack}
         />
-        <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        <Animated.View 
+          style={[
+            styles.container, 
+            { 
+              opacity: fadeAnim,
+              transform: [{
+                translateY: fadeAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [20, 0],
+                })
+              }]
+            }
+          ]}
+        >
           <TextInput
             style={[styles.searchInput, { 
               backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
@@ -282,6 +456,7 @@ export default function ChatExplore() {
             />
           )}
         </Animated.View>
+        <BottomNavBar />
       </LinearGradient>
     </SafeAreaView>
   );
@@ -408,5 +583,31 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  connectButton: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  connectButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusContainer: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

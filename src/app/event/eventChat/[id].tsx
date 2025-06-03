@@ -8,8 +8,10 @@ import useChat from '../../../hooks/useChat';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import TopBar from '../../../components/TopBar';
 import LoadingScreen from '../../../components/LoadingScreen';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp, doc, getDoc } from 'firebase/firestore';
+import { db } from '../../../../config/firebaseConfig';
 import { ThemeContext } from '../../../context/ThemeContext';
+import * as ExpoNotifications from 'expo-notifications';
 
 interface Message {
   id: string;
@@ -78,13 +80,74 @@ export default function EventChat() {
     };
   }, [messages]);
 
+  const sendPushNotification = async (receiverId: string, messageText: string, eventId: string) => {
+    try {
+      // Get receiver's push token
+      const receiverDoc = await getDoc(doc(db, 'users', receiverId));
+      if (!receiverDoc.exists()) {
+        console.log('Receiver document not found');
+        return;
+      }
+
+      const receiverData = receiverDoc.data();
+      const pushToken = receiverData?.expoPushToken;
+
+      if (!pushToken) {
+        console.log('No push token found for receiver');
+        return;
+      }
+
+      // Send push notification using Expo's push notification service
+      const notificationPayload = {
+        to: pushToken,
+        sound: 'default',
+        title: `Event Message from ${user?.displayName || 'Someone'}`,
+        body: messageText,
+        data: {
+          type: 'eventChat',
+          eventId: eventId,
+          chatId: id,
+          receiverId: receiverId,
+          senderId: user?.uid
+        },
+      };
+
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(notificationPayload),
+      });
+    } catch (error) {
+      console.error('Error sending push notification:', error);
+    }
+  };
+
   const handleSendMessage = () => {
     if (!newMessage.trim() || !user) return;
-    sendMessage({
+    
+    const messageData = {
       text: newMessage,
       userId: user.uid,
       userName: user.displayName || 'Anonymous',
-    });
+    };
+    
+    sendMessage(messageData);
+    
+    // Send push notification to other participants
+    if (messages.length > 0) {
+      const otherParticipants = messages
+        .map(msg => msg.userId)
+        .filter(id => id !== user.uid);
+      
+      otherParticipants.forEach(participantId => {
+        sendPushNotification(participantId, newMessage, id as string);
+      });
+    }
+    
     setNewMessage('');
     flatListRef.current?.scrollToEnd({ animated: true });
   };

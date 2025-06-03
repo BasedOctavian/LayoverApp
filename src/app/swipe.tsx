@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,14 +11,14 @@ import {
 } from "react-native";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import useUsers from "./../hooks/useUsers";
-import { arrayUnion, doc, onSnapshot, getDoc } from "firebase/firestore";
+import { arrayUnion, doc, onSnapshot, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import useAuth from "../hooks/auth";
 import { router } from "expo-router";
 import { db } from "../../config/firebaseConfig";
 import TopBar from "../components/TopBar";
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs, limit, startAfter } from "firebase/firestore";
 import useChats from "../hooks/useChats";
 import LoadingScreen from "../components/LoadingScreen";
 import Animated, {
@@ -29,6 +29,9 @@ import Animated, {
   Extrapolate,
   runOnJS,
   useAnimatedReaction,
+  withTiming,
+  FadeIn,
+  FadeOut,
 } from "react-native-reanimated";
 import {
   Gesture,
@@ -41,6 +44,19 @@ interface TravelHistory {
   id: string;
   name: string;
   photos?: string[];
+}
+
+interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  data: {
+    type: 'match';
+    matchedUserId: string;
+    matchedUserName: string;
+  };
+  timestamp: any;
+  read: boolean;
 }
 
 interface User {
@@ -57,6 +73,8 @@ interface User {
   likedUsers?: string[];
   dislikedUsers?: string[];
   airportCode?: string;
+  lastLogin?: any; // Firestore Timestamp
+  notifications?: Notification[];
 }
 
 interface Connection {
@@ -68,13 +86,39 @@ const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
 const CARD_HEIGHT = height * 0.55;
 
+// Airport name lookup hook
+function useAirportName(airportCode: string | undefined) {
+  const [airportName, setAirportName] = useState<string | null>(null);
+  useEffect(() => {
+    const fetchAirportName = async () => {
+      if (!airportCode) return;
+      try {
+        const airportsRef = collection(db, "airports");
+        const q = query(airportsRef, where("airportCode", "==", airportCode));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const airportDoc = snapshot.docs[0];
+          const data = airportDoc.data();
+          setAirportName(data.name || airportCode);
+        } else {
+          setAirportName(airportCode);
+        }
+      } catch (err) {
+        setAirportName(airportCode);
+      }
+    };
+    fetchAirportName();
+  }, [airportCode]);
+  return airportName;
+}
+
 const Swipe = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
   const { getUsers, updateUser, loading, error } = useUsers();
   const { user } = useAuth();
-  const { addMessage } = useChats();
+  const { addMessage, getExistingChat, addChat } = useChats();
   const currentUserUID = user?.uid || "some-uid";
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSwiper, setShowSwiper] = useState(false);
@@ -94,6 +138,24 @@ const Swipe = () => {
   const lastDirection = useSharedValue<'left' | 'right' | null>(null);
   const currentIndex = useSharedValue(0);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  const airportName = useAirportName(currentUserData?.airportCode);
+
+  const screenOpacity = useSharedValue(0);
+  const screenScale = useSharedValue(0.95);
+
+  useEffect(() => {
+    // Animate in when component mounts
+    screenOpacity.value = withTiming(1, { duration: 300 });
+    screenScale.value = withTiming(1, { duration: 300 });
+  }, []);
+
+  const screenStyle = useAnimatedStyle(() => {
+    return {
+      opacity: screenOpacity.value,
+      transform: [{ scale: screenScale.value }],
+    };
+  });
 
   useAnimatedReaction(
     () => currentIndex.value,
@@ -127,111 +189,146 @@ const Swipe = () => {
     });
   };
 
-  const gesture = Gesture.Pan()
-    .onBegin(() => {
-      if (isAnimating.value) return;
-      lastDirection.value = null;
-    })
-    .onUpdate((event) => {
-      if (isAnimating.value) return;
+  const handleSwipe = (direction: "left" | "right") => {
+    try {
+      if (isAnimating.value || !users.length) return;
+      isAnimating.value = true;
 
-      // Add resistance to the drag
-      const resistance = 0.5;
-      const dragDistance = event.translationX;
-      const resistedDistance = dragDistance > 0 
-        ? Math.min(dragDistance, width * 0.4) * resistance
-        : Math.max(dragDistance, -width * 0.4) * resistance;
-
-      // Update direction
-      if (Math.abs(resistedDistance) > 10) {
-        lastDirection.value = resistedDistance > 0 ? 'right' : 'left';
-      }
-
-      translateX.value = resistedDistance;
-      translateY.value = event.translationY * 0.3;
-      cardRotation.value = interpolate(
-        resistedDistance,
-        [-width / 2, 0, width / 2],
-        [-30, 0, 30],
-        Extrapolate.CLAMP
-      );
-    })
-    .onEnd((event) => {
-      if (isAnimating.value) return;
-
-      const shouldSwipe = Math.abs(event.translationX) > width * 0.2;
-      const velocity = event.velocityX;
-      
-      // If moving fast enough, trigger swipe regardless of distance
-      if (Math.abs(velocity) > 500) {
-        const direction = velocity > 0 ? "right" : "left";
-        runOnJS(handleSwipe)(direction);
+      const currentUserIndex = currentIndex.value;
+      if (currentUserIndex >= users.length) {
+        isAnimating.value = false;
         return;
       }
-      
-      if (shouldSwipe && lastDirection.value) {
-        runOnJS(handleSwipe)(lastDirection.value);
+
+      console.log('Handling swipe:', direction, 'for user at index:', currentUserIndex);
+
+      if (direction === "right") {
+        onSwipedRight(currentUserIndex);
       } else {
+        onSwipedLeft(currentUserIndex);
+      }
+      
+      translateX.value = withSpring(direction === "right" ? width * 1.5 : -width * 1.5, {
+        damping: 15,
+        stiffness: 100,
+        velocity: direction === "right" ? 1000 : -1000,
+      });
+      translateY.value = withSpring(0, {
+        damping: 15,
+        stiffness: 100,
+      });
+      cardRotation.value = withSpring(direction === "right" ? 30 : -30, {
+        damping: 15,
+        stiffness: 100,
+      });
+      
+      requestAnimationFrame(() => {
+        try {
+          setTimeout(() => {
+            try {
+              translateX.value = 0;
+              translateY.value = 0;
+              cardRotation.value = 0;
+              
+              // Update currentIndex only if there are more users
+              if (currentUserIndex + 1 < users.length) {
+                currentIndex.value = currentUserIndex + 1;
+              } else {
+                // If we've reached the end, reset to 0 or handle empty state
+                currentIndex.value = 0;
+                if (users.length === 0) {
+                  setShowSwiper(false);
+                }
+              }
+              
+              isAnimating.value = false;
+            } catch (error) {
+              console.error('Error in swipe animation completion:', error);
+              isAnimating.value = false;
+            }
+          }, 300);
+        } catch (error) {
+          console.error('Error in requestAnimationFrame:', error);
+          isAnimating.value = false;
+        }
+      });
+    } catch (error) {
+      console.error('Error in handleSwipe:', error);
+      isAnimating.value = false;
+    }
+  };
+
+  const gesture = Gesture.Pan()
+    .onBegin(() => {
+      try {
+        if (isAnimating.value) return;
+        lastDirection.value = null;
+      } catch (error) {
+        console.error('Error in gesture onBegin:', error);
+      }
+    })
+    .onUpdate((event) => {
+      try {
+        if (isAnimating.value) return;
+
+        // Add resistance to the drag
+        const resistance = 0.5;
+        const dragDistance = event.translationX;
+        const resistedDistance = dragDistance > 0 
+          ? Math.min(dragDistance, width * 0.4) * resistance
+          : Math.max(dragDistance, -width * 0.4) * resistance;
+
+        // Update direction
+        if (Math.abs(resistedDistance) > 10) {
+          lastDirection.value = resistedDistance > 0 ? 'right' : 'left';
+        }
+
+        translateX.value = resistedDistance;
+        translateY.value = event.translationY * 0.3;
+        cardRotation.value = interpolate(
+          resistedDistance,
+          [-width / 2, 0, width / 2],
+          [-30, 0, 30],
+          Extrapolate.CLAMP
+        );
+      } catch (error) {
+        console.error('Error in gesture onUpdate:', error);
+      }
+    })
+    .onEnd((event) => {
+      try {
+        if (isAnimating.value) return;
+
+        const shouldSwipe = Math.abs(event.translationX) > width * 0.2;
+        const velocity = event.velocityX;
+        
+        // If moving fast enough, trigger swipe regardless of distance
+        if (Math.abs(velocity) > 500) {
+          const direction = velocity > 0 ? "right" : "left";
+          runOnJS(handleSwipe)(direction);
+          return;
+        }
+        
+        if (shouldSwipe && lastDirection.value) {
+          runOnJS(handleSwipe)(lastDirection.value);
+        } else {
+          runOnJS(resetCard)();
+        }
+      } catch (error) {
+        console.error('Error in gesture onEnd:', error);
         runOnJS(resetCard)();
       }
     })
     .onFinalize(() => {
-      if (!isAnimating.value && Math.abs(translateX.value) < width * 0.2) {
+      try {
+        if (!isAnimating.value && Math.abs(translateX.value) < width * 0.2) {
+          runOnJS(resetCard)();
+        }
+      } catch (error) {
+        console.error('Error in gesture onFinalize:', error);
         runOnJS(resetCard)();
       }
     });
-
-  const handleSwipe = (direction: "left" | "right") => {
-    if (isAnimating.value || !users.length) return;
-    isAnimating.value = true;
-
-    const currentUserIndex = currentIndex.value;
-    if (currentUserIndex >= users.length) {
-      isAnimating.value = false;
-      return;
-    }
-
-    if (direction === "right") {
-      onSwipedRight(currentUserIndex);
-    } else {
-      onSwipedLeft(currentUserIndex);
-    }
-    
-    translateX.value = withSpring(direction === "right" ? width * 1.5 : -width * 1.5, {
-      damping: 15,
-      stiffness: 100,
-      velocity: direction === "right" ? 1000 : -1000,
-    });
-    translateY.value = withSpring(0, {
-      damping: 15,
-      stiffness: 100,
-    });
-    cardRotation.value = withSpring(direction === "right" ? 30 : -30, {
-      damping: 15,
-      stiffness: 100,
-    });
-    
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        translateX.value = 0;
-        translateY.value = 0;
-        cardRotation.value = 0;
-        
-        // Update currentIndex only if there are more users
-        if (currentUserIndex + 1 < users.length) {
-          currentIndex.value = currentUserIndex + 1;
-        } else {
-          // If we've reached the end, reset to 0 or handle empty state
-          currentIndex.value = 0;
-          if (users.length === 0) {
-            setShowSwiper(false);
-          }
-        }
-        
-        isAnimating.value = false;
-      }, 300);
-    });
-  };
 
   const cardStyle = useAnimatedStyle(() => {
     const rotate = interpolate(
@@ -357,6 +454,72 @@ const Swipe = () => {
     }
   };
 
+  const sendMatchNotification = async (matchedUserId: string, matchedUserName: string) => {
+    try {
+      console.log('Starting to send match notification to:', matchedUserId);
+      
+      // Get matched user's push token
+      const matchedUserDoc = await getDoc(doc(db, 'users', matchedUserId));
+      if (!matchedUserDoc.exists()) {
+        console.log('Matched user document not found');
+        return;
+      }
+
+      const matchedUserData = matchedUserDoc.data();
+      const pushToken = matchedUserData?.expoPushToken;
+
+      if (!pushToken) {
+        console.log('No push token found for matched user');
+        return;
+      }
+
+      // Get current user's name
+      const currentUserDoc = await getDoc(doc(db, 'users', currentUserUID));
+      if (!currentUserDoc.exists()) {
+        console.log('Current user document not found');
+        return;
+      }
+      
+      const currentUserName = currentUserDoc.data()?.name || 'Someone';
+      console.log('Sending notification from:', currentUserName, 'to:', matchedUserName);
+
+      // Send push notification using Expo's push notification service
+      const message = {
+        to: pushToken,
+        sound: 'default',
+        title: 'New Match! 🎉',
+        body: `${currentUserName} also wants to connect with you!`,
+        data: {
+          type: 'match',
+          matchedUserId: currentUserUID,
+          matchedUserName: currentUserName
+        },
+      };
+
+      console.log('Attempting to send notification with data:', message);
+
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+
+      const responseData = await response.json();
+      console.log('Notification send response:', responseData);
+
+      if (!response.ok) {
+        throw new Error(`Failed to send notification: ${responseData.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error sending match notification:', error);
+      // Don't throw the error, just log it to prevent app crash
+    }
+  };
+
   // Step 5: Set up listener for array updates
   useEffect(() => {
     const userDocRef = doc(db, "users", currentUserUID);
@@ -381,17 +544,20 @@ const Swipe = () => {
     }
   }, [currentUserData]);
 
-  /** Fetch users and filter based on likedUsers and dislikedUsers */
+  /** Fetch users and filter based on airport code and recent activity */
   const fetchUsers = async () => {
     try {
       setIsLoadingUsers(true);
+      console.log('Starting to fetch users...');
       
       // Get current user's airport code
       const currentUserDoc = await doc(db, "users", currentUserUID);
       const currentUserSnapshot = await getDoc(currentUserDoc);
       const currentUserAirport = currentUserSnapshot.data()?.airportCode;
+      console.log('Current user airport:', currentUserAirport);
 
       if (!currentUserAirport) {
+        console.log('No airport code found for current user');
         Alert.alert("Error", "Please set your airport code in your profile.");
         return;
       }
@@ -399,35 +565,84 @@ const Swipe = () => {
       // Calculate timestamp for 1 hour ago
       const oneHourAgo = new Date();
       oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+      console.log('Filtering users active since:', oneHourAgo.toISOString());
 
-      // Query users with the same airport code and recent updates
+      // Get all pending connections for current user
+      const connectionsRef = collection(db, "connections");
+      const connectionsQuery = query(
+        connectionsRef,
+        where("participants", "array-contains", currentUserUID),
+        where("status", "==", "pending")
+      );
+      const connectionsSnapshot = await getDocs(connectionsQuery);
+      const pendingUserIds = new Set<string>();
+      
+      connectionsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const otherUserId = data.participants.find((id: string) => id !== currentUserUID);
+        if (otherUserId) {
+          pendingUserIds.add(otherUserId);
+        }
+      });
+
+      console.log('Found pending connections with users:', Array.from(pendingUserIds));
+
+      // First, get all users at the same airport
       const usersRef = collection(db, "users");
-      const q = query(
+      const airportQuery = query(
         usersRef,
-        where("airportCode", "==", currentUserAirport),
-        where("updatedAt", ">=", oneHourAgo)
+        where("airportCode", "==", currentUserAirport)
       );
 
-      const querySnapshot = await getDocs(q);
-      const fetchedUsers = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as User[];
+      console.log('Executing airport query...');
+      const querySnapshot = await getDocs(airportQuery);
+      console.log('Total users at airport:', querySnapshot.docs.length);
 
-      const likedAndDisliked = [
-        ...(currentUserData?.likedUsers || []),
-        ...(currentUserData?.dislikedUsers || []),
-      ];
+      const fetchedUsers = querySnapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          console.log('User data:', {
+            id: doc.id,
+            name: data.name,
+            airportCode: data.airportCode,
+            lastLogin: data.lastLogin?.toDate?.() || 'No login time'
+          });
+          return {
+            id: doc.id,
+            ...data
+          } as User;
+        })
+        .filter(user => {
+          const lastLogin = user.lastLogin?.toDate?.() || new Date(0);
+          const isRecent = lastLogin >= oneHourAgo;
+          const isNotCurrentUser = user.id !== currentUserUID;
+          const isNotPending = !pendingUserIds.has(user.id);
+          
+          console.log('Filtering user:', {
+            id: user.id,
+            name: user.name,
+            lastLogin: lastLogin.toISOString(),
+            isRecent,
+            isNotCurrentUser,
+            isNotPending,
+            passesFilter: isRecent && isNotCurrentUser && isNotPending
+          });
+          
+          return isRecent && isNotCurrentUser && isNotPending;
+        });
       
-      const filteredUsers = fetchedUsers.filter(
-        (user) => user.id !== currentUserUID && !likedAndDisliked.includes(user.id)
-      );
+      console.log('Final filtered users count:', fetchedUsers.length);
+      console.log('Filtered users:', fetchedUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        lastLogin: u.lastLogin?.toDate?.() || 'No login time'
+      })));
       
-      setUsers(filteredUsers);
-      setShowSwiper(filteredUsers.length > 0);
+      setUsers(fetchedUsers);
+      setShowSwiper(fetchedUsers.length > 0);
     } catch (err) {
-      Alert.alert("Error", "Failed to fetch users. Please try again later.");
       console.error("Error fetching users:", err);
+      Alert.alert("Error", "Failed to fetch users. Please try again later.");
     } finally {
       setIsLoadingUsers(false);
     }
@@ -441,40 +656,86 @@ const Swipe = () => {
     try {
       const swipedUser = users[index];
       const swipedUserUID = swipedUser.id;
+      console.log('Processing right swipe for user:', swipedUserUID);
+
+      // Get current user data first
+      const currentUserDoc = await getDoc(doc(db, "users", currentUserUID));
+      const currentUserData = currentUserDoc.data();
 
       await updateUser(currentUserUID, {
         likedUsers: arrayUnion(swipedUserUID),
       });
 
-      if (swipedUser.likedUsers?.includes(currentUserUID)) {
-        const isDuplicate = connections.some(
-          (conn) =>
-            (conn.user1 === currentUserUID && conn.user2 === swipedUserUID) ||
-            (conn.user1 === swipedUserUID && conn.user2 === currentUserUID)
-        );
-        if (!isDuplicate) {
-          setConnections((prev) => [
-            ...prev,
-            { user1: currentUserUID, user2: swipedUserUID },
-          ]);
-          
-          // Create a new chat when there's a match
-          const chatData = {
-            participants: [currentUserUID, swipedUserUID],
-            createdAt: new Date(),
-            lastMessage: null,
-          };
-          
-          try {
-            const chatsCollection = collection(db, "chats");
-            const docRef = await addDoc(chatsCollection, chatData);
-            setChatId(docRef.id);
-            setMatchedUser(swipedUser);
-            setShowQuickMessage(true);
-          } catch (error) {
-            console.error("Error creating chat:", error);
-          }
+      // Check if the other user has already liked us
+      const swipedUserDoc = await getDoc(doc(db, "users", swipedUserUID));
+      const swipedUserData = swipedUserDoc.data();
+      const hasMatched = swipedUserData?.likedUsers?.includes(currentUserUID);
+
+      // Create a pending connection
+      const connectionData = {
+        participants: [currentUserUID, swipedUserUID],
+        createdAt: new Date(),
+        status: 'pending',
+        initiator: currentUserUID,
+        lastMessage: null,
+      };
+      
+      try {
+        console.log('Creating pending connection');
+        const connectionsCollection = collection(db, "connections");
+        const docRef = await addDoc(connectionsCollection, connectionData);
+        
+        // Create a chat with pending status
+        const chatData = {
+          participants: [currentUserUID, swipedUserUID],
+          createdAt: new Date(),
+          lastMessage: null,
+          status: 'pending',
+          connectionId: docRef.id
+        };
+        
+        const chatsCollection = collection(db, "chats");
+        await addDoc(chatsCollection, chatData);
+
+        // If it's a match, create notifications for both users
+        if (hasMatched) {
+          // Create notification for the other user
+          const otherUserNotifications = swipedUserData?.notifications || [];
+          await updateDoc(doc(db, "users", swipedUserUID), {
+            notifications: [...otherUserNotifications, {
+              id: Date.now().toString(),
+              title: "New Match! 🎉",
+              body: `${currentUserData?.name || 'Someone'} matched with you!`,
+              data: {
+                type: 'match',
+                matchedUserId: currentUserUID,
+                matchedUserName: currentUserData?.name
+              },
+              timestamp: new Date(),
+              read: false
+            }]
+          });
+
+          // Create notification for current user
+          const currentUserNotifications = currentUserData?.notifications || [];
+          await updateDoc(doc(db, "users", currentUserUID), {
+            notifications: [...currentUserNotifications, {
+              id: Date.now().toString(),
+              title: "New Match! 🎉",
+              body: `You matched with ${swipedUser.name}!`,
+              data: {
+                type: 'match',
+                matchedUserId: swipedUserUID,
+                matchedUserName: swipedUser.name
+              },
+              timestamp: new Date(),
+              read: false
+            }]
+          });
         }
+        
+      } catch (error) {
+        console.error("Error creating pending connection:", error);
       }
     } catch (err) {
       console.error("Error processing right swipe:", err);
@@ -621,208 +882,319 @@ const Swipe = () => {
     };
   });
 
+  const resetSwipeHistory = async () => {
+    try {
+      // Show confirmation dialog
+      Alert.alert(
+        "Reset Swipe History",
+        "This will clear your liked and disliked users, allowing you to see them again. Are you sure?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          {
+            text: "Reset",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                // Update user document to clear liked and disliked arrays
+                await updateUser(currentUserUID, {
+                  likedUsers: [],
+                  dislikedUsers: []
+                });
+
+                // Delete all existing connections for this user
+                const connectionsRef = collection(db, "connections");
+                const q = query(
+                  connectionsRef,
+                  where("participants", "array-contains", currentUserUID),
+                  limit(50) // Add limit to prevent Bloom filter issues
+                );
+                
+                let lastDoc: any = null;
+                let hasMore = true;
+                
+                while (hasMore) {
+                  const querySnapshot = await getDocs(
+                    lastDoc ? query(q, startAfter(lastDoc)) : q
+                  );
+                  
+                  if (querySnapshot.empty) {
+                    hasMore = false;
+                    continue;
+                  }
+                  
+                  // Delete each connection
+                  const deletePromises = querySnapshot.docs.map((doc: any) => deleteDoc(doc.ref));
+                  await Promise.all(deletePromises);
+                  
+                  lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+                  hasMore = querySnapshot.docs.length === 50;
+                }
+
+                // Delete all existing chats for this user
+                const chatsRef = collection(db, "chats");
+                const chatsQuery = query(
+                  chatsRef,
+                  where("participants", "array-contains", currentUserUID),
+                  limit(50) // Add limit to prevent Bloom filter issues
+                );
+                
+                lastDoc = null;
+                hasMore = true;
+                
+                while (hasMore) {
+                  const chatsSnapshot = await getDocs(
+                    lastDoc ? query(chatsQuery, startAfter(lastDoc)) : chatsQuery
+                  );
+                  
+                  if (chatsSnapshot.empty) {
+                    hasMore = false;
+                    continue;
+                  }
+                  
+                  // Delete each chat
+                  const deleteChatPromises = chatsSnapshot.docs.map((doc: any) => deleteDoc(doc.ref));
+                  await Promise.all(deleteChatPromises);
+                  
+                  lastDoc = chatsSnapshot.docs[chatsSnapshot.docs.length - 1];
+                  hasMore = chatsSnapshot.docs.length === 50;
+                }
+                
+                // Refresh the users list
+                await fetchUsers();
+                
+                Alert.alert("Success", "Your swipe history has been reset!");
+              } catch (error) {
+                console.error("Error resetting swipe history:", error);
+                Alert.alert("Error", "Failed to reset swipe history. Please try again.");
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error("Error in reset confirmation:", error);
+    }
+  };
+
   /** Loading state */
   if (loading || isLoadingUsers) {
-    return <LoadingScreen message="Finding travelers near you..." />;
+    return (
+      <Animated.View 
+        entering={FadeIn.duration(300)}
+        exiting={FadeOut.duration(300)}
+        style={styles.loadingContainer}
+      >
+        <LoadingScreen message="Finding travelers near you..." />
+      </Animated.View>
+    );
   }
 
   /** Error state */
   if (error) {
     return (
-      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
-          <View style={styles.stateContainer}>
-            <Text style={[styles.errorText, { color: theme === "light" ? "#FF3B30" : "#FF3B30" }]}>{error}</Text>
-            <TouchableOpacity style={[styles.retryButton, { backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8" }]} onPress={fetchUsers}>
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-      </SafeAreaView>
+      <Animated.View 
+        entering={FadeIn.duration(300)}
+        exiting={FadeOut.duration(300)}
+        style={styles.loadingContainer}
+      >
+        <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+          <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+            <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
+            <View style={styles.stateContainer}>
+              <Text style={[styles.errorText, { color: theme === "light" ? "#FF3B30" : "#FF3B30" }]}>{error}</Text>
+            </View>
+          </LinearGradient>
+        </SafeAreaView>
+      </Animated.View>
     );
   }
 
   /** No users available state */
   if (!users.length) {
     return (
-      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
-          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
-          <View style={styles.stateContainer}>
-            <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>No users found nearby.</Text>
-            <TouchableOpacity style={[styles.retryButton, { backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8" }]} onPress={fetchUsers}>
-              <Text style={styles.retryButtonText}>Refresh</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-      </SafeAreaView>
+      <Animated.View 
+        entering={FadeIn.duration(300)}
+        exiting={FadeOut.duration(300)}
+        style={styles.loadingContainer}
+      >
+        <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+          <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
+            <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
+            <View style={[styles.stateContainer, { paddingHorizontal: 32, alignItems: 'center' }]}> 
+              <MaterialIcons name="person-off" size={64} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={{ marginBottom: 24 }} />
+              <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8", fontSize: 20, fontWeight: '700', marginBottom: 12, textAlign: 'center' }]}>No users found at {airportName || (currentUserData?.airportCode || "this airport")}.</Text>
+              <Text style={{ color: theme === "light" ? "#64748B" : "#CBD5E1", fontSize: 15, textAlign: 'center', marginBottom: 24 }}>
+                We couldn't find any travelers at this airport right now. Check back later!
+              </Text>
+            </View>
+          </LinearGradient>
+        </SafeAreaView>
+      </Animated.View>
     );
   }
 
   /** Main Swiper view */
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
-        <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
-        <View style={{ flex: 1 }}>
-          {showSwiper && users.length > 0 ? (
-            <>
-              <View style={styles.cardsContainer}>
-                <GestureDetector gesture={gesture}>
-                  <Animated.View style={[styles.cardContainer, cardStyle, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
-                    {currentUser && renderCard(currentUser)}
-                    <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
-                      <View style={styles.labelContainer}>
-                        <MaterialIcons name="people" size={32} color="#4CD964" />
-                        <Text style={styles.likeText}>CONNECT</Text>
-                      </View>
-                    </Animated.View>
-                    <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
-                      <View style={styles.labelContainer}>
-                        <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
-                        <Text style={styles.nopeText}>NOPE</Text>
-                      </View>
-                    </Animated.View>
-                  </Animated.View>
-                </GestureDetector>
-              </View>
-              
-              {/* Quick Message Button */}
-              <View style={styles.quickMessageButtonContainer}>
-                <Animated.View style={buttonStyle}>
-                  <TouchableOpacity 
-                    style={[styles.quickMessageButton, { 
-                      backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8",
-                      borderColor: theme === "light" ? "#37a4c8" : "#37a4c8"
-                    }]}
-                    onPress={() => {
-                      if (currentUser) {
-                        handleShowMessageOptions(currentUser);
-                      }
-                    }}
-                  >
-                    <MaterialIcons name="message" size={24} color="#FFF" />
-                    <Text style={styles.quickMessageButtonText}>Send Quick Message</Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              </View>
-            </>
-          ) : (
-            <LoadingScreen message="Loading user profiles..." />
-          )}
-          
-          {/* Message Options Modal */}
-          {showMessageOptions && selectedUser && (
-            <View style={[styles.messageOptionsContainer, { backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.5)" : "rgba(0, 0, 0, 0.8)" }]}>
-              <View style={[styles.messageOptionsContent, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: "#37a4c8"
-              }]}>
-                <View style={[styles.messageOptionsHeader, { 
-                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                  borderColor: "#37a4c8"
-                }]}>
-                  <Text style={[styles.messageOptionsTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Quick Messages</Text>
-                  <Text style={[styles.messageOptionsSubtitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Send a message to {selectedUser.name}</Text>
-                  <TouchableOpacity 
-                    style={[styles.closeButton, { 
+    <Animated.View 
+      entering={FadeIn.duration(300)}
+      exiting={FadeOut.duration(300)}
+      style={[styles.loadingContainer, screenStyle]}
+    >
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
+          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
+          <View style={{ flex: 1 }}>
+            {showSwiper && users.length > 0 ? (
+              <>
+                <View style={styles.cardsContainer}>
+                  <GestureDetector gesture={gesture}>
+                    <Animated.View style={[styles.cardContainer, cardStyle, { 
                       backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
                       borderColor: "#37a4c8"
-                    }]}
-                    onPress={() => setShowMessageOptions(false)}
-                  >
-                    <MaterialIcons name="close" size={20} color={theme === "light" ? "#000000" : "#e4fbfe"} />
-                  </TouchableOpacity>
+                    }]}>
+                      {currentUser && renderCard(currentUser)}
+                      <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
+                        <View style={styles.labelContainer}>
+                          <MaterialIcons name="people" size={32} color="#4CD964" />
+                          <Text style={styles.likeText}>CONNECT</Text>
+                        </View>
+                      </Animated.View>
+                      <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
+                        <View style={styles.labelContainer}>
+                          <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
+                          <Text style={styles.nopeText}>NOPE</Text>
+                        </View>
+                      </Animated.View>
+                    </Animated.View>
+                  </GestureDetector>
                 </View>
                 
-                <View style={styles.messagesContainer}>
-                  <View style={styles.messageSection}>
-                    <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Preset Messages</Text>
-                    {presetMessages.map((message, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={[styles.presetMessageButton, { 
-                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                          borderColor: "#37a4c8"
-                        }]}
-                        onPress={() => {
-                          sendQuickMessage(message, selectedUser.id);
-                        }}
-                      >
-                        <Text style={[styles.presetMessageText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{message}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  
-                  <View style={styles.messageSection}>
-                    <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Chat Options</Text>
-                    <TouchableOpacity
-                      style={[styles.presetMessageButton, styles.chatButton, { 
+                {/* Quick Message Button */}
+                <View style={styles.quickMessageButtonContainer}>
+                  <Animated.View style={buttonStyle}>
+                    <TouchableOpacity 
+                      style={[styles.quickMessageButton, { 
                         backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8",
                         borderColor: theme === "light" ? "#37a4c8" : "#37a4c8"
                       }]}
                       onPress={() => {
-                        const findOrCreateChat = async () => {
-                          try {
-                            // First check if a chat already exists between these users
-                            const chatsCollection = collection(db, "chats");
-                            const q = query(
-                              chatsCollection, 
-                              where("participants", "array-contains", currentUserUID)
-                            );
-                            
-                            const querySnapshot = await getDocs(q);
-                            let existingChatId = null;
-                            
-                            // Check each chat to see if it contains both users
-                            for (const doc of querySnapshot.docs) {
-                              const chatData = doc.data();
-                              if (chatData.participants.includes(selectedUser.id)) {
-                                existingChatId = doc.id;
-                                break;
-                              }
-                            }
-                            
-                            if (existingChatId) {
-                              // Use the existing chat
-                              router.push(`/chat/${existingChatId}`);
-                            } else {
-                              // Create a new chat if none exists
-                              const chatData = {
-                                participants: [currentUserUID, selectedUser.id],
-                                createdAt: new Date(),
-                                lastMessage: null,
-                              };
-                              
-                              const docRef = await addDoc(chatsCollection, chatData);
-                              router.push(`/chat/${docRef.id}`);
-                            }
-                            
-                            setShowMessageOptions(false);
-                          } catch (error) {
-                            console.error("Error finding or creating chat:", error);
-                            Alert.alert("Error", "Failed to open chat. Please try again.");
-                          }
-                        };
-                        
-                        findOrCreateChat();
+                        if (currentUser) {
+                          handleShowMessageOptions(currentUser);
+                        }
                       }}
                     >
-                      <MaterialIcons name="chat" size={20} color="#FFF" />
-                      <Text style={[styles.presetMessageText, { color: '#FFF' }]}>Open Chat</Text>
+                      <MaterialIcons name="message" size={24} color="#FFF" />
+                      <Text style={styles.quickMessageButtonText}>Send Quick Message</Text>
                     </TouchableOpacity>
+                  </Animated.View>
+                </View>
+              </>
+            ) : (
+              <Animated.View 
+                entering={FadeIn.duration(300)}
+                exiting={FadeOut.duration(300)}
+                style={styles.loadingContainer}
+              >
+                <LoadingScreen message="Loading user profiles..." />
+              </Animated.View>
+            )}
+            
+            {/* Message Options Modal */}
+            {showMessageOptions && selectedUser && (
+              <View style={[styles.messageOptionsContainer, { backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.5)" : "rgba(0, 0, 0, 0.8)" }]}>
+                <View style={[styles.messageOptionsContent, { 
+                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}>
+                  <View style={[styles.messageOptionsHeader, { 
+                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                    borderColor: "#37a4c8"
+                  }]}>
+                    <Text style={[styles.messageOptionsTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Quick Messages</Text>
+                    <Text style={[styles.messageOptionsSubtitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Send a message to {selectedUser.name}</Text>
+                    <TouchableOpacity 
+                      style={[styles.closeButton, { 
+                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                        borderColor: "#37a4c8"
+                      }]}
+                      onPress={() => setShowMessageOptions(false)}
+                    >
+                      <MaterialIcons name="close" size={20} color={theme === "light" ? "#000000" : "#e4fbfe"} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={styles.messagesContainer}>
+                    <View style={styles.messageSection}>
+                      <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Preset Messages</Text>
+                      {presetMessages.map((message, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={[styles.presetMessageButton, { 
+                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                            borderColor: "#37a4c8"
+                          }]}
+                          onPress={() => {
+                            sendQuickMessage(message, selectedUser.id);
+                          }}
+                        >
+                          <Text style={[styles.presetMessageText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{message}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    
+                    <View style={styles.messageSection}>
+                      <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Chat Options</Text>
+                      <TouchableOpacity
+                        style={[styles.presetMessageButton, styles.chatButton, { 
+                          backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8",
+                          borderColor: theme === "light" ? "#37a4c8" : "#37a4c8"
+                        }]}
+                        onPress={() => {
+                          const findOrCreateChat = async () => {
+                            try {
+                              // Check if a chat already exists between these users
+                              const existingChat = await getExistingChat(currentUserUID, selectedUser.id);
+                              
+                              if (existingChat) {
+                                // Use the existing chat
+                                router.push(`/chat/${existingChat.id}`);
+                              } else {
+                                // Create a new chat if none exists
+                                const chatData = {
+                                  participants: [currentUserUID, selectedUser.id],
+                                  createdAt: new Date(),
+                                  lastMessage: null,
+                                };
+                                
+                                const chatId = await addChat(chatData);
+                                router.push(`/chat/${chatId}`);
+                              }
+                              
+                              setShowMessageOptions(false);
+                            } catch (error) {
+                              console.error("Error finding or creating chat:", error);
+                              Alert.alert("Error", "Failed to open chat. Please try again.");
+                            }
+                          };
+                          
+                          findOrCreateChat();
+                        }}
+                      >
+                        <MaterialIcons name="chat" size={20} color="#FFF" />
+                        <Text style={[styles.presetMessageText, { color: '#FFF' }]}>Open Chat</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </View>
-            </View>
-          )}
-        </View>
-      </LinearGradient>
-    </SafeAreaView>
+            )}
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
+    </Animated.View>
   );
 };
 
@@ -1180,6 +1552,31 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#37a4c8',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#37a4c8',
+  },
+  resetButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
   },
 });
 

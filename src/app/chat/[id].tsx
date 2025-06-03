@@ -21,25 +21,41 @@ import useChats from "../../hooks/useChats";
 import useAuth from "../../hooks/auth";
 import { router, useLocalSearchParams } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../config/firebaseConfig";
+import { auth, db } from "../../../config/firebaseConfig";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
+import * as ExpoNotifications from 'expo-notifications';
 
 interface Chat {
   id: string;
   participants: string[];
+  connectionId?: string;
+  connectionType?: string;
+  createdAt?: {
+    seconds: number;
+    nanoseconds: number;
+  } | Date;
+  lastMessage?: string;
+  lastMessageStatus?: 'sent' | 'delivered' | 'read';
+  lastMessageTime?: {
+    seconds: number;
+    nanoseconds: number;
+  } | Date;
+  status?: 'pending' | 'active';
 }
 
 interface Message {
   id: string;
-  content: string;
+  text: string;
   date: {
     seconds: number;
-  };
+    nanoseconds: number;
+  } | Date;
   sender: string;
   receiver: string;
   status?: 'sent' | 'delivered' | 'read';
@@ -127,7 +143,11 @@ export default function Chat() {
       const unsubscribeMessages = subscribeToMessages(chatId, (msgs: Message[]) => {
         // Sort messages from oldest to newest
         const sorted = msgs.sort(
-          (a: Message, b: Message) => (a.date?.seconds || 0) - (b.date?.seconds || 0)
+          (a: Message, b: Message) => {
+            const dateA = a.date instanceof Date ? a.date.getTime() : a.date.seconds * 1000;
+            const dateB = b.date instanceof Date ? b.date.getTime() : b.date.seconds * 1000;
+            return dateA - dateB;
+          }
         );
         setMessages(sorted);
         
@@ -200,29 +220,125 @@ export default function Chat() {
   }, []);
 
   // Format timestamp for display
-  const formatTimestamp = (dateObj: { seconds: number } | Date) => {
+  const formatTimestamp = (dateObj: { seconds: number; nanoseconds: number } | Date) => {
     if (!dateObj) return "";
     const date = 'seconds' in dateObj ? new Date(dateObj.seconds * 1000) : new Date(dateObj);
+    if (isNaN(date.getTime())) return "";
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const sendPushNotification = async (receiverId: string, message: string) => {
+    try {
+      // Get receiver's push token
+      const receiverDoc = await getDoc(doc(db, 'users', receiverId));
+      if (!receiverDoc.exists()) {
+        console.log('Receiver document not found');
+        return;
+      }
+
+      const receiverData = receiverDoc.data();
+      const pushToken = receiverData?.expoPushToken;
+
+      if (!pushToken) {
+        console.log('No push token found for receiver');
+        return;
+      }
+
+      // Get sender's name from Firestore
+      const senderDoc = await getDoc(doc(db, 'users', authUser?.uid || ''));
+      const senderName = senderDoc.exists() ? senderDoc.data()?.displayName : null;
+
+      // Send push notification using Expo's push notification service
+      const messageData = {
+        to: pushToken,
+        sound: 'default',
+        title: senderName ? `Message from ${senderName}` : 'New Message',
+        body: message,
+        data: {
+          type: 'chat',
+          chatId: chatId,
+          receiverId: receiverId,
+          senderId: authUser?.uid,
+          senderName: senderName
+        },
+      };
+
+      console.log('Sending push notification:', messageData);
+
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messageData),
+      });
+    } catch (error) {
+      console.error('Error sending push notification:', error);
+    }
   };
 
   const handleSendMessage = async () => {
     if (newMessage.trim() === "" || !authUser || !partner) return;
     
     const messageData = {
-      content: newMessage,
+      text: newMessage,
       date: new Date(),
       sender: authUser.uid,
       receiver: partner.id,
-      status: 'sent'
+      status: 'sent' as const
     };
     
     try {
       await addMessage(chatId, messageData);
+
+      // Update the chat document with the last message info
+      const chatRef = doc(db, 'chats', chatId);
+      await updateDoc(chatRef, {
+        lastMessage: newMessage,
+        lastMessageStatus: 'sent',
+        lastMessageTime: new Date()
+      });
+
+      // Get sender's data for the notification
+      const senderDoc = await getDoc(doc(db, 'users', authUser.uid));
+      const senderData = senderDoc.exists() ? senderDoc.data() : null;
+      const senderName = senderData?.name || 'Unknown User';
+
+      // Create notification for the receiver
+      const notification = {
+        id: Date.now().toString(),
+        title: `Message from ${senderName}`,
+        body: newMessage,
+        data: {
+          type: 'chat',
+          chatId: chatId,
+          matchedUserId: authUser.uid,
+          matchedUserName: senderName
+        },
+        timestamp: new Date(),
+        read: false
+      };
+
+      // Add notification to receiver's user document
+      const receiverRef = doc(db, 'users', partner.id);
+      const receiverDoc = await getDoc(receiverRef);
+      if (receiverDoc.exists()) {
+        const receiverData = receiverDoc.data();
+        const notifications = receiverData.notifications || [];
+        await updateDoc(receiverRef, {
+          notifications: [...notifications, notification]
+        });
+      }
+
+      // Send push notification to the receiver
+      await sendPushNotification(partner.id, newMessage);
       setNewMessage("");
       scrollToBottom();
     } catch (error) {
       console.error("Error sending message:", error);
+      Alert.alert("Error", "Failed to send message. Please try again.");
     }
   };
 
@@ -409,7 +525,7 @@ export default function Chat() {
                             }
                           ]}
                         >
-                          {message.content}
+                          {message.text}
                         </Text>
                         <View style={styles.messageFooter}>
                           <Text style={[styles.timestamp, { 

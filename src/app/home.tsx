@@ -77,25 +77,24 @@ export default function EventCreation() {
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const mapScaleAnim = useRef(new Animated.Value(0.98)).current;
   const headerSlideAnim = useRef(new Animated.Value(20)).current;
+  const listSlideAnim = useRef(new Animated.Value(30)).current;
 
   // Fetch current location and events
   useEffect(() => {
     const initializeData = async () => {
       try {
-        // Request location permission and get location
+        // Request location permission and get current location
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
-          Alert.alert("Permission to access location was denied");
+          Alert.alert("Permission Denied", "Location permission is required to show nearby events.");
           return;
         }
 
         const location = await Location.getCurrentPositionAsync({});
-        if (location && location.coords) {
-          setCurrentLocation({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          });
-        }
+        setCurrentLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
 
         // Fetch events and organizer names
         const fetchedEvents = await getEvents();
@@ -143,25 +142,31 @@ export default function EventCreation() {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 600,
+          duration: 800,
           useNativeDriver: true,
           easing: Easing.out(Easing.cubic),
         }),
         Animated.timing(scaleAnim, {
           toValue: 1,
-          duration: 600,
+          duration: 800,
           useNativeDriver: true,
           easing: Easing.out(Easing.cubic),
         }),
         Animated.timing(mapScaleAnim, {
           toValue: 1,
-          duration: 800,
+          duration: 1000,
           useNativeDriver: true,
           easing: Easing.out(Easing.cubic),
         }),
         Animated.timing(headerSlideAnim, {
           toValue: 0,
-          duration: 600,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(listSlideAnim, {
+          toValue: 0,
+          duration: 800,
           useNativeDriver: true,
           easing: Easing.out(Easing.cubic),
         }),
@@ -214,7 +219,7 @@ export default function EventCreation() {
     useEffect(() => {
       Animated.timing(cardAnim, {
         toValue: 1,
-        duration: 400,
+        duration: 500,
         delay: index * 100,
         useNativeDriver: true,
         easing: Easing.out(Easing.cubic),
@@ -223,7 +228,7 @@ export default function EventCreation() {
 
     const handlePressIn = () => {
       Animated.spring(pressAnim, {
-        toValue: 0.98,
+        toValue: 0.97,
         useNativeDriver: true,
         speed: 50,
         bounciness: 4,
@@ -326,7 +331,53 @@ export default function EventCreation() {
           >
             <FlatList
               data={sortedEvents}
-              renderItem={({ item, index }) => <AnimatedCard item={item} index={index} />}
+              renderItem={({ item, index }) => {
+                return (
+                  <React.Fragment>
+                    <AnimatedCard item={item} index={index} />
+                    {(index === 3 || index === 12) && (
+                      <Animated.View
+                        style={{
+                          opacity: fadeAnim,
+                          transform: [{ translateY: listSlideAnim }],
+                        }}
+                      >
+                        <TouchableOpacity
+                          style={[styles.createButton, { 
+                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                            borderColor: "#37a4c8"
+                          }]}
+                          onPress={() => router.push("/eventCreation")}
+                          activeOpacity={0.7}
+                        >
+                          <LinearGradient
+                            colors={theme === "light" 
+                              ? ['#ffffff', '#f8f9fa']
+                              : ['#1a1a1a', '#000000']}
+                            style={styles.createButtonGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                          >
+                            <View style={styles.createButtonContent}>
+                              <View style={styles.createButtonIconContainer}>
+                                <MaterialIcons name="add-circle" size={24} color="#37a4c8" />
+                              </View>
+                              <View style={styles.createButtonTextContainer}>
+                                <Text style={[styles.createButtonTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                  Create New Event
+                                </Text>
+                                <Text style={styles.createButtonSubtitle}>
+                                  Start planning your next gathering
+                                </Text>
+                              </View>
+                            </View>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      </Animated.View>
+                    )}
+                  </React.Fragment>
+                );
+              }}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
@@ -396,18 +447,39 @@ export default function EventCreation() {
                       )}
                     </MapView>
                   </Animated.View>
-                  <Animated.Text 
-                    style={[
-                      styles.headerText, 
-                      { 
-                        color: theme === "light" ? "#000000" : "#e4fbfe",
-                        transform: [{ translateY: headerSlideAnim }],
-                        opacity: fadeAnim
-                      }
-                    ]}
-                  >
-                    Nearby Events
-                  </Animated.Text>
+                  <View style={styles.headerSection}>
+                    <View style={styles.headerTop}>
+                      <Animated.Text 
+                        style={[
+                          styles.headerText, 
+                          { 
+                            color: theme === "light" ? "#000000" : "#e4fbfe",
+                            transform: [{ translateY: headerSlideAnim }],
+                            opacity: fadeAnim
+                          }
+                        ]}
+                      >
+                        Nearby Events
+                      </Animated.Text>
+                      <Animated.View
+                        style={{
+                          transform: [{ translateY: headerSlideAnim }],
+                          opacity: fadeAnim
+                        }}
+                      >
+                        <TouchableOpacity
+                          style={[styles.headerButton, { 
+                            backgroundColor: theme === "light" ? "#f8f9fa" : "#000000",
+                            borderColor: "#37a4c8"
+                          }]}
+                          onPress={() => router.push("/eventCreation")}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons name="add" size={24} color="#37a4c8" />
+                        </TouchableOpacity>
+                      </Animated.View>
+                    </View>
+                  </View>
                 </>
               }
               ListEmptyComponent={
@@ -416,7 +488,7 @@ export default function EventCreation() {
                     styles.emptyContainer,
                     {
                       opacity: fadeAnim,
-                      transform: [{ translateY: headerSlideAnim }]
+                      transform: [{ translateY: listSlideAnim }]
                     }
                   ]}
                 >
@@ -441,7 +513,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: "hidden",
     marginTop: 16,
-    marginBottom: 24,
+    marginBottom: 16,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
@@ -454,12 +526,65 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  headerText: {
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 24,
+  headerSection: {
     paddingHorizontal: 16,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingRight: 4,
+  },
+  headerText: {
+    fontSize: 28,
+    fontWeight: "700",
     letterSpacing: 0.5,
+    marginRight: 12,
+  },
+  createButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  createButtonGradient: {
+    padding: 20,
+  },
+  createButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  createButtonIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  createButtonTextContainer: {
+    flex: 1,
+  },
+  createButtonTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  createButtonSubtitle: {
+    fontSize: 15,
+    color: "#37a4c8",
+    lineHeight: 22,
+    letterSpacing: 0.2,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -481,7 +606,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   eventTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     marginBottom: 10,
     letterSpacing: 0.3,
@@ -495,7 +620,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#37a4c8",
     marginLeft: 8,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   eventDescription: {
     fontSize: 15,
@@ -523,7 +648,7 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 14,
     marginLeft: 8,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   emptyContainer: {
     flex: 1,
@@ -601,6 +726,21 @@ const styles = StyleSheet.create({
   metaIcon: {
     marginRight: 8,
   },
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    elevation: 2,
+    shadowColor: "#37a4c8",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    marginLeft: 8,
+  },
 });
-
-export { EventCreation };
