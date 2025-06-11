@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView, Keyboard, Platform, Animated } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView, Keyboard, Platform, Animated, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../../config/firebaseConfig';
 import { ThemeContext } from '../../../context/ThemeContext';
 import * as ExpoNotifications from 'expo-notifications';
+import { containsFilteredContent, getFilteredContentCategory } from '../../../utils/contentFilter';
 
 interface Message {
   id: string;
@@ -34,6 +35,7 @@ export default function EventChat() {
   const marginAnim = useRef(new Animated.Value(50)).current;
   const flatListRef = useRef<FlatList>(null);
   const { theme } = React.useContext(ThemeContext);
+  const [messageError, setMessageError] = useState(false);
 
   useEffect(() => {
     // Simulate initial loading
@@ -129,6 +131,18 @@ export default function EventChat() {
   const handleSendMessage = () => {
     if (!newMessage.trim() || !user) return;
     
+    // Check for inappropriate content
+    if (containsFilteredContent(newMessage)) {
+      setMessageError(true);
+      Alert.alert(
+        "Inappropriate Content",
+        `Your message contains inappropriate content. Please review and try again.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+    
+    setMessageError(false);
     const messageData = {
       text: newMessage,
       userId: user.uid,
@@ -255,20 +269,26 @@ export default function EventChat() {
                 style={[styles.input, { 
                   backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
                   color: theme === "light" ? "#1a1a1a" : "#ffffff",
-                  borderColor: theme === "light" ? "#e0e0e0" : "#3a3a3a"
+                  borderColor: messageError ? "#ff4444" : theme === "light" ? "#e0e0e0" : "#3a3a3a"
                 }]}
                 value={newMessage}
-                onChangeText={setNewMessage}
-                placeholder="Type a message..."
-                placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
+                onChangeText={(text) => {
+                  setNewMessage(text);
+                  if (messageError && !containsFilteredContent(text)) {
+                    setMessageError(false);
+                  }
+                }}
+                placeholder={messageError ? "Inappropriate content detected" : "Type a message..."}
+                placeholderTextColor={messageError ? "#ff4444" : theme === "light" ? "#666666" : "#a0a0a0"}
                 multiline
                 maxLength={1000}
               />
               <TouchableOpacity
                 onPress={handleSendMessage}
-                style={[styles.sendButton, { backgroundColor: "#37a4c8" }]}
+                style={[styles.sendButton, { backgroundColor: "#37a4c8" }, messageError && styles.sendButtonDisabled]}
+                disabled={messageError}
               >
-                <Feather name="send" size={24} color="#ffffff" />
+                <Feather name="send" size={24} color={messageError ? "#666666" : "#ffffff"} />
               </TouchableOpacity>
             </Animated.View>
           </KeyboardAvoidingView>
@@ -393,5 +413,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     letterSpacing: 0.3,
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#cccccc",
+    opacity: 0.7,
   },
 });

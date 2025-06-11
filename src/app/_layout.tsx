@@ -228,9 +228,25 @@ export default function RootLayout() {
                 animation: 'slide_from_right',
               }}
             />
+            {/* TOS Screen */}
+            <Stack.Screen
+              name="settings/tos"
+              options={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            />
             {/* Update Password Screen */}
             <Stack.Screen
               name="settings/updatePassword"
+              options={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            />
+            {/* Blocked Users Screen */}
+            <Stack.Screen
+              name="settings/blockedUsers"
               options={{
                 headerShown: false,
                 animation: 'slide_from_right',

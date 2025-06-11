@@ -30,5 +30,13 @@
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:7121898127:ios:0641e6ed13365ffdde3efa</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Layover uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Layover allows you to upload a profile photo or share pictures with fellow travelers during layovers.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Layover uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Layover uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests.</string>
 </dict>
 </plist>

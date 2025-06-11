@@ -9,18 +9,21 @@ interface LoadingSpinnerProps {
   textColor?: string;
   customTexts?: string[];
   showDots?: boolean;
+  message?: string;
 }
 
 const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   size = 100,
-  color = '#2F80ED',
-  textColor = '#2F80ED',
+  color = '#37a4c8',
+  textColor = '#37a4c8',
   customTexts,
   showDots = true,
+  message,
 }) => {
   const loadingAnimation = useRef(new Animated.Value(0)).current;
   const pulseAnimation = useRef(new Animated.Value(1)).current;
-  const [loadingText, setLoadingText] = useState("Finding travelers near you...");
+  const fadeAnimation = useRef(new Animated.Value(0)).current;
+  const [loadingText, setLoadingText] = useState(message || "Finding travelers near you...");
   
   const defaultTexts = [
     "Finding travelers near you...",
@@ -31,42 +34,56 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   
   const loadingTexts = customTexts || defaultTexts;
   
-  // Animate loading text
+  // Animate loading text with fade effect
   useEffect(() => {
     let textIndex = 0;
     const textInterval = setInterval(() => {
-      textIndex = (textIndex + 1) % loadingTexts.length;
-      setLoadingText(loadingTexts[textIndex]);
-    }, 2000);
+      // Fade out
+      Animated.timing(fadeAnimation, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        // Change text
+        textIndex = (textIndex + 1) % loadingTexts.length;
+        setLoadingText(loadingTexts[textIndex]);
+        // Fade in
+        Animated.timing(fadeAnimation, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 3000);
     
     return () => clearInterval(textInterval);
-  }, [loadingTexts]);
+  }, [loadingTexts, fadeAnimation]);
   
-  // Animate loading spinner
+  // Animate loading spinner with enhanced effects
   useEffect(() => {
-    // Rotate animation
+    // Rotate animation with easing
     Animated.loop(
       Animated.timing(loadingAnimation, {
         toValue: 1,
         duration: 2000,
-        easing: Easing.linear,
+        easing: Easing.bezier(0.4, 0, 0.2, 1),
         useNativeDriver: true,
       })
     ).start();
     
-    // Pulse animation
+    // Enhanced pulse animation
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnimation, {
           toValue: 1.2,
           duration: 1000,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnimation, {
           toValue: 1,
           duration: 1000,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
           useNativeDriver: true,
         }),
       ])
@@ -75,6 +92,7 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
     return () => {
       loadingAnimation.setValue(0);
       pulseAnimation.setValue(1);
+      fadeAnimation.setValue(0);
     };
   }, []);
   
@@ -83,8 +101,12 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
     outputRange: ['0deg', '360deg'],
   });
   
-  // Calculate lighter shade of the main color for gradient
-  const lighterColor = color + '80'; // Adding 50% opacity
+  // Calculate gradient colors
+  const gradientColors = [
+    color,
+    color + '80', // 50% opacity
+    color + '40', // 25% opacity
+  ];
   
   return (
     <View style={styles.loadingContainer}>
@@ -92,7 +114,10 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
         style={[
           styles.loadingSpinnerContainer,
           { 
-            transform: [{ rotate: spin }, { scale: pulseAnimation }],
+            transform: [
+              { rotate: spin },
+              { scale: pulseAnimation }
+            ],
             width: size,
             height: size,
             borderRadius: size / 2,
@@ -102,7 +127,7 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
         ]}
       >
         <LinearGradient
-          colors={[color, lighterColor]}
+          colors={gradientColors}
           style={[
             styles.loadingSpinner,
             { 
@@ -123,10 +148,15 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
           styles.loadingText,
           { 
             color: textColor,
-            opacity: pulseAnimation.interpolate({
-              inputRange: [1, 1.2],
-              outputRange: [0.7, 1],
-            })
+            opacity: fadeAnimation,
+            transform: [
+              {
+                scale: pulseAnimation.interpolate({
+                  inputRange: [1, 1.2],
+                  outputRange: [0.98, 1],
+                })
+              }
+            ]
           }
         ]}
       >
@@ -135,54 +165,35 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
       
       {showDots && (
         <View style={styles.loadingDotsContainer}>
-          <Animated.View 
-            style={[
-              styles.loadingDot,
-              { 
-                backgroundColor: color,
-                opacity: pulseAnimation.interpolate({
-                  inputRange: [1, 1.2],
-                  outputRange: [0.5, 1],
-                }),
-                transform: [{ scale: pulseAnimation.interpolate({
-                  inputRange: [1, 1.2],
-                  outputRange: [0.8, 1.2],
-                })}]
-              }
-            ]} 
-          />
-          <Animated.View 
-            style={[
-              styles.loadingDot,
-              { 
-                backgroundColor: color,
-                opacity: pulseAnimation.interpolate({
-                  inputRange: [1, 1.2],
-                  outputRange: [0.5, 1],
-                }),
-                transform: [{ scale: pulseAnimation.interpolate({
-                  inputRange: [1, 1.2],
-                  outputRange: [0.8, 1.2],
-                })}]
-              }
-            ]} 
-          />
-          <Animated.View 
-            style={[
-              styles.loadingDot,
-              { 
-                backgroundColor: color,
-                opacity: pulseAnimation.interpolate({
-                  inputRange: [1, 1.2],
-                  outputRange: [0.5, 1],
-                }),
-                transform: [{ scale: pulseAnimation.interpolate({
-                  inputRange: [1, 1.2],
-                  outputRange: [0.8, 1.2],
-                })}]
-              }
-            ]} 
-          />
+          {[0, 1, 2].map((index) => (
+            <Animated.View 
+              key={index}
+              style={[
+                styles.loadingDot,
+                { 
+                  backgroundColor: color,
+                  opacity: pulseAnimation.interpolate({
+                    inputRange: [1, 1.2],
+                    outputRange: [0.5, 1],
+                  }),
+                  transform: [
+                    {
+                      scale: pulseAnimation.interpolate({
+                        inputRange: [1, 1.2],
+                        outputRange: [0.8, 1.2],
+                      })
+                    },
+                    {
+                      translateY: pulseAnimation.interpolate({
+                        inputRange: [1, 1.2],
+                        outputRange: [0, -4],
+                      })
+                    }
+                  ]
+                }
+              ]} 
+            />
+          ))}
         </View>
       )}
     </View>
@@ -216,7 +227,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
     width: '100%',
-    color: '#e4fbfe',
     fontFamily: 'Inter-Medium',
   },
   loadingDotsContainer: {

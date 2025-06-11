@@ -17,9 +17,9 @@
       "supportsTablet": false,
       "newArchEnabled": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location for nearby features.",
-        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos to select a profile picture.",
-        "ITSAppUsesNonExemptEncryption": false
+      "NSLocationWhenInUseUsageDescription": "Wingman uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests.",
+      "NSPhotoLibraryUsageDescription": "Wingman allows you to upload a profile photo or share pictures with fellow travelers during layovers.",
+      "ITSAppUsesNonExemptEncryption": false
       },
       "googleServicesFile": "./GoogleService-Info.plist",
       "bundleIdentifier": "com.octavian.layoverapp",
@@ -49,14 +49,14 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location."
+          "locationAlwaysAndWhenInUsePermission": "Wingman uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to select a profile picture.",
-          "cameraPermission": "Allow $(PRODUCT_NAME) to use your camera to take a profile photo."
+          "photosPermission": "Wingman allows you to upload a profile photo or share pictures with fellow travelers during layovers.",
+          "cameraPermission": "Wingman allows you to upload a profile photo or share pictures with fellow travelers during layovers."
         }
       ],
       "expo-secure-store"

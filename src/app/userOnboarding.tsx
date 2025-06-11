@@ -14,6 +14,9 @@ import {
   ScrollView,
   Animated,
   Easing,
+  Modal,
+  FlatList,
+  KeyboardAvoidingView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -26,10 +29,11 @@ import LoadingScreen from "../components/LoadingScreen";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db, storage } from "../../config/firebaseConfig";
+import { containsFilteredContent, getFilteredContentCategory, sanitizeText } from "../utils/contentFilter";
 
 const avatarSize = 100;
 
-type StepKey = "email" | "profile" | "travel" | "social";
+type StepKey = "email" | "profile" | "travel" | "social" | "eula";
 
 interface Step {
   key: StepKey;
@@ -43,7 +47,7 @@ interface Field {
   label: string;
   icon: IconName;
   placeholder: string;
-  type?: "text" | "password" | "image" | "tags" | "date";
+  type?: "text" | "password" | "image" | "tags" | "date" | "eula";
   keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
   secure?: boolean;
 }
@@ -59,7 +63,10 @@ type IconName =
   | "send"
   | "map-pin"
   | "briefcase"
-  | "calendar";
+  | "calendar"
+  | "file-text"
+  | "shield"
+  | "users";
 
 interface UserData {
   email?: string;
@@ -72,8 +79,52 @@ interface UserData {
   goals?: string;
   interests?: string;
   languages?: string;
-  [key: string]: string | Date | undefined;
+  acceptedEula?: boolean;
+  [key: string]: string | Date | boolean | undefined;
 }
+
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
+  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
+  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
+  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
+  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon",
+  "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
+  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
+  "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kosovo",
+  "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania",
+  "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius",
+  "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia",
+  "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman",
+  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
+  "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe",
+  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
+  "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
+  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
+  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
+  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+].sort();
+
+const TRAVEL_INTERESTS = [
+  "Adventure", "Backpacking", "Beach", "Camping", "City Breaks", "Cultural", "Ecotourism",
+  "Food & Wine", "Hiking", "Historical", "Island Hopping", "Luxury", "Mountain Climbing",
+  "Museums", "Nature", "Photography", "Road Trips", "Safari", "Sailing", "Skiing",
+  "Solo Travel", "Spiritual", "Sports", "Theme Parks", "Volunteering", "Wildlife",
+  "Yoga & Wellness", "Art & Architecture", "Music Festivals", "Nightlife", "Shopping",
+  "Spa & Relaxation", "Surfing", "Trekking", "Water Sports", "Wine Tasting"
+].sort();
+
+const LANGUAGES = [
+  "Afrikaans", "Albanian", "Arabic", "Armenian", "Bengali", "Bulgarian", "Burmese",
+  "Catalan", "Chinese (Mandarin)", "Croatian", "Czech", "Danish", "Dutch", "English",
+  "Estonian", "Filipino", "Finnish", "French", "Georgian", "German", "Greek", "Hebrew",
+  "Hindi", "Hungarian", "Icelandic", "Indonesian", "Italian", "Japanese", "Korean",
+  "Latvian", "Lithuanian", "Malay", "Malayalam", "Maltese", "Marathi", "Mongolian",
+  "Nepali", "Norwegian", "Persian", "Polish", "Portuguese", "Punjabi", "Romanian",
+  "Russian", "Serbian", "Slovak", "Slovenian", "Spanish", "Swedish", "Tamil",
+  "Telugu", "Thai", "Turkish", "Ukrainian", "Urdu", "Vietnamese", "Welsh"
+].sort();
 
 const UserOnboarding = () => {
   const [stepIndex, setStepIndex] = useState(0);
@@ -85,6 +136,19 @@ const UserOnboarding = () => {
   const [scaleAnim] = useState(new Animated.Value(1));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
+  const [eulaScrollPosition, setEulaScrollPosition] = useState(0);
+  const [eulaScrollEnd, setEulaScrollEnd] = useState(false);
+  const [showCountryModal, setShowCountryModal] = useState(false);
+  const [currentField, setCurrentField] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedOptions, setSelectedOptions] = useState<{ [key: string]: string[] }>({
+    travelHistory: [],
+    goals: [],
+    interests: [],
+    languages: []
+  });
+  const [showFullEula, setShowFullEula] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     if (user !== undefined) {
@@ -93,7 +157,29 @@ const UserOnboarding = () => {
     }
   }, [user]);
 
-  const handleInputChange = useCallback((key: string, value: string | Date) => {
+  const handleInputChange = useCallback((key: string, value: string | Date | boolean) => {
+    if (key === "name" && typeof value === "string") {
+      // Check for filtered content
+      if (containsFilteredContent(value)) {
+        setFieldErrors(prev => ({ ...prev, [key]: true }));
+        // Capitalize each word in the name
+        value = value
+          .split(" ")
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(" ");
+      } else {
+        setFieldErrors(prev => ({ ...prev, [key]: false }));
+      }
+    } else if (key === "bio" && typeof value === "string") {
+      // Check for filtered content
+      if (containsFilteredContent(value)) {
+        setFieldErrors(prev => ({ ...prev, [key]: true }));
+        // Capitalize first letter of bio
+        value = value.charAt(0).toUpperCase() + value.slice(1);
+      } else {
+        setFieldErrors(prev => ({ ...prev, [key]: false }));
+      }
+    }
     setUserData((prev: UserData) => ({ ...prev, [key]: value }));
   }, []);
 
@@ -147,10 +233,48 @@ const UserOnboarding = () => {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
       if (selectedDate) {
+        // Calculate age
+        const today = new Date();
+        const birthDate = new Date(selectedDate);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+
+        if (age < 18) {
+          Alert.alert(
+            "Age Restriction",
+            "You must be at least 18 years old to use Wingman.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
+
         handleInputChange("dateOfBirth", selectedDate);
       }
     } else {
       if (selectedDate) {
+        // Calculate age
+        const today = new Date();
+        const birthDate = new Date(selectedDate);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+
+        if (age < 18) {
+          Alert.alert(
+            "Age Restriction",
+            "You must be at least 18 years old to use Wingman.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
+
         setTempDate(selectedDate);
       }
     }
@@ -158,6 +282,25 @@ const UserOnboarding = () => {
 
   const handleConfirmDate = () => {
     if (tempDate) {
+      // Calculate age
+      const today = new Date();
+      const birthDate = new Date(tempDate);
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+
+      if (age < 18) {
+        Alert.alert(
+          "Age Restriction",
+          "You must be at least 18 years old to use Wingman.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
       handleInputChange("dateOfBirth", tempDate);
     }
     setShowDatePicker(false);
@@ -171,12 +314,39 @@ const UserOnboarding = () => {
 
   const handleOpenDatePicker = () => {
     Keyboard.dismiss();
-    setTempDate(userData.dateOfBirth as Date || new Date());
+    // Set maximum date to 18 years ago from today
+    const maxDate = new Date();
+    maxDate.setFullYear(maxDate.getFullYear() - 18);
+    setTempDate(userData.dateOfBirth as Date || maxDate);
     setShowDatePicker(true);
   };
 
   const handleNext = async () => {
     Keyboard.dismiss();
+    
+    // Check if we're on the EULA step and terms haven't been accepted
+    if (steps[stepIndex].key === "eula" && !userData.acceptedEula) {
+      Alert.alert(
+        "Terms Acceptance Required",
+        "You must accept the terms and conditions to continue.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    // Check for any field errors in the current step
+    const currentStepFields = steps[stepIndex].fields;
+    const hasErrors = currentStepFields.some(field => fieldErrors[field.key]);
+    
+    if (hasErrors) {
+      Alert.alert(
+        "Inappropriate Content",
+        "Please remove any inappropriate content before continuing.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     if (stepIndex < steps.length - 1) {
       Animated.sequence([
         Animated.timing(scaleAnim, {
@@ -206,6 +376,11 @@ const UserOnboarding = () => {
         return;
       }
 
+      if (!userData.acceptedEula) {
+        Alert.alert("Error", "You must accept the terms and conditions");
+        return;
+      }
+
       // Calculate age from date of birth
       const age = userData.dateOfBirth 
         ? Math.floor((new Date().getTime() - (userData.dateOfBirth as Date).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
@@ -225,6 +400,8 @@ const UserOnboarding = () => {
         languages: userData.languages?.split(/,\s*/) || [],
         isAnonymous: false,
         moodStatus: "neutral",
+        acceptedEula: true,
+        eulaAcceptedAt: serverTimestamp(),
       };
 
       // Create user account and get the user ID
@@ -262,10 +439,221 @@ const UserOnboarding = () => {
     }
   };
 
+  const handleOptionSelect = (option: string) => {
+    if (currentField) {
+      const currentOptions = selectedOptions[currentField] || [];
+      setSelectedOptions(prev => ({
+        ...prev,
+        [currentField]: [...currentOptions, option]
+      }));
+      handleInputChange(currentField, [...currentOptions, option].join(", "));
+    }
+  };
+
+  const handleOptionRemove = (option: string, field: string) => {
+    const currentOptions = selectedOptions[field] || [];
+    setSelectedOptions(prev => ({
+      ...prev,
+      [field]: currentOptions.filter(o => o !== option)
+    }));
+    handleInputChange(field, currentOptions.filter(o => o !== option).join(", "));
+  };
+
+  const openSelectionModal = (field: string) => {
+    setCurrentField(field);
+    setSearchQuery("");
+    setShowCountryModal(true);
+  };
+
+  const getOptionsForField = (field: string) => {
+    switch (field) {
+      case "travelHistory":
+      case "goals":
+        return COUNTRIES;
+      case "interests":
+        return TRAVEL_INTERESTS;
+      case "languages":
+        return LANGUAGES;
+      default:
+        return [];
+    }
+  };
+
+  const filteredOptions = getOptionsForField(currentField || "").filter(option => 
+    option.toLowerCase().includes(searchQuery.toLowerCase()) &&
+    !(selectedOptions[currentField || ""] || []).includes(option)
+  );
+
   const renderField = (field: Field) => {
     const isFocused = focusedField === field.key;
+    const hasError = fieldErrors[field.key];
 
     switch (field.type) {
+      case "eula":
+        return (
+          <View style={styles.eulaContainer}>
+            <View style={styles.eulaSummary}>
+              <View style={styles.eulaHeader}>
+                <Feather name="file-text" size={24} color="#38a5c9" />
+                <Text style={styles.eulaSummaryTitle}>Terms & Conditions</Text>
+              </View>
+              <Text style={styles.eulaSummaryText}>
+                By using Wingman, you agree to our Terms of Service and Privacy Policy. Here are the key points you should know:
+              </Text>
+              <View style={styles.eulaSummaryPoints}>
+                <View style={styles.eulaSummaryPoint}>
+                  <Feather name="user" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Text style={styles.eulaPointText}>You must be 18 or older</Text>
+                </View>
+                <View style={styles.eulaSummaryPoint}>
+                  <Feather name="lock" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Text style={styles.eulaPointText}>One account per person</Text>
+                </View>
+                <View style={styles.eulaSummaryPoint}>
+                  <Feather name="shield" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Text style={styles.eulaPointText}>Zero tolerance for harassment</Text>
+                </View>
+                <View style={styles.eulaSummaryPoint}>
+                  <Feather name="map-pin" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Text style={styles.eulaPointText}>Location services required</Text>
+                </View>
+                <View style={styles.eulaSummaryPoint}>
+                  <Feather name="users" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Text style={styles.eulaPointText}>Meet in public places</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.viewFullTermsButton}
+                onPress={() => setShowFullEula(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.viewFullTermsText}>View Full Terms</Text>
+                <Feather name="chevron-right" size={20} color="#38a5c9" />
+              </TouchableOpacity>
+              <View style={styles.eulaAcceptanceContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.eulaCheckbox,
+                    userData.acceptedEula && styles.eulaCheckboxChecked
+                  ]}
+                  onPress={() => handleInputChange("acceptedEula", !userData.acceptedEula)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  {userData.acceptedEula && (
+                    <Feather name="check" size={20} color="#e4fbfe" />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleInputChange("acceptedEula", !userData.acceptedEula)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={styles.eulaAcceptanceText}>
+                    I have read and agree to the Terms of Service and Privacy Policy
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <Modal
+              visible={showFullEula}
+              animationType="slide"
+              transparent={true}
+              onRequestClose={() => setShowFullEula(false)}
+            >
+              <View style={styles.fullScreenContainer}>
+                <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.fullScreenGradient}>
+                  <View style={styles.fullScreenHeader}>
+                    <View style={styles.fullScreenTitleContainer}>
+                      <Feather name="file-text" size={24} color="#38a5c9" style={styles.fullScreenTitleIcon} />
+                      <Text style={styles.fullScreenTitle}>Terms & Conditions</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setShowFullEula(false)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={styles.fullScreenCloseButton}
+                    >
+                      <Feather name="x" size={24} color="#e4fbfe" />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView 
+                    style={styles.fullScreenScrollView}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.fullScreenScrollContent}
+                  >
+                    <Text style={styles.fullScreenText}>
+                      Wingman – End User License Agreement (EULA) & Terms of Use{'\n\n'}
+                      Effective Date: 6/6/2026{'\n'}
+                      Last Updated: June 6, 2025{'\n\n'}
+                      1. Acceptance of Terms{'\n'}
+                      By downloading, accessing, or using Wingman, you agree to this End User License Agreement (EULA) and our Privacy Policy. If you do not agree, do not use the app.{'\n\n'}
+                      2. Eligibility{'\n'}
+                      You must be 18 years or older to use Wingman.{'\n\n'}
+                      By using the app, you confirm that:{'\n\n'}
+                      • You are at least 18 years old.{'\n'}
+                      • You are legally allowed to use the app under your local laws.{'\n'}
+                      • You are not impersonating another person or submitting false information.{'\n\n'}
+                      We reserve the right to suspend or terminate your access immediately if these conditions are violated.{'\n\n'}
+                      3. Account Usage{'\n'}
+                      • You may only create one personal account.{'\n'}
+                      • You are fully responsible for all activity under your account.{'\n'}
+                      • Sharing accounts or credentials is strictly prohibited.{'\n\n'}
+                      4. Zero-Tolerance Policy{'\n'}
+                      Wingman enforces a strict no-tolerance policy for the following:{'\n\n'}
+                      • Harassment, threats, stalking, or verbal abuse{'\n'}
+                      • Sexual content or unsolicited sexual advances{'\n'}
+                      • Hate speech, discrimination, or bullying{'\n'}
+                      • Misrepresentation of age, identity, or location{'\n'}
+                      • Spamming, scamming, or phishing attempts{'\n'}
+                      • Linking to third-party platforms for self-promotion or solicitation{'\n'}
+                      • Tampering with or falsifying GPS/location data{'\n\n'}
+                      Violations may result in an instant ban and user report to appropriate authorities.{'\n\n'}
+                      5. Location Use{'\n'}
+                      Wingman relies on location services to show airport-specific content. You must:{'\n\n'}
+                      • Enable location access to use the app's core features{'\n'}
+                      • Not spoof, falsify, or manipulate your location{'\n'}
+                      • Not use the app for interactions outside intended airport zones{'\n\n'}
+                      6. User Content{'\n'}
+                      You retain rights to content you post, but by uploading it to Wingman, you grant us a non-exclusive, royalty-free, worldwide license to use, share, and display it within the app.{'\n\n'}
+                      You may not post:{'\n\n'}
+                      • Any illegal or explicit material{'\n'}
+                      • Copyrighted material without permission{'\n'}
+                      • Content that misleads or endangers others{'\n\n'}
+                      We may remove or moderate content at our sole discretion.{'\n\n'}
+                      7. Meetups, Events, and Chats{'\n'}
+                      Wingman allows users to match, message, and join public or private events.{'\n\n'}
+                      We are not responsible for:{'\n\n'}
+                      • In-person meetings or what happens during them{'\n'}
+                      • The accuracy or intent of user-generated events or chats{'\n'}
+                      • The behavior of other users, whether online or offline{'\n\n'}
+                      Always meet in public, well-lit places and use good judgment when engaging with strangers.{'\n\n'}
+                      8. Termination{'\n'}
+                      We may suspend, limit, or terminate your access at any time if:{'\n\n'}
+                      • You breach these terms{'\n'}
+                      • You behave in a way that threatens user safety{'\n'}
+                      • You use the app for unintended or unlawful purposes{'\n\n'}
+                      9. License Grant{'\n'}
+                      You are granted a limited, non-transferable, revocable license to use the app for personal, non-commercial use only.{'\n\n'}
+                      You may not:{'\n\n'}
+                      • Copy, modify, or reverse engineer the app{'\n'}
+                      • Use bots, scripts, or automated tools on the platform{'\n'}
+                      • Sell or redistribute Wingman or its data{'\n\n'}
+                      10. Limitation of Liability{'\n'}
+                      Wingman is provided "as is" without warranties. We make no guarantees regarding:{'\n\n'}
+                      • Matches, events, or user conduct{'\n'}
+                      • Availability, uptime, or accuracy of content{'\n\n'}
+                      You use Wingman at your own risk.{'\n\n'}
+                      11. Changes to Terms{'\n'}
+                      We may update this agreement at any time. Continued use of the app means you accept the updated terms.{'\n\n'}
+                      12. Contact{'\n'}
+                      For questions, concerns, or to report abuse:{'\n'}
+                      matthewryan716@gmail.com{'\n\n'}
+                      By using Wingman, you agree to these Terms and certify you are 18 or older.
+                    </Text>
+                  </ScrollView>
+                </LinearGradient>
+              </View>
+            </Modal>
+          </View>
+        );
       case "image":
         return (
           <TouchableOpacity
@@ -301,6 +689,7 @@ const UserOnboarding = () => {
               ]}
               onPress={handleOpenDatePicker}
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Feather 
                 name={field.icon} 
@@ -327,7 +716,11 @@ const UserOnboarding = () => {
                   mode="date"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={handleDateChange}
-                  maximumDate={new Date()}
+                  maximumDate={(() => {
+                    const maxDate = new Date();
+                    maxDate.setFullYear(maxDate.getFullYear() - 18);
+                    return maxDate;
+                  })()}
                   textColor="#e4fbfe"
                   themeVariant="dark"
                 />
@@ -336,12 +729,14 @@ const UserOnboarding = () => {
                     <TouchableOpacity 
                       style={styles.datePickerButton} 
                       onPress={handleCancelDate}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.datePickerButtonText}>Cancel</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={[styles.datePickerButton, styles.datePickerButtonConfirm]} 
                       onPress={handleConfirmDate}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={[styles.datePickerButtonText, styles.datePickerButtonTextConfirm]}>
                         Confirm
@@ -354,50 +749,60 @@ const UserOnboarding = () => {
           </View>
         );
       case "tags":
+        const fieldOptions = selectedOptions[field.key] || [];
         return (
           <View style={[
             styles.tagsContainer,
             isFocused && styles.tagsContainerFocused
           ]}>
-            <TextInput
+            <TouchableOpacity
               style={styles.tagsInput}
-              placeholder={field.placeholder}
-              placeholderTextColor="#38a5c9"
-              onChangeText={(text) => handleInputChange(field.key, text)}
-              value={userData[field.key] as string}
-              onFocus={() => handleFocus(field.key)}
-              onBlur={handleBlur}
-              multiline={false}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <View style={styles.tagsPreview}>
-              {(userData[field.key] as string)
-                ?.split(",")
-                .filter((tag: string) => tag.trim())
-                .map((tag: string, index: number) => (
+              onPress={() => openSelectionModal(field.key)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={[
+                styles.tagsInputText,
+                !fieldOptions.length && styles.tagsInputPlaceholder
+              ]}>
+                {fieldOptions.length 
+                  ? `${fieldOptions.length} ${field.key === "languages" ? "languages" : field.key === "interests" ? "interests" : "countries"} selected`
+                  : field.placeholder}
+              </Text>
+            </TouchableOpacity>
+            {fieldOptions.length > 0 && (
+              <View style={styles.tagsPreview}>
+                {fieldOptions.map((option, index) => (
                   <View key={index} style={styles.tag}>
-                    <Text style={styles.tagText}>{tag.trim()}</Text>
+                    <Text style={styles.tagText}>{option}</Text>
+                    <TouchableOpacity
+                      onPress={() => handleOptionRemove(option, field.key)}
+                      hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+                    >
+                      <Feather name="x" size={16} color="#e4fbfe" />
+                    </TouchableOpacity>
                   </View>
                 ))}
-            </View>
+              </View>
+            )}
           </View>
         );
       default:
         return (
           <View style={[
             styles.inputContainer,
-            isFocused && styles.inputContainerFocused
+            isFocused && styles.inputContainerFocused,
+            hasError && styles.inputContainerError
           ]}>
             <Feather 
               name={field.icon} 
               size={20} 
-              color={isFocused ? "#e4fbfe" : "#38a5c9"} 
+              color={hasError ? "#ff4444" : isFocused ? "#e4fbfe" : "#38a5c9"} 
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, hasError && styles.inputError]}
               placeholder={field.placeholder}
-              placeholderTextColor="#38a5c9"
+              placeholderTextColor={hasError ? "#ff4444" : "#38a5c9"}
               secureTextEntry={field.secure}
               keyboardType={field.keyboardType}
               onChangeText={(text) => handleInputChange(field.key, text)}
@@ -410,6 +815,20 @@ const UserOnboarding = () => {
               multiline={field.key === "bio"}
               numberOfLines={field.key === "bio" ? 3 : 1}
               textAlignVertical={field.key === "bio" ? "top" : "center"}
+              returnKeyType={field.key === "bio" ? "done" : "default"}
+              blurOnSubmit={field.key === "bio"}
+              onSubmitEditing={() => {
+                if (field.key === "bio") {
+                  Keyboard.dismiss();
+                  handleBlur();
+                }
+              }}
+              onKeyPress={({ nativeEvent }) => {
+                if (field.key === "bio" && nativeEvent.key === "Enter") {
+                  Keyboard.dismiss();
+                  handleBlur();
+                }
+              }}
             />
           </View>
         );
@@ -515,7 +934,105 @@ const UserOnboarding = () => {
         },
       ],
     },
+    {
+      key: "eula",
+      title: "Terms & Conditions 📜",
+      icon: "file-text",
+      fields: [
+        {
+          key: "eula",
+          label: "Terms of Service",
+          icon: "file-text",
+          type: "eula",
+          placeholder: "",
+        },
+      ],
+    },
   ];
+
+  const renderCountryModal = () => (
+    <Modal
+      visible={showCountryModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowCountryModal(false)}
+    >
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.modalOverlay}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowCountryModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>
+                    {currentField === "languages" ? "Select Languages" :
+                     currentField === "interests" ? "Select Interests" :
+                     "Select Countries"}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCountryModal(false)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={styles.closeButton}
+                  >
+                    <Feather name="x" size={24} color="#e4fbfe" />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.searchContainer}>
+                  <Feather name="search" size={20} color="#38a5c9" />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder={`Search ${currentField === "languages" ? "languages" : 
+                                              currentField === "interests" ? "interests" : 
+                                              "countries"}...`}
+                    placeholderTextColor="#38a5c9"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    spellCheck={false}
+                    autoComplete="off"
+                    returnKeyType="done"
+                    onSubmitEditing={() => setShowCountryModal(false)}
+                    blurOnSubmit={true}
+                  />
+                </View>
+
+                <FlatList
+                  data={filteredOptions}
+                  keyExtractor={(item) => item}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.countryItem}
+                      onPress={() => handleOptionSelect(item)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.countryItemText}>{item}</Text>
+                      <Feather name="plus" size={20} color="#38a5c9" style={styles.countryItemIcon} />
+                    </TouchableOpacity>
+                  )}
+                  style={styles.countryList}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="none"
+                  contentContainerStyle={styles.countryListContent}
+                  ListEmptyComponent={
+                    <View style={styles.emptyState}>
+                      <Feather name="search" size={24} color="#38a5c9" />
+                      <Text style={styles.emptyStateText}>No results found</Text>
+                    </View>
+                  }
+                  showsVerticalScrollIndicator={false}
+                />
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 
   if (loading) {
     return <LoadingScreen message="Creating your account..." />;
@@ -527,6 +1044,11 @@ const UserOnboarding = () => {
 
   return (
     <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
+      <LinearGradient
+        colors={['#000000', 'transparent']}
+        style={styles.fadeOverlay}
+        pointerEvents="none"
+      />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -542,10 +1064,23 @@ const UserOnboarding = () => {
           >
             <Text style={styles.title}>{steps[stepIndex].title}</Text>
             {steps[stepIndex].fields.map((field) => (
-              <View key={field.key} style={styles.fieldContainer}>
+              <TouchableOpacity
+                key={field.key}
+                style={styles.fieldContainer}
+                onPress={() => {
+                  if (field.type === "date") {
+                    handleOpenDatePicker();
+                  } else if (field.type !== "eula") {
+                    // Focus the input if it's not a date picker or EULA
+                    handleFocus(field.key);
+                  }
+                }}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <Text style={styles.fieldLabel}>{field.label}</Text>
                 {renderField(field)}
-              </View>
+              </TouchableOpacity>
             ))}
             <View style={styles.footer}>
               {stepIndex > 0 && (
@@ -570,6 +1105,7 @@ const UserOnboarding = () => {
                     });
                   }}
                   activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Feather
                     name="chevron-left"
@@ -579,16 +1115,25 @@ const UserOnboarding = () => {
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={styles.nextButton}
+                style={[
+                  styles.nextButton,
+                  stepIndex === steps.length - 1 && !userData.acceptedEula && styles.nextButtonDisabled
+                ]}
                 onPress={handleNext}
-                disabled={loading}
+                disabled={loading || (stepIndex === steps.length - 1 && !userData.acceptedEula)}
                 activeOpacity={0.8}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <LinearGradient
-                  colors={["#38a5c9", "#38a5c9"]}
+                  colors={stepIndex === steps.length - 1 && !userData.acceptedEula 
+                    ? ["#1a1a1a", "#1a1a1a"] 
+                    : ["#38a5c9", "#38a5c9"]}
                   style={styles.buttonGradient}
                 >
-                  <Text style={styles.buttonText}>
+                  <Text style={[
+                    styles.buttonText,
+                    stepIndex === steps.length - 1 && !userData.acceptedEula && styles.buttonTextDisabled
+                  ]}>
                     {stepIndex === steps.length - 1
                       ? "Start Exploring! ✈️"
                       : "Continue Journey →"}
@@ -600,12 +1145,14 @@ const UserOnboarding = () => {
               <TouchableOpacity 
                 onPress={() => router.push("login/login")}
                 activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Text style={styles.loginText}>
                   Already have an account? Log in
                 </Text>
               </TouchableOpacity>
             )}
+            {renderCountryModal()}
           </Animated.View>
         </TouchableWithoutFeedback>
       </ScrollView>
@@ -619,6 +1166,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    paddingTop: 20,
   },
   contentContainer: {
     width: "100%",
@@ -637,12 +1185,14 @@ const styles = StyleSheet.create({
   fieldContainer: {
     marginBottom: 24,
     width: "100%",
+    paddingHorizontal: 4,
   },
   fieldLabel: {
     color: "#e4fbfe",
     fontFamily: "Inter-Medium",
-    marginBottom: 8,
+    marginBottom: 12,
     fontSize: 14,
+    paddingLeft: 4,
   },
   inputContainer: {
     flexDirection: "row",
@@ -652,7 +1202,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: "#38a5c9",
-    minHeight: 56,
+    minHeight: 64,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -674,16 +1224,25 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 8,
   },
+  inputContainerError: {
+    borderColor: "#ff4444",
+    backgroundColor: "rgba(255, 68, 68, 0.1)",
+  },
+  inputError: {
+    color: "#ff4444",
+  },
   input: {
     flex: 1,
     marginLeft: 12,
     fontSize: 16,
     color: "#e4fbfe",
     fontFamily: "Inter-Regular",
+    minHeight: 40,
+    paddingVertical: 8,
   },
   avatarContainer: {
     alignSelf: "center",
-    marginBottom: 24,
+    marginBottom: 11,
   },
   avatarPlaceholder: {
     width: avatarSize,
@@ -721,49 +1280,79 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: "#38a5c9",
-    minHeight: 56,
+    minHeight: 64,
   },
   tagsContainerFocused: {
     borderColor: "#e4fbfe",
     backgroundColor: "#1a1a1a",
+    shadowColor: "#38a5c9",
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
   },
   tagsInput: {
-    fontSize: 16,
-    color: "#e4fbfe",
-    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: "#38a5c9",
-    minHeight: 40,
+    borderBottomColor: '#38a5c9',
+    minHeight: 48,
+  },
+  tagsInputText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Regular',
+  },
+  tagsInputPlaceholder: {
+    color: '#38a5c9',
   },
   tagsPreview: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 16,
+    gap: 8,
   },
   tag: {
-    backgroundColor: "#1a1a1a",
-    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+    paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
     borderWidth: 1,
-    borderColor: "#38a5c9",
+    borderColor: '#38a5c9',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   tagText: {
-    color: "#e4fbfe",
-    fontFamily: "Inter-Medium",
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Medium',
+    marginRight: 8,
+    fontSize: 14,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 40,
+    marginTop: 20,
     width: "100%",
   },
   backButton: {
-    width: 50,
-    height: 50,
+    width: 56,
+    height: 56,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#1a1a1a",
@@ -794,9 +1383,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+    minHeight: 56,
   },
   buttonGradient: {
-    paddingVertical: 18,
+    paddingVertical: 20,
     alignItems: "center",
   },
   buttonText: {
@@ -831,13 +1421,14 @@ const styles = StyleSheet.create({
   datePickerButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: 16,
-    gap: 12,
+    marginTop: 20,
+    gap: 16,
   },
   datePickerButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     borderRadius: 8,
+    minHeight: 48,
   },
   datePickerButtonConfirm: {
     backgroundColor: '#38a5c9',
@@ -849,6 +1440,282 @@ const styles = StyleSheet.create({
   },
   datePickerButtonTextConfirm: {
     color: '#000000',
+  },
+  eulaContainer: {
+    width: "100%",
+    backgroundColor: "#1a1a1a",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    overflow: "hidden",
+  },
+  eulaSummary: {
+    padding: 24,
+    backgroundColor: '#000000',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  eulaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  eulaSummaryTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+    color: '#e4fbfe',
+    marginLeft: 12,
+  },
+  eulaSummaryText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#e4fbfe',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  eulaSummaryPoints: {
+    marginBottom: 24,
+    gap: 12,
+  },
+  eulaSummaryPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 165, 201, 0.2)',
+  },
+  eulaPointIcon: {
+    marginRight: 12,
+  },
+  eulaPointText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#e4fbfe',
+    flex: 1,
+  },
+  viewFullTermsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(56, 165, 201, 0.2)',
+    backgroundColor: 'rgba(56, 165, 201, 0.05)',
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  viewFullTermsText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    color: '#38a5c9',
+    marginRight: 8,
+  },
+  eulaAcceptanceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(56, 165, 201, 0.2)',
+  },
+  eulaCheckbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#38a5c9",
+    marginRight: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 4,
+  },
+  eulaCheckboxChecked: {
+    backgroundColor: "#38a5c9",
+  },
+  eulaAcceptanceText: {
+    flex: 1,
+    color: "#e4fbfe",
+    fontFamily: "Inter-Medium",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  eulaModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    margin: 20,
+    maxHeight: '90%',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalTitleIcon: {
+    marginRight: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(56, 165, 201, 0.2)',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+    color: '#e4fbfe',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Regular',
+    paddingVertical: 4,
+  },
+  countryList: {
+    maxHeight: 400,
+    borderRadius: 12,
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+  },
+  countryListContent: {
+    paddingBottom: 20,
+  },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(56, 165, 201, 0.2)',
+  },
+  countryItemText: {
+    fontSize: 16,
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Regular',
+  },
+  countryItemIcon: {
+    opacity: 0.7,
+  },
+  emptyState: {
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#38a5c9',
+    fontFamily: 'Inter-Medium',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    margin: 20,
+    maxHeight: '90%',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  nextButtonDisabled: {
+    opacity: 0.7,
+    borderColor: "#38a5c9",
+    borderWidth: 1,
+  },
+  buttonTextDisabled: {
+    color: "#38a5c9",
+  },
+  fadeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    zIndex: 1,
+  },
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  fullScreenGradient: {
+    flex: 1,
+  },
+  fullScreenHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 60,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(56, 165, 201, 0.2)',
+  },
+  fullScreenTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fullScreenTitleIcon: {
+    marginRight: 12,
+  },
+  fullScreenTitle: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    color: '#e4fbfe',
+  },
+  fullScreenCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+  },
+  fullScreenScrollView: {
+    flex: 1,
+  },
+  fullScreenScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  fullScreenText: {
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    lineHeight: 24,
   },
 });
 

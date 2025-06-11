@@ -1,8 +1,9 @@
 import React, { useEffect, useContext } from 'react';
-import { View, Image, StyleSheet, Animated, Easing } from 'react-native';
+import { View, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeContext } from '../context/ThemeContext';
+import LoadingSpinner from './LoadingSpinner';
 
 interface LoadingScreenProps {
   message?: string;
@@ -10,55 +11,46 @@ interface LoadingScreenProps {
 
 const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
   const insets = useSafeAreaInsets();
-  const spinValue = new Animated.Value(0);
+  const fadeAnim = new Animated.Value(0);
   const { theme } = useContext(ThemeContext);
 
   useEffect(() => {
-    // Create infinite spinning animation
-    Animated.loop(
-      Animated.timing(spinValue, {
-        toValue: 1,
-        duration: 2000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
   }, []);
-
-  // Interpolate the spin value to create a rotation
-  const spin = spinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
 
   return (
     <LinearGradient
       colors={theme === "light" ? ['#e6e6e6', '#ffffff'] : ['#000000', '#1a1a1a']}
       style={[styles.container, { paddingTop: insets.top }]}
     >
-      <View style={styles.content}>
-        <Image
-          source={require('../../assets/adaptive-icon.png')}
-          style={[styles.logo, { tintColor: theme === "light" ? "#000000" : "#ffffff" }]}
-          resizeMode="contain"
+      <Animated.View 
+        style={[
+          styles.content,
+          {
+            opacity: fadeAnim,
+            transform: [
+              {
+                scale: fadeAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.95, 1],
+                })
+              }
+            ]
+          }
+        ]}
+      >
+        <LoadingSpinner 
+          size={120}
+          color={theme === "light" ? "#37a4c8" : "#38a5c9"}
+          textColor={theme === "light" ? "#37a4c8" : "#38a5c9"}
+          message={message}
+          showDots={true}
         />
-        <Animated.View
-          style={[
-            styles.loadingRing,
-            {
-              transform: [{ rotate: spin }],
-              borderColor: theme === "light" ? "#000000" : "#37a4c8",
-            },
-          ]}
-        >
-          <View style={[styles.ringInner, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
-        </Animated.View>
-        {message && <View style={styles.messageContainer}>
-          <View style={[styles.messageDot, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
-          <View style={[styles.messageDot, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
-          <View style={[styles.messageDot, { backgroundColor: theme === "light" ? "#000000" : "#37a4c8" }]} />
-        </View>}
-      </View>
+      </Animated.View>
     </LinearGradient>
   );
 };
@@ -71,36 +63,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 30,
-  },
-  loadingRing: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 3,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ringInner: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    opacity: 0.3,
-  },
-  messageContainer: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 8,
-  },
-  messageDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    opacity: 0.6,
   },
 });
 

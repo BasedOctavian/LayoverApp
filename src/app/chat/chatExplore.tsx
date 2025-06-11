@@ -25,6 +25,8 @@ import {
   addDoc,
   doc,
   updateDoc,
+  deleteDoc,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 import { onAuthStateChanged, User } from "firebase/auth";
@@ -58,6 +60,7 @@ const UserCard = ({ item, onPress }: UserCardProps) => {
   const { theme } = React.useContext(ThemeContext);
   const [connectionStatus, setConnectionStatus] = useState<'none' | 'pending' | 'active'>('none');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
 
   // Check connection status when item changes
   useEffect(() => {
@@ -65,12 +68,31 @@ const UserCard = ({ item, onPress }: UserCardProps) => {
       if (!user) return;
       
       try {
-        // Check if there's an existing chat
+        // Check connections collection first
+        const connectionsQuery = query(
+          collection(db, 'connections'),
+          where('participants', 'array-contains', user.uid)
+        );
+        const connectionsSnapshot = await getDocs(connectionsQuery);
+        
+        // Check if there's a pending connection with this user
+        const pendingConnection = connectionsSnapshot.docs.find(doc => {
+          const data = doc.data();
+          return data.participants.includes(item.id) && data.status === 'pending';
+        });
+
+        if (pendingConnection) {
+          setConnectionStatus('pending');
+          setPendingConnectionId(pendingConnection.id);
+          return;
+        }
+
+        // If no pending connection, check existing chats
         const existingChat = await getExistingChat(user.uid, item.id);
         if (existingChat) {
-          if (existingChat.status === 'pending') {
+          if ((existingChat as Chat).status === 'pending') {
             setConnectionStatus('pending');
-          } else if (existingChat.status === 'active') {
+          } else if ((existingChat as Chat).status === 'active') {
             setConnectionStatus('active');
           }
         } else {
@@ -78,44 +100,49 @@ const UserCard = ({ item, onPress }: UserCardProps) => {
         }
       } catch (error) {
         console.error('Error checking connection status:', error);
+        setConnectionStatus('none');
       }
     };
 
     checkConnectionStatus();
   }, [item.id, user]);
 
+  const handleRemovePending = async () => {
+    if (!pendingConnectionId || isLoading) return;
+    
+    setIsLoading(true);
+    try {
+      // Delete the connection document
+      await deleteDoc(doc(db, 'connections', pendingConnectionId));
+      setConnectionStatus('none');
+      setPendingConnectionId(null);
+    } catch (error) {
+      console.error('Error removing pending connection:', error);
+      Alert.alert('Error', 'Failed to remove pending connection. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleConnect = async () => {
     if (!user || isLoading) return;
     
     setIsLoading(true);
     try {
-      // Create a new chat with pending status
-      const chatData = {
-        participants: [user.uid, item.id],
-        createdAt: new Date(),
-        lastMessage: null,
-        status: 'pending',
-        connectionType: null
-      };
-      
-      const chatId = await addChat(chatData);
-      
-      // Create a connection document
+      // Create a new connection document with exact structure
       const connectionData = {
-        initiator: user.uid,
+        connectionType: null,
         createdAt: new Date(),
-        status: 'pending',
-        connectionType: null
+        initiator: user.uid,
+        lastMessage: null,
+        participants: [user.uid, item.id],
+        status: 'pending'
       };
       
-      const connectionRef = await addDoc(collection(db, 'connections'), connectionData);
-      
-      // Update the chat with the connection ID
-      await updateDoc(doc(db, 'chats', chatId), {
-        connectionId: connectionRef.id
-      });
-
+      // Create ONLY the connection document
+      const docRef = await addDoc(collection(db, 'connections'), connectionData);
       setConnectionStatus('pending');
+      setPendingConnectionId(docRef.id);
     } catch (error) {
       console.error('Error creating connection:', error);
       Alert.alert('Error', 'Failed to create connection. Please try again.');
@@ -196,9 +223,17 @@ const UserCard = ({ item, onPress }: UserCardProps) => {
         )}
 
         {connectionStatus === 'pending' && (
-          <View style={[styles.statusContainer, { backgroundColor: '#FFA500' }]}>
-            <Text style={styles.statusText}>Connection Pending</Text>
-          </View>
+          <TouchableOpacity
+            style={[styles.statusContainer, { backgroundColor: '#FFA500' }]}
+            onPress={handleRemovePending}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.statusText}>Remove Pending</Text>
+            )}
+          </TouchableOpacity>
         )}
 
         {connectionStatus === 'active' && (
@@ -339,8 +374,38 @@ export default function ChatExplore() {
     const fetchUsers = async () => {
       if (user) {
         try {
+          // Get current user's blocked lists
+          const currentUserDoc = await getDoc(doc(db, "users", user.uid));
+          const currentUserData = currentUserDoc.data();
+          const blockedUsers = currentUserData?.blockedUsers || [];
+          const hasMeBlocked = currentUserData?.hasMeBlocked || [];
+
+          // Get all users
           const allUsers = await getUsers();
-          const otherUsers = allUsers.filter((u: any) => u.id !== user.uid);
+          
+          // Get all users' documents to check their blocked lists
+          const userDocs = await Promise.all(
+            allUsers.map(u => getDoc(doc(db, "users", u.id)))
+          );
+
+          // Filter users based on blocking status and other criteria
+          const otherUsers = allUsers.filter((u: any, index: number) => {
+            const userDoc = userDocs[index];
+            const userData = userDoc.data();
+            
+            // Check if either user has blocked the other
+            const isBlocked = blockedUsers.includes(u.id);
+            const hasBlockedMe = hasMeBlocked.includes(u.id);
+            const hasBlockedCurrentUser = userData?.blockedUsers?.includes(user.uid);
+            const currentUserHasBlockedThem = userData?.hasMeBlocked?.includes(user.uid);
+
+            return u.id !== user.uid && // Not current user
+                   !isBlocked && // Not blocked by current user
+                   !hasBlockedMe && // Has not blocked current user
+                   !hasBlockedCurrentUser && // Has not blocked current user
+                   !currentUserHasBlockedThem; // Current user has not blocked them
+          });
+
           setUsers(otherUsers);
         } catch (error) {
           console.error("Error fetching users:", error);

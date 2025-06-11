@@ -31,7 +31,7 @@ import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import { formatDistanceToNow } from 'date-fns';
 import { Swipeable } from 'react-native-gesture-handler';
-import { doc, deleteDoc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc, getDoc, Timestamp, collection, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../../config/firebaseConfig';
 import BottomNavBar from "../../components/BottomNavBar";
 
@@ -72,6 +72,9 @@ interface ChatItemProps {
   onPinPress: () => void;
   onDelete: () => void;
   onAccept: (updatedChat: Chat) => void;
+  setPendingChats: React.Dispatch<React.SetStateAction<Chat[]>>;
+  setChats: React.Dispatch<React.SetStateAction<Chat[]>>;
+  setFilteredChats: React.Dispatch<React.SetStateAction<Chat[]>>;
 }
 
 // Helper function to convert any date-like value to a Date object
@@ -473,7 +476,18 @@ const styles = StyleSheet.create({
   },
 });
 
-const ChatItem = React.memo(({ chat, currentUser, getUser, onPress, onPinPress, onDelete, onAccept }: ChatItemProps) => {
+const ChatItem = React.memo(({ 
+  chat, 
+  currentUser, 
+  getUser, 
+  onPress, 
+  onPinPress, 
+  onDelete, 
+  onAccept, 
+  setPendingChats, 
+  setChats, 
+  setFilteredChats 
+}: ChatItemProps) => {
   const [partner, setPartner] = useState<Partner | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSelectedType, setHasSelectedType] = useState(!!chat.connectionType);
@@ -507,21 +521,31 @@ const ChatItem = React.memo(({ chat, currentUser, getUser, onPress, onPinPress, 
         return;
       }
 
-      if (chat.connectionId) {
-        // Update the connection document with the selected type
-        await updateDoc(doc(db, 'connections', chat.connectionId), {
-          connectionType: action
-        });
-        
-        // Update the chat document with the connection type
-        await updateDoc(doc(db, 'chats', chat.id), {
-          connectionType: action
-        });
-
-        setHasSelectedType(true);
-      }
+      // Update the connection document with the selected type
+      await updateDoc(doc(db, 'connections', chat.id), {
+        connectionType: action
+      });
+      
+      // Update local state
+      setHasSelectedType(true);
+      
+      // Create a properly typed updated chat object
+      const updatedChat: Chat = {
+        ...chat,
+        connectionType: action,
+        status: 'pending' as const,
+        participants: chat.participants,
+        id: chat.id,
+        connectionId: chat.id
+      };
+      
+      // Update the parent component's state without moving to active
+      setPendingChats((prevChats: Chat[]) => prevChats.map(c => c.id === chat.id ? updatedChat : c));
+      setChats((prevChats: Chat[]) => prevChats.map(c => c.id === chat.id ? updatedChat : c));
+      setFilteredChats((prevChats: Chat[]) => prevChats.map((c: Chat) => c.id === updatedChat.id ? { ...c, ...updatedChat } : c));
     } catch (error) {
       console.error('Error saving connection type:', error);
+      Alert.alert('Error', 'Failed to update connection type. Please try again.');
     }
   };
 
@@ -547,104 +571,165 @@ const ChatItem = React.memo(({ chat, currentUser, getUser, onPress, onPinPress, 
 
   useEffect(() => {
     const checkInitiator = async () => {
-      if (chat.connectionId) {
-        const connectionDoc = await getDoc(doc(db, 'connections', chat.connectionId));
+      if (chat.id) {
+        const connectionDoc = await getDoc(doc(db, 'connections', chat.id));
         if (connectionDoc.exists()) {
           const data = connectionDoc.data();
           setIsInitiator(data.initiator === currentUser.uid);
+          setHasSelectedType(!!data.connectionType);
         }
       }
     };
     checkInitiator();
-  }, [chat.connectionId, currentUser.uid]);
+  }, [chat.id, currentUser.uid]);
 
   const handleAcceptConnection = async () => {
+    console.log('Accept button pressed for chat:', chat.id);
     try {
-      if (chat.connectionId) {
-        // Get connection data first
-        const connectionDoc = await getDoc(doc(db, 'connections', chat.connectionId));
-        if (!connectionDoc.exists()) {
-          throw new Error('Connection not found');
-        }
+      // For pending connections, the chat.id is the connectionId
+      const connectionId = chat.connectionId || chat.id;
+      
+      if (!connectionId) {
+        console.error('No connectionId found in chat:', chat);
+        Alert.alert('Error', 'Invalid connection request');
+        return;
+      }
 
-        const connectionData = connectionDoc.data();
-        const initiatorId = connectionData.initiator;
-        const connectionType = connectionData.connectionType || 'Local Experiences'; // Default to Local Experiences if not set
+      console.log('Processing accept for connection:', connectionId);
+      // Get connection data first
+      const connectionRef = doc(db, 'connections', connectionId);
+      const connectionDoc = await getDoc(connectionRef);
+      
+      if (!connectionDoc.exists()) {
+        console.error('Connection document not found:', connectionId);
+        Alert.alert('Error', 'Connection request not found');
+        return;
+      }
 
-        // Update connection status
-        await updateDoc(doc(db, 'connections', chat.connectionId), {
-          status: 'active'
-        });
+      const connectionData = connectionDoc.data();
+      console.log('Connection data:', connectionData);
+      
+      if (!connectionData.initiator) {
+        console.error('No initiator found in connection data:', connectionData);
+        Alert.alert('Error', 'Invalid connection data');
+        return;
+      }
+
+      const initiatorId = connectionData.initiator;
+      const connectionType = connectionData.connectionType || 'Local Experiences';
+
+      // Create a new chat document
+      const chatRef = doc(collection(db, 'chats'));
+      console.log('Creating new chat document with ID:', chatRef.id);
+      
+      const newChatData = {
+        id: chatRef.id,
+        participants: chat.participants,
+        status: 'active' as const,
+        connectionType: connectionType,
+        connectionId: connectionId,
+        createdAt: Timestamp.now(),
+        lastMessageTime: Timestamp.now(),
+        isPinned: false
+      };
+
+      // Start a batch write
+      const batch = writeBatch(db);
+
+      // Update connection status
+      console.log('Updating connection status to active');
+      batch.update(connectionRef, {
+        status: 'active',
+        chatId: chatRef.id
+      });
+
+      // Create the new chat document
+      console.log('Creating new chat document');
+      batch.set(chatRef, newChatData);
+
+      // Get the current user's data for the notification
+      const currentUserRef = doc(db, 'users', currentUser.uid);
+      const currentUserDoc = await getDoc(currentUserRef);
+      
+      if (currentUserDoc.exists()) {
+        const currentUserData = currentUserDoc.data();
+        console.log('Creating notification for initiator:', initiatorId);
         
-        // Update chat status with the connection type
-        await updateDoc(doc(db, 'chats', chat.id), {
-          status: 'active' as const,
-          connectionType: connectionType
-        });
-
-        // Get the current user's data for the notification
-        const currentUserDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        if (currentUserDoc.exists()) {
-          const currentUserData = currentUserDoc.data();
-          
-          // Create the notification
-          const notification = {
-            id: Date.now().toString(),
-            title: "Connection Accepted! 🎉",
-            body: `${currentUserData.name} accepted your connection request`,
-            data: {
-              type: 'match',
-              matchedUserId: currentUser.uid,
-              matchedUserName: currentUserData.name
-            },
-            timestamp: new Date(),
-            read: false
-          };
-
-          // Add notification to initiator's user document
-          const initiatorRef = doc(db, 'users', initiatorId);
-          const initiatorDoc = await getDoc(initiatorRef);
-          if (initiatorDoc.exists()) {
-            const initiatorData = initiatorDoc.data();
-            const notifications = initiatorData.notifications || [];
-            await updateDoc(initiatorRef, {
-              notifications: [...notifications, notification]
-            });
-          }
-        }
-
-        // Create updated chat object with proper typing
-        const updatedChat: Chat = {
-          ...chat,
-          status: 'active' as const,
-          connectionType: connectionType
+        // Create the notification
+        const notification = {
+          id: Date.now().toString(),
+          title: "Connection Accepted! 🎉",
+          body: `${currentUserData.name} accepted your connection request`,
+          data: {
+            type: 'match',
+            matchedUserId: currentUser.uid,
+            matchedUserName: currentUserData.name
+          },
+          timestamp: new Date(),
+          read: false
         };
 
-        // Call the onAccept callback with the updated chat
-        onAccept(updatedChat);
-
-        // Navigate to the chat
-        router.push("/chat/" + chat.id);
+        // Add notification to initiator's user document
+        const initiatorRef = doc(db, 'users', initiatorId);
+        const initiatorDoc = await getDoc(initiatorRef);
+        
+        if (initiatorDoc.exists()) {
+          const initiatorData = initiatorDoc.data();
+          const notifications = initiatorData.notifications || [];
+          batch.update(initiatorRef, {
+            notifications: [...notifications, notification]
+          });
+          console.log('Notification added to initiator');
+        }
       }
+
+      // Commit all changes
+      console.log('Committing batch write');
+      await batch.commit();
+      console.log('Batch write successful');
+
+      // Create updated chat object with proper typing
+      const updatedChat: Chat = {
+        ...newChatData,
+        participants: chat.participants,
+        status: 'active' as const,
+        connectionType: connectionType,
+        connectionId: connectionId
+      };
+
+      // Call onAccept with the updated chat
+      onAccept(updatedChat);
+
+      console.log('Navigating to new chat');
+      // Navigate to the new chat
+      router.push("/chat/" + chatRef.id);
     } catch (error) {
       console.error('Error accepting connection:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
+        console.error('Error stack:', error.stack);
+      }
       Alert.alert('Error', 'Failed to accept connection. Please try again.');
     }
   };
 
   const handleDeclineConnection = async () => {
+    console.log('Decline button pressed for chat:', chat.id);
     try {
       if (chat.connectionId) {
+        console.log('Processing decline for connection:', chat.connectionId);
         // Get connection data before deleting
         const connectionDoc = await getDoc(doc(db, 'connections', chat.connectionId));
         if (connectionDoc.exists()) {
           const connectionData = connectionDoc.data();
+          console.log('Connection data:', connectionData);
           const initiatorId = connectionData.initiator;
           
           // Get the current user's data for the notification
           const currentUserDoc = await getDoc(doc(db, 'users', currentUser.uid));
           if (currentUserDoc.exists()) {
             const currentUserData = currentUserDoc.data();
+            console.log('Creating notification for initiator:', initiatorId);
             
             // Create the notification
             const notification = {
@@ -669,19 +754,22 @@ const ChatItem = React.memo(({ chat, currentUser, getUser, onPress, onPinPress, 
               await updateDoc(initiatorRef, {
                 notifications: [...notifications, notification]
               });
+              console.log('Notification added to initiator');
             }
           }
         }
 
+        console.log('Deleting connection');
         // Delete the connection
         await deleteDoc(doc(db, 'connections', chat.connectionId));
-        // Delete the chat
-        await deleteDoc(doc(db, 'chats', chat.id));
-        // Update local state
+        
+        console.log('Calling onDelete callback');
+        // Call the onDelete callback to update parent state
         onDelete();
       }
     } catch (error) {
       console.error('Error declining connection:', error);
+      Alert.alert('Error', 'Failed to decline connection. Please try again.');
     }
   };
 
@@ -924,7 +1012,11 @@ const ChatItem = React.memo(({ chat, currentUser, getUser, onPress, onPinPress, 
                         <View style={styles.pendingActionsRow}>
                           <TouchableOpacity 
                             style={[styles.pendingActionButton, { backgroundColor: '#4CAF50' }]}
-                            onPress={handleAcceptConnection}
+                            onPress={() => {
+                              console.log('Accept button pressed');
+                              handleAcceptConnection();
+                            }}
+                            activeOpacity={0.7}
                           >
                             <View style={styles.pendingActionIcon}>
                               <MaterialIcons name="check" size={24} color="#FFF" />
@@ -933,7 +1025,11 @@ const ChatItem = React.memo(({ chat, currentUser, getUser, onPress, onPinPress, 
                           </TouchableOpacity>
                           <TouchableOpacity 
                             style={[styles.pendingActionButton, { backgroundColor: '#FF3B30' }]}
-                            onPress={handleDeclineConnection}
+                            onPress={() => {
+                              console.log('Decline button pressed');
+                              handleDeclineConnection();
+                            }}
+                            activeOpacity={0.7}
                           >
                             <View style={styles.pendingActionIcon}>
                               <MaterialIcons name="close" size={24} color="#FFF" />
@@ -1135,12 +1231,13 @@ export default function ChatInbox() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setAuthUser(user);
+        console.log('Auth User UID:', user.uid);
       } else {
         router.replace("login/login");
       }
       setIsAuthLoading(false);
     });
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
   // Add refresh function
@@ -1149,19 +1246,38 @@ export default function ChatInbox() {
     
     setIsRefreshing(true);
     try {
-      const allChats = await getChats();
+      // Fetch both chats and connections
+      const [allChats, connectionsSnapshot] = await Promise.all([
+        getChats(),
+        getDocs(collection(db, 'connections'))
+      ]);
+
       if (allChats) {
         const userChats = allChats.filter(
           (chat: any) => chat.participants && chat.participants.includes(user.uid)
         ) as Chat[];
 
-        const pending = userChats.filter(chat => chat.status === 'pending');
-        const active = userChats.filter(chat => chat.status !== 'pending');
+        // Convert connections to chat format for pending connections
+        const pendingConnections = connectionsSnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          .filter((connection: any) => 
+            connection.participants && 
+            connection.participants.includes(user.uid) &&
+            connection.status === 'pending'
+          ) as Chat[];
+
+        // Separate pending and active chats
+        const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
+        const active = userChats.filter(chat => chat.status === 'active');
         
+        // Update all state variables
         setPendingChats(pending);
         setActiveChats(active);
-        setChats(userChats);
-        setFilteredChats(userChats);
+        setChats([...pending, ...active]);
+        setFilteredChats([...pending, ...active]);
       }
     } catch (error) {
       console.error('Error refreshing chats:', error);
@@ -1183,12 +1299,28 @@ export default function ChatInbox() {
 
     const setupChatSubscriptions = async () => {
       try {
-        const allChats = await getChats();
+        // Fetch both chats and connections
+        const [allChats, connectionsSnapshot] = await Promise.all([
+          getChats(),
+          getDocs(collection(db, 'connections'))
+        ]);
         
         if (allChats) {
           const userChats = allChats.filter(
             (chat: any) => chat.participants && chat.participants.includes(user.uid)
           ) as Chat[];
+
+          // Convert connections to chat format for pending connections
+          const pendingConnections = connectionsSnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }))
+            .filter((connection: any) => 
+              connection.participants && 
+              connection.participants.includes(user.uid) &&
+              connection.status === 'pending'
+            ) as Chat[];
 
           // Set up real-time subscriptions for each chat
           userChats.forEach(chat => {
@@ -1216,13 +1348,13 @@ export default function ChatInbox() {
           });
 
           // Initial state setup
-          const pending = userChats.filter(chat => chat.status === 'pending');
+          const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
           const active = userChats.filter(chat => chat.status !== 'pending');
           
           setPendingChats(pending);
           setActiveChats(active);
-          setChats(userChats);
-          setFilteredChats(userChats);
+          setChats([...pending, ...active]);
+          setFilteredChats([...pending, ...active]);
         }
       } catch (error) {
         console.error('Error loading chats:', error);
@@ -1326,13 +1458,13 @@ export default function ChatInbox() {
 
   const handleAcceptChat = (updatedChat: Chat) => {
     // Remove from pending chats and add to active chats
-    setPendingChats(prevChats => prevChats.filter(chat => chat.id !== updatedChat.id));
-    setActiveChats(prevChats => [updatedChat, ...prevChats]);
-    setChats(prevChats => {
+    setPendingChats((prevChats: Chat[]) => prevChats.filter(chat => chat.id !== updatedChat.id));
+    setActiveChats((prevChats: Chat[]) => [updatedChat, ...prevChats]);
+    setChats((prevChats: Chat[]) => {
       const filtered = prevChats.filter(chat => chat.id !== updatedChat.id);
       return [updatedChat, ...filtered];
     });
-    setFilteredChats(prevChats => {
+    setFilteredChats((prevChats: Chat[]) => {
       const filtered = prevChats.filter(chat => chat.id !== updatedChat.id);
       return [updatedChat, ...filtered];
     });
@@ -1499,8 +1631,11 @@ export default function ChatInbox() {
       onPinPress={() => handlePinChat(item.id)}
       onDelete={() => handleDeleteChat(item.id)}
       onAccept={handleAcceptChat}
+      setPendingChats={setPendingChats}
+      setChats={setChats}
+      setFilteredChats={setFilteredChats}
     />
-  ), [user, handlePinChat, handleDeleteChat, handleAcceptChat]);
+  ), [user, handlePinChat, handleDeleteChat, handleAcceptChat, setPendingChats, setChats, setFilteredChats]);
 
   // Interpolate colors for smooth transitions
   const backgroundColor = backgroundAnim.interpolate({
@@ -1626,6 +1761,9 @@ export default function ChatInbox() {
                       onPinPress={() => handlePinChat(chat.id)}
                       onDelete={() => handleDeleteChat(chat.id)}
                       onAccept={handleAcceptChat}
+                      setPendingChats={setPendingChats}
+                      setChats={setChats}
+                      setFilteredChats={setFilteredChats}
                     />
                   ))}
                 </View>
@@ -1663,6 +1801,9 @@ export default function ChatInbox() {
                       onPinPress={() => handlePinChat(chat.id)}
                       onDelete={() => handleDeleteChat(chat.id)}
                       onAccept={handleAcceptChat}
+                      setPendingChats={setPendingChats}
+                      setChats={setChats}
+                      setFilteredChats={setFilteredChats}
                     />
                   ))}
                 </View>

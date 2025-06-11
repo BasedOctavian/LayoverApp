@@ -24,6 +24,7 @@ import { auth } from "../../../config/firebaseConfig";
 import { useRouter } from "expo-router";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
+import { containsFilteredContent, getFilteredContentCategory } from "../../utils/contentFilter";
 
 interface Trip {
   id: string;
@@ -75,6 +76,7 @@ const EditProfile = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const router = useRouter();
+  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -232,6 +234,17 @@ const EditProfile = () => {
       Alert.alert("Error", "User not logged in");
       return;
     }
+
+    // Check for any field errors
+    if (Object.values(fieldErrors).some(error => error)) {
+      Alert.alert(
+        "Inappropriate Content",
+        "Please remove any inappropriate content before saving.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     setUpdating(true);
     setSaveProgress(0);
     try {
@@ -322,6 +335,13 @@ const EditProfile = () => {
     index: number,
     text: string
   ) => {
+    // Check for filtered content
+    if (containsFilteredContent(text)) {
+      setFieldErrors(prev => ({ ...prev, [`${field}_${index}`]: true }));
+    } else {
+      setFieldErrors(prev => ({ ...prev, [`${field}_${index}`]: false }));
+    }
+
     const updatedFields = [...formData[field]];
     updatedFields[index] = text;
     setFormData((prev) => ({
@@ -363,34 +383,59 @@ const EditProfile = () => {
             <Text style={styles.cardTitle}>Basic Information</Text>
             <Text style={styles.fieldLabel}>Your Full Name</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                fieldErrors['name'] && styles.inputError
+              ]}
               placeholder="Name"
               value={formData.name}
-              onChangeText={(text) =>
-                setFormData({ ...formData, name: text })
-              }
-              placeholderTextColor="#e4fbfe80"
+              onChangeText={(text) => {
+                if (containsFilteredContent(text)) {
+                  setFieldErrors(prev => ({ ...prev, name: true }));
+                } else {
+                  setFieldErrors(prev => ({ ...prev, name: false }));
+                }
+                setFormData({ ...formData, name: text });
+              }}
+              placeholderTextColor={fieldErrors['name'] ? "#ff4444" : "#e4fbfe80"}
             />
             <Text style={styles.fieldLabel}>Your Current Mood</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                fieldErrors['moodStatus'] && styles.inputError
+              ]}
               placeholder="Mood Status"
               value={formData.moodStatus}
-              onChangeText={(text) =>
-                setFormData({ ...formData, moodStatus: text })
-              }
-              placeholderTextColor="#e4fbfe80"
+              onChangeText={(text) => {
+                if (containsFilteredContent(text)) {
+                  setFieldErrors(prev => ({ ...prev, moodStatus: true }));
+                } else {
+                  setFieldErrors(prev => ({ ...prev, moodStatus: false }));
+                }
+                setFormData({ ...formData, moodStatus: text });
+              }}
+              placeholderTextColor={fieldErrors['moodStatus'] ? "#ff4444" : "#e4fbfe80"}
             />
             <Text style={styles.fieldLabel}>Tell us about yourself</Text>
             <TextInput
-              style={[styles.input, styles.multilineInput]}
+              style={[
+                styles.input,
+                styles.multilineInput,
+                fieldErrors['bio'] && styles.inputError
+              ]}
               placeholder="Bio"
               value={formData.bio}
-              onChangeText={(text) =>
-                setFormData({ ...formData, bio: text })
-              }
+              onChangeText={(text) => {
+                if (containsFilteredContent(text)) {
+                  setFieldErrors(prev => ({ ...prev, bio: true }));
+                } else {
+                  setFieldErrors(prev => ({ ...prev, bio: false }));
+                }
+                setFormData({ ...formData, bio: text });
+              }}
               multiline
-              placeholderTextColor="#e4fbfe80"
+              placeholderTextColor={fieldErrors['bio'] ? "#ff4444" : "#e4fbfe80"}
             />
           </View>
 
@@ -411,13 +456,17 @@ const EditProfile = () => {
                 {formData[field].map((value, index) => (
                   <View key={index} style={styles.fieldRow}>
                     <TextInput
-                      style={[styles.input, styles.flexInput]}
+                      style={[
+                        styles.input,
+                        styles.flexInput,
+                        fieldErrors[`${field}_${index}`] && styles.inputError
+                      ]}
                       value={value}
                       onChangeText={(text) =>
                         handleFieldChange(field, index, text)
                       }
                       placeholder={`Enter ${field.slice(0, -1)}`}
-                      placeholderTextColor="#e4fbfe80"
+                      placeholderTextColor={fieldErrors[`${field}_${index}`] ? "#ff4444" : "#e4fbfe80"}
                     />
                     <TouchableOpacity
                       onPress={() => handleRemoveField(field, index)}
@@ -455,11 +504,21 @@ const EditProfile = () => {
             {formData.travelHistory.map((trip, index) => (
               <View key={trip.id} style={styles.tripContainer}>
                 <TextInput
-                  style={styles.input}
+                  style={[
+                    styles.input,
+                    fieldErrors[`trip_${index}`] && styles.inputError
+                  ]}
                   placeholder="Trip Name"
                   value={trip.name}
-                  onChangeText={(text) => handleTripNameChange(index, text)}
-                  placeholderTextColor="#e4fbfe80"
+                  onChangeText={(text) => {
+                    if (containsFilteredContent(text)) {
+                      setFieldErrors(prev => ({ ...prev, [`trip_${index}`]: true }));
+                    } else {
+                      setFieldErrors(prev => ({ ...prev, [`trip_${index}`]: false }));
+                    }
+                    handleTripNameChange(index, text);
+                  }}
+                  placeholderTextColor={fieldErrors[`trip_${index}`] ? "#ff4444" : "#e4fbfe80"}
                 />
                 <TouchableOpacity onPress={() => handleRemoveTrip(index)}>
                   <MaterialIcons
@@ -480,49 +539,73 @@ const EditProfile = () => {
             <Text style={styles.cardTitle}>Social Media</Text>
             <Text style={styles.fieldLabel}>Connect your social media accounts</Text>
             <View style={styles.socialMediaContainer}>
-              <View style={styles.socialMediaInput}>
-                <MaterialIcons name="photo-camera" size={24} color="#38a5c9" style={styles.socialIcon} />
+              <View style={[
+                styles.socialMediaInput,
+                fieldErrors['instagram'] && styles.inputError
+              ]}>
+                <MaterialIcons name="photo-camera" size={24} color={fieldErrors['instagram'] ? "#ff4444" : "#38a5c9"} style={styles.socialIcon} />
                 <TextInput
                   style={[styles.input, styles.socialInput]}
                   placeholder="Instagram Username"
                   value={extractUsername(formData.socialMedia.instagram || '', 'instagram')}
-                  onChangeText={(text) =>
+                  onChangeText={(text) => {
+                    if (containsFilteredContent(text)) {
+                      setFieldErrors(prev => ({ ...prev, instagram: true }));
+                    } else {
+                      setFieldErrors(prev => ({ ...prev, instagram: false }));
+                    }
                     setFormData((prev) => ({
                       ...prev,
                       socialMedia: { ...prev.socialMedia, instagram: text },
-                    }))
-                  }
-                  placeholderTextColor="#e4fbfe80"
+                    }));
+                  }}
+                  placeholderTextColor={fieldErrors['instagram'] ? "#ff4444" : "#e4fbfe80"}
                 />
               </View>
-              <View style={styles.socialMediaInput}>
-                <MaterialIcons name="work" size={24} color="#38a5c9" style={styles.socialIcon} />
+              <View style={[
+                styles.socialMediaInput,
+                fieldErrors['linkedin'] && styles.inputError
+              ]}>
+                <MaterialIcons name="work" size={24} color={fieldErrors['linkedin'] ? "#ff4444" : "#38a5c9"} style={styles.socialIcon} />
                 <TextInput
                   style={[styles.input, styles.socialInput]}
                   placeholder="LinkedIn Username"
                   value={extractUsername(formData.socialMedia.linkedin || '', 'linkedin')}
-                  onChangeText={(text) =>
+                  onChangeText={(text) => {
+                    if (containsFilteredContent(text)) {
+                      setFieldErrors(prev => ({ ...prev, linkedin: true }));
+                    } else {
+                      setFieldErrors(prev => ({ ...prev, linkedin: false }));
+                    }
                     setFormData((prev) => ({
                       ...prev,
                       socialMedia: { ...prev.socialMedia, linkedin: text },
-                    }))
-                  }
-                  placeholderTextColor="#e4fbfe80"
+                    }));
+                  }}
+                  placeholderTextColor={fieldErrors['linkedin'] ? "#ff4444" : "#e4fbfe80"}
                 />
               </View>
-              <View style={styles.socialMediaInput}>
-                <MaterialIcons name="chat" size={24} color="#38a5c9" style={styles.socialIcon} />
+              <View style={[
+                styles.socialMediaInput,
+                fieldErrors['twitter'] && styles.inputError
+              ]}>
+                <MaterialIcons name="chat" size={24} color={fieldErrors['twitter'] ? "#ff4444" : "#38a5c9"} style={styles.socialIcon} />
                 <TextInput
                   style={[styles.input, styles.socialInput]}
                   placeholder="Twitter Username"
                   value={extractUsername(formData.socialMedia.twitter || '', 'twitter')}
-                  onChangeText={(text) =>
+                  onChangeText={(text) => {
+                    if (containsFilteredContent(text)) {
+                      setFieldErrors(prev => ({ ...prev, twitter: true }));
+                    } else {
+                      setFieldErrors(prev => ({ ...prev, twitter: false }));
+                    }
                     setFormData((prev) => ({
                       ...prev,
                       socialMedia: { ...prev.socialMedia, twitter: text },
-                    }))
-                  }
-                  placeholderTextColor="#e4fbfe80"
+                    }));
+                  }}
+                  placeholderTextColor={fieldErrors['twitter'] ? "#ff4444" : "#e4fbfe80"}
                 />
               </View>
             </View>
@@ -530,9 +613,12 @@ const EditProfile = () => {
 
           {/* Save Button */}
           <TouchableOpacity
-            style={[styles.saveButton, updating && styles.saveButtonDisabled]}
+            style={[
+              styles.saveButton,
+              (updating || Object.values(fieldErrors).some(error => error)) && styles.saveButtonDisabled
+            ]}
             onPress={handleUpdateProfile}
-            disabled={updating}
+            disabled={updating || Object.values(fieldErrors).some(error => error)}
           >
             {updating ? (
               <View style={styles.saveButtonContent}>
@@ -709,6 +795,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontWeight: '500',
     letterSpacing: 0.3,
+  },
+  inputError: {
+    borderColor: "#ff4444",
+    backgroundColor: "rgba(255, 68, 68, 0.1)",
   },
 });
 

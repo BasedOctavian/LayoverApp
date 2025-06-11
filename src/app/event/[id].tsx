@@ -15,6 +15,8 @@ import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import useChat from "../../hooks/useChat";
+import { doc, getDoc, updateDoc, arrayUnion, deleteDoc, addDoc, collection } from "firebase/firestore";
+import { db } from "../../../config/firebaseConfig";
 
 interface Event {
   id: string;
@@ -211,6 +213,69 @@ export default function Event() {
     }
   };
 
+  // Add report handler
+  const handleReport = () => {
+    Alert.alert(
+      "Report Event",
+      "Are you sure you want to report this event?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Report",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Create a new report document with detailed information
+              const reportData = {
+                reportedEventId: eventId,
+                reportedBy: authUser?.uid,
+                reportedEventName: event?.name || 'Unknown Event',
+                reportedByUserName: authUser?.displayName || 'Anonymous',
+                createdAt: new Date(),
+                status: "pending",
+                type: "event_report",
+                lastUpdated: new Date(),
+                reviewedBy: null,
+                reviewNotes: null,
+                reviewDate: null,
+                // Add event metadata
+                reportedEvent: {
+                  name: event?.name || 'Unknown Event',
+                  description: event?.description,
+                  category: event?.category,
+                  organizer: event?.organizer,
+                  airportCode: event?.airportCode,
+                  createdAt: event?.createdAt,
+                  startTime: event?.startTime,
+                  attendees: event?.attendees?.length || 0,
+                }
+              };
+              
+              // Add the report to the reports collection
+              await addDoc(collection(db, "reports"), reportData);
+              
+              Alert.alert(
+                "Report Submitted",
+                "Thank you for your report. Our team will review it and take appropriate action.",
+                [{ text: "OK" }]
+              );
+            } catch (error) {
+              console.error("Error reporting event:", error);
+              Alert.alert(
+                "Error",
+                "Failed to submit report. Please try again later.",
+                [{ text: "OK" }]
+              );
+            }
+          }
+        }
+      ]
+    );
+  };
+
   if (!event) {
     return null;
   }
@@ -262,7 +327,7 @@ export default function Event() {
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <TopBar onProfilePress={() => router.push("/profile/profile")} />
+        <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
         {event.eventImage && (
           <View style={[styles.imageContainer, { top: topBarHeight }]}>
             <Image 
@@ -380,6 +445,24 @@ export default function Event() {
                 </LinearGradient>
               </TouchableOpacity>
             </View>
+
+            {/* Add report button for non-organizer users */}
+            {authUser && event.organizer !== authUser.uid && (
+              <View style={styles.reportButtonContainer}>
+                <TouchableOpacity
+                  style={[styles.reportButton, { 
+                    backgroundColor: theme === "light" ? "rgba(255, 68, 68, 0.1)" : "rgba(255, 102, 102, 0.1)",
+                    borderColor: theme === "light" ? "#ff4444" : "#ff6666",
+                  }]}
+                  onPress={handleReport}
+                >
+                  <MaterialIcons name="report" size={16} color={theme === "light" ? "#ff4444" : "#ff6666"} />
+                  <Text style={[styles.reportButtonText, { color: theme === "light" ? "#ff4444" : "#ff6666" }]}>
+                    Report Event
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </Animated.View>
         </ScrollView>
         <DateTimePickerModal
@@ -582,6 +665,29 @@ const styles = StyleSheet.create({
   messageBadgeText: {
     color: '#ffffff',
     fontSize: 11,
+    fontWeight: '600',
+  },
+  reportButtonContainer: {
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  reportButtonText: {
+    fontSize: 14,
     fontWeight: '600',
   },
 });

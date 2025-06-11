@@ -128,6 +128,41 @@ const Profile = () => {
   const modalScaleAnim = useRef(new Animated.Value(0.9)).current;
   const modalOpacityAnim = useRef(new Animated.Value(0)).current;
 
+  // Define TripGallery component inside Profile
+  const TripGallery = ({ trip, onPhotoPress, theme }: { 
+    trip: any; 
+    onPhotoPress: (photos: string[], index: number) => void; 
+    theme: "light" | "dark" 
+  }) => {
+    // Handle case where trip is just a string (country name)
+    if (typeof trip === 'string') {
+      return null; // Don't show anything for string-only entries
+    }
+
+    // Handle case where trip is a full object with photos
+    return (
+      <View style={styles.tripContainer}>
+        <Text style={[styles.tripTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>{trip.name}</Text>
+        {trip.photos && trip.photos.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tripScrollContent}
+          >
+            {trip.photos.map((photo: string, index: number) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => onPhotoPress(trip.photos, index)}
+              >
+                <Image source={{ uri: photo }} style={styles.tripPhoto} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
+      </View>
+    );
+  };
+
   // Interpolate colors for smooth transitions
   const backgroundColor = backgroundAnim.interpolate({
     inputRange: [0, 1],
@@ -554,6 +589,7 @@ const Profile = () => {
                 ))}
               </View>
             </View>
+
             <View style={[styles.card, styles.goalsCard, { 
               backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
               borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
@@ -574,6 +610,30 @@ const Profile = () => {
                 ))}
               </View>
             </View>
+
+            {/* Travel History Section */}
+            {userData.travelHistory && Array.isArray(userData.travelHistory) && userData.travelHistory.length > 0 && (
+              <View style={[styles.card, styles.travelHistoryCard, { 
+                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
+                shadowOpacity: theme === "light" ? 0.2 : 0.1,
+              }]}>
+                <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Travel History</Text>
+                <View style={styles.tagsContainer}>
+                  {userData.travelHistory.map((country, index) => (
+                    <View key={index} style={[styles.tag, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                      shadowOpacity: theme === "light" ? 0.1 : 0,
+                    }]}>
+                      <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{country}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           </Animated.View>
         );
       case 'social':
@@ -731,32 +791,29 @@ const Profile = () => {
     if (!authUser || !id) return;
     
     try {
-      // First check if there's a pending connection
+      // Check connections collection for any existing connection
       const connectionsRef = collection(db, "connections");
       const q = query(
         connectionsRef,
-        where("participants", "array-contains", authUser.uid),
-        where("status", "==", "pending")
+        where("participants", "array-contains", authUser.uid)
       );
       const querySnapshot = await getDocs(q);
       
-      // Check if there's a pending connection between these users
-      const hasPendingConnection = querySnapshot.docs.some(doc => {
+      // Check if there's a connection between these users
+      const existingConnection = querySnapshot.docs.find(doc => {
         const data = doc.data();
         return data.participants.includes(id);
       });
 
-      if (hasPendingConnection) {
-        setIsConnected("pending");
-        return;
-      }
-
-      // If no pending connection, check if they're already connected
-      const currentUserDoc = await getDoc(doc(db, "users", authUser.uid));
-      const currentUserData = currentUserDoc.data();
-      
-      if (currentUserData?.likedUsers?.includes(id)) {
-        setIsConnected("connected");
+      if (existingConnection) {
+        const connectionData = existingConnection.data();
+        if (connectionData.status === "active") {
+          setIsConnected("connected");
+        } else if (connectionData.status === "pending") {
+          setIsConnected("pending");
+        } else {
+          setIsConnected("not_connected");
+        }
       } else {
         setIsConnected("not_connected");
       }
@@ -772,72 +829,22 @@ const Profile = () => {
     setIsProcessing(true);
 
     try {
-      // Get current user data
-      const currentUserDoc = await getDoc(doc(db, "users", authUser.uid));
-      const currentUserData = currentUserDoc.data();
-
-      // Add to liked users
-      await updateDoc(doc(db, "users", authUser.uid), {
-        likedUsers: arrayUnion(id)
-      });
-
-      // Check if the other user has already liked us
-      const otherUserDoc = await getDoc(doc(db, "users", id));
-      const otherUserData = otherUserDoc.data();
-      const hasMatched = otherUserData?.likedUsers?.includes(authUser.uid);
-
-      // Create a pending connection
+      // Create a new connection document with exact structure matching chatExplore
       const connectionData = {
-        participants: [authUser.uid, id],
+        connectionType: null,
         createdAt: new Date(),
-        status: 'pending',
         initiator: authUser.uid,
         lastMessage: null,
-      };
-      
-      const connectionsCollection = collection(db, "connections");
-      const docRef = await addDoc(connectionsCollection, connectionData);
-      
-      // Create a chat with pending status
-      const chatData = {
         participants: [authUser.uid, id],
-        createdAt: new Date(),
-        lastMessage: null,
-        status: 'pending',
-        connectionId: docRef.id
+        status: 'pending'
       };
       
-      const chatsCollection = collection(db, "chats");
-      await addDoc(chatsCollection, chatData);
-
-      // If it's a match, create notifications for both users
-      if (hasMatched) {
-        // Create notification for the other user
-        const otherUserNotifications = otherUserData?.notifications || [];
-        await updateDoc(doc(db, "users", id), {
-          notifications: [...otherUserNotifications, {
-            id: Date.now().toString(),
-            title: "New Match! 🎉",
-            body: `${currentUserData?.name || 'Someone'} matched with you!`,
-            data: {
-              type: 'match',
-              matchedUserId: authUser.uid,
-              matchedUserName: currentUserData?.name
-            },
-            timestamp: new Date(),
-            read: false
-          }]
-        });
-
-        // Create notification for current user
-        const currentUserNotifications = currentUserData?.notifications || [];
-        
-      }
-
+      // Create ONLY the connection document
+      await addDoc(collection(db, 'connections'), connectionData);
       setIsConnected("pending");
     } catch (error) {
-      console.error("Error connecting:", error);
-      Alert.alert("Error", "Failed to send connection request. Please try again.");
+      console.error("Error creating connection:", error);
+      Alert.alert("Error", "Failed to create connection. Please try again.");
     } finally {
       setIsProcessing(false);
     }
@@ -863,15 +870,6 @@ const Profile = () => {
             style: "destructive",
             onPress: async () => {
               try {
-                // Remove from liked users
-                const currentUserDoc = await getDoc(doc(db, "users", authUser.uid));
-                const currentUserData = currentUserDoc.data();
-                const updatedLikedUsers = currentUserData?.likedUsers?.filter((userId: string) => userId !== id) || [];
-                
-                await updateDoc(doc(db, "users", authUser.uid), {
-                  likedUsers: updatedLikedUsers
-                });
-
                 // Find and delete the connection document
                 const connectionsRef = collection(db, "connections");
                 const q = query(
@@ -880,27 +878,27 @@ const Profile = () => {
                 );
                 const querySnapshot = await getDocs(q);
                 
+                let connectionId = null;
                 for (const doc of querySnapshot.docs) {
                   const data = doc.data();
                   if (data.participants.includes(id)) {
+                    connectionId = doc.id;
                     await deleteDoc(doc.ref);
                     break;
                   }
                 }
 
-                // Find and delete the associated chat
-                const chatsRef = collection(db, "chats");
-                const chatsQuery = query(
-                  chatsRef,
-                  where("participants", "array-contains", authUser.uid)
-                );
-                const chatsSnapshot = await getDocs(chatsQuery);
-                
-                for (const doc of chatsSnapshot.docs) {
-                  const data = doc.data();
-                  if (data.participants.includes(id)) {
-                    await deleteDoc(doc.ref);
-                    break;
+                // If we found a connection, also delete associated chat
+                if (connectionId) {
+                  const chatsRef = collection(db, "chats");
+                  const chatsQuery = query(
+                    chatsRef,
+                    where("connectionId", "==", connectionId)
+                  );
+                  const chatsSnapshot = await getDocs(chatsQuery);
+                  
+                  for (const chatDoc of chatsSnapshot.docs) {
+                    await deleteDoc(chatDoc.ref);
                   }
                 }
 
@@ -996,6 +994,120 @@ const Profile = () => {
   const handleModalVisibility = (show: boolean) => {
     setShowConnectionsModal(show);
     animateModal(show);
+  };
+
+  // Update the report handler
+  const handleReport = () => {
+    Alert.alert(
+      "Report User",
+      "Are you sure you want to report this user?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Report",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Create a new report document with detailed information
+              const reportData = {
+                reportedUserId: id,
+                reportedBy: authUser?.uid,
+                reportedUserName: userData?.name || 'Unknown User',
+                reportedByUserName: authUser?.displayName || 'Anonymous',
+                createdAt: new Date(),
+                status: "pending",
+                type: "user_report",
+                lastUpdated: new Date(),
+                reviewedBy: null,
+                reviewNotes: null,
+                reviewDate: null,
+                // Add any additional metadata that might be helpful
+                reportedUserProfile: {
+                  name: userData?.name || 'Unknown User',
+                  ...(userData?.age && { age: userData.age }),
+                  ...(userData?.pronouns && { pronouns: userData.pronouns }),
+                  ...(userData?.bio && { bio: userData.bio }),
+                  ...(userData?.languages && { languages: userData.languages }),
+                  ...(userData?.interests && { interests: userData.interests }),
+                  ...(userData?.goals && { goals: userData.goals }),
+                  ...(userData?.createdAt && { createdAt: userData.createdAt }),
+                }
+              };
+              
+              // Add the report to the reports collection
+              await addDoc(collection(db, "reports"), reportData);
+              
+              Alert.alert(
+                "Report Submitted",
+                "Thank you for your report. Our team will review it and take appropriate action.",
+                [{ text: "OK" }]
+              );
+            } catch (error) {
+              console.error("Error reporting user:", error);
+              Alert.alert(
+                "Error",
+                "Failed to submit report. Please try again later.",
+                [{ text: "OK" }]
+              );
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Add block handler
+  const handleBlock = () => {
+    Alert.alert(
+      "Block User",
+      "Are you sure you want to block this user? You won't be able to see their profile or receive messages from them.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              if (!authUser || !id) return;
+
+              // Update authUser's document with blocked user
+              const authUserRef = doc(db, "users", authUser.uid);
+              await updateDoc(authUserRef, {
+                blockedUsers: arrayUnion(id)
+              });
+
+              // Update blocked user's document with hasMeBlocked
+              const blockedUserRef = doc(db, "users", id);
+              await updateDoc(blockedUserRef, {
+                hasMeBlocked: arrayUnion(authUser.uid)
+              });
+
+              Alert.alert(
+                "User Blocked",
+                "You have successfully blocked this user.",
+                [{ 
+                  text: "OK",
+                  onPress: () => router.back()
+                }]
+              );
+            } catch (error) {
+              console.error("Error blocking user:", error);
+              Alert.alert(
+                "Error",
+                "Failed to block user. Please try again later.",
+                [{ text: "OK" }]
+              );
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (authLoading || isLoadingProfile) {
@@ -1110,7 +1222,6 @@ const Profile = () => {
                 <View style={[styles.statusIndicator, { borderColor: theme === "light" ? "#e6e6e6" : "#000000" }]} />
               </TouchableOpacity>
 
-              {/* Enhanced Name and Info Section */}
               <Animated.View 
                 style={[
                   styles.nameContainer,
@@ -1120,12 +1231,14 @@ const Profile = () => {
                   }
                 ]}
               >
-                <Animated.Text style={[styles.nameText, { color: textColor }]}>
-                  {userData?.name}
-                  <Animated.Text style={[styles.pronounsText, { color: secondaryTextColor }]}>
-                    {userData?.pronouns && ` (${userData.pronouns})`}
+                <View style={styles.nameRow}>
+                  <Animated.Text style={[styles.nameText, { color: textColor }]}>
+                    {userData?.name}
+                    <Animated.Text style={[styles.pronounsText, { color: secondaryTextColor }]}>
+                      {userData?.pronouns && ` (${userData.pronouns})`}
+                    </Animated.Text>
                   </Animated.Text>
-                </Animated.Text>
+                </View>
                 <View style={styles.badgeContainer}>
                   <TouchableOpacity 
                     style={[styles.statusButton, { 
@@ -1255,16 +1368,36 @@ const Profile = () => {
             {/* Tab Content */}
             {renderTabContent()}
 
-            {/* Trip Galleries with Conditional Rendering */}
-            {userData.travelHistory && Array.isArray(userData.travelHistory) && userData.travelHistory.length > 1 ? (
-              userData.travelHistory.map((trip: any, index: number) => (
-                <TripGallery
-                  key={index}
-                  trip={trip}
-                  onPhotoPress={handlePhotoPress}
-                />
-              ))
-            ) : null}
+            {/* Add report and block buttons here, before the footer */}
+            {id !== authUser?.uid && (
+              <View style={styles.actionButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.reportButton, { 
+                    backgroundColor: theme === "light" ? "rgba(255, 68, 68, 0.1)" : "rgba(255, 102, 102, 0.1)",
+                    borderColor: theme === "light" ? "#ff4444" : "#ff6666",
+                  }]}
+                  onPress={handleReport}
+                >
+                  <MaterialIcons name="report" size={16} color={theme === "light" ? "#ff4444" : "#ff6666"} />
+                  <Text style={[styles.reportButtonText, { color: theme === "light" ? "#ff4444" : "#ff6666" }]}>
+                    Report User
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.blockButton, { 
+                    backgroundColor: theme === "light" ? "rgba(255, 68, 68, 0.1)" : "rgba(255, 102, 102, 0.1)",
+                    borderColor: theme === "light" ? "#ff4444" : "#ff6666",
+                  }]}
+                  onPress={handleBlock}
+                >
+                  <MaterialIcons name="block" size={16} color={theme === "light" ? "#ff4444" : "#ff6666"} />
+                  <Text style={[styles.blockButtonText, { color: theme === "light" ? "#ff4444" : "#ff6666" }]}>
+                    Block User
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Footer with Logo and Membership Duration */}
             <View style={styles.footer}>
@@ -1433,26 +1566,6 @@ const ProfileSection = ({ icon, title, content, cardStyle }: any) => (
     <Text style={styles.cardTitle}>{title}</Text>
     <Text style={styles.cardContent}>{content}</Text>
   </TouchableOpacity>
-);
-
-const TripGallery = ({ trip, onPhotoPress }: { trip: any; onPhotoPress: (photos: string[], index: number) => void }) => (
-  <View style={styles.tripContainer}>
-    <Text style={styles.tripTitle}>{trip.name}</Text>
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.tripScrollContent}
-    >
-      {trip.photos.map((photo: string, index: number) => (
-        <TouchableOpacity
-          key={index}
-          onPress={() => onPhotoPress(trip.photos, index)}
-        >
-          <Image source={{ uri: photo }} style={styles.tripPhoto} />
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  </View>
 );
 
 const styles = StyleSheet.create({
@@ -2136,6 +2249,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 12,
+  },
+  tripPlaceholder: {
+    height: 160,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  tripPlaceholderText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  travelHistoryCard: {
+    marginTop: 16,
+  },
+  tagIcon: {
+    marginRight: 4,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  actionButtonsContainer: {
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 16,
+    gap: 12,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  reportButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  blockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  blockButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

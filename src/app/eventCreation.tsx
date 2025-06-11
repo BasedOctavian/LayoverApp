@@ -32,6 +32,7 @@ import { useRouter } from 'expo-router';
 import TopBar from '../components/TopBar';
 import LoadingScreen from '../components/LoadingScreen';
 import { ThemeContext } from '../context/ThemeContext';
+import { containsFilteredContent, getFilteredContentCategory } from '../utils/contentFilter';
 
 const categories = ['Wellness', 'Food & Drink', 'Entertainment', 'Travel Tips', 'Activity', 'Misc'];
 
@@ -85,6 +86,7 @@ const EventCreation: React.FC = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const screenOpacity = useRef(new Animated.Value(0)).current;
   const screenScale = useRef(new Animated.Value(0.95)).current;
+  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     const loadAirports = async () => {
@@ -225,6 +227,16 @@ const EventCreation: React.FC = () => {
     
     if (!user?.uid) {
       Alert.alert('Error', 'You must be logged in to create an event');
+      return;
+    }
+
+    // Check for any field errors
+    if (Object.values(fieldErrors).some(error => error)) {
+      Alert.alert(
+        "Inappropriate Content",
+        "Please remove any inappropriate content before creating the event.",
+        [{ text: "OK" }]
+      );
       return;
     }
 
@@ -371,30 +383,53 @@ const EventCreation: React.FC = () => {
                       <View style={styles.inputGroup}>
                         <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Event Name</Text>
                         <TextInput
-                          style={[styles.input, styles.textInput, { 
-                            backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
-                            color: theme === "light" ? "#000000" : "#e4fbfe",
-                            borderColor: "#37a4c8"
-                          }]}
+                          style={[
+                            styles.input, 
+                            styles.textInput, 
+                            { 
+                              backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
+                              color: theme === "light" ? "#000000" : "#e4fbfe",
+                              borderColor: fieldErrors['name'] ? "#ff4444" : "#37a4c8"
+                            }
+                          ]}
                           placeholder="Enter event name"
-                          placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
+                          placeholderTextColor={fieldErrors['name'] ? "#ff4444" : "#64748B"}
                           value={eventData.name}
-                          onChangeText={(text) => setEventData({ ...eventData, name: text })}
+                          onChangeText={(text) => {
+                            if (containsFilteredContent(text)) {
+                              setFieldErrors(prev => ({ ...prev, name: true }));
+                            } else {
+                              setFieldErrors(prev => ({ ...prev, name: false }));
+                            }
+                            setEventData({ ...eventData, name: text });
+                          }}
                         />
                       </View>
                       <View style={styles.inputGroup}>
                         <Text style={[styles.label, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Description</Text>
                         <TextInput
-                          style={[styles.input, styles.multilineInput, styles.textInput, { 
-                            backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
-                            color: theme === "light" ? "#000000" : "#e4fbfe",
-                            borderColor: "#37a4c8"
-                          }]}
+                          style={[
+                            styles.input, 
+                            styles.multilineInput, 
+                            styles.textInput, 
+                            { 
+                              backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
+                              color: theme === "light" ? "#000000" : "#e4fbfe",
+                              borderColor: fieldErrors['description'] ? "#ff4444" : "#37a4c8"
+                            }
+                          ]}
                           placeholder="Describe your event"
-                          placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
+                          placeholderTextColor={fieldErrors['description'] ? "#ff4444" : "#64748B"}
                           multiline
                           value={eventData.description}
-                          onChangeText={(text) => setEventData({ ...eventData, description: text })}
+                          onChangeText={(text) => {
+                            if (containsFilteredContent(text)) {
+                              setFieldErrors(prev => ({ ...prev, description: true }));
+                            } else {
+                              setFieldErrors(prev => ({ ...prev, description: false }));
+                            }
+                            setEventData({ ...eventData, description: text });
+                          }}
                         />
                       </View>
                       <View style={styles.inputGroup}>
@@ -512,13 +547,16 @@ const EventCreation: React.FC = () => {
                 {/* Create Button */}
                 <LinearGradient
                   colors={['#37a4c8', '#2F80ED']}
-                  style={[styles.createButton, isSubmitting && styles.createButtonDisabled]}
+                  style={[
+                    styles.createButton, 
+                    (isSubmitting || Object.values(fieldErrors).some(error => error)) && styles.createButtonDisabled
+                  ]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                 >
                   <TouchableOpacity 
                     onPress={handleSubmit}
-                    disabled={loading || isSubmitting}
+                    disabled={loading || isSubmitting || Object.values(fieldErrors).some(error => error)}
                     style={[styles.buttonInner, isSubmitting && styles.buttonInnerDisabled]}
                     activeOpacity={0.7}
                   >
@@ -896,6 +934,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
+  },
+  inputError: {
+    borderColor: "#ff4444",
+    backgroundColor: "rgba(255, 68, 68, 0.1)",
   },
 });
 

@@ -12,19 +12,22 @@ import {
   RefreshControl,
   Platform,
   AccessibilityInfo,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, User, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../../context/ThemeContext";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import * as Haptics from 'expo-haptics';
+import { doc, deleteDoc } from "firebase/firestore";
+import { db } from "../../../config/firebaseConfig";
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -173,6 +176,93 @@ export default function Settings() {
     await logout();
   };
 
+  // Handle account deletion with confirmation and re-authentication
+  const handleDeleteAccount = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+
+    Alert.alert(
+      "Delete Account",
+      "Are you sure you want to delete your account? This action cannot be undone.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              if (!authUser || !authUser.email) {
+                throw new Error("No authenticated user found");
+              }
+
+              // Prompt for password
+              Alert.prompt(
+                "Confirm Password",
+                "Please enter your password to confirm account deletion",
+                [
+                  {
+                    text: "Cancel",
+                    style: "cancel"
+                  },
+                  {
+                    text: "Confirm",
+                    onPress: async (password) => {
+                      if (!password) {
+                        Alert.alert("Error", "Password is required");
+                        return;
+                      }
+
+                      try {
+                        // Re-authenticate user
+                        const credential = EmailAuthProvider.credential(
+                          authUser.email,
+                          password
+                        );
+                        await reauthenticateWithCredential(authUser, credential);
+
+                        // Delete user document from Firestore
+                        const userDocRef = doc(db, "users", authUser.uid);
+                        await deleteDoc(userDocRef);
+
+                        // Delete Firebase Auth user
+                        await deleteUser(authUser);
+
+                        // Logout and redirect to login
+                        await logout();
+                        router.replace("login/login");
+                      } catch (error: any) {
+                        console.error("Error during deletion:", error);
+                        if (error.code === 'auth/wrong-password') {
+                          Alert.alert("Error", "Incorrect password. Please try again.");
+                        } else {
+                          Alert.alert(
+                            "Error",
+                            "Failed to delete account. Please try again later."
+                          );
+                        }
+                      }
+                    }
+                  }
+                ],
+                "secure-text"
+              );
+            } catch (error) {
+              console.error("Error deleting account:", error);
+              Alert.alert(
+                "Error",
+                "Failed to delete account. Please try again later."
+              );
+            }
+          }
+        }
+      ]
+    );
+  };
+
   // Interpolate colors for smooth transitions
   const backgroundColor = backgroundAnim.interpolate({
     inputRange: [0, 1],
@@ -293,6 +383,18 @@ export default function Settings() {
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => handleNavigation("/settings/blockedUsers")}
+                accessibilityRole="button"
+                accessibilityLabel="Manage blocked users"
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="person-remove" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Blocked Users</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
             </View>
             {/* Notifications Section */}
             <View style={styles.settingsSection}>
@@ -304,9 +406,9 @@ export default function Settings() {
               </Animated.Text>
               <TouchableOpacity
                 style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
-                onPress={() => handleNavigation("notifications/notifications")}
+                onPress={() => handleNavigation("locked/lockedScreen")}
                 accessibilityRole="button"
-                accessibilityLabel="Notification preferences"
+                accessibilityLabel="Notification preferences coming soon"
               >
                 <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
                   <Ionicons name="notifications" size={24} color="#37a4c8" />
@@ -376,7 +478,32 @@ export default function Settings() {
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
+              {/* TOS/EULA Button */}
+              <TouchableOpacity
+                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                onPress={() => handleNavigation("settings/tos")}
+                accessibilityRole="button"
+                accessibilityLabel="Terms of Service and EULA"
+              >
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                  <Ionicons name="document-text" size={24} color="#37a4c8" />
+                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Terms of Service & EULA</Animated.Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </Animated.View>
+              </TouchableOpacity>
             </View>
+            {/* Delete Account Button */}
+            <TouchableOpacity 
+              style={[styles.deleteButton, { borderColor: "#ff4444" }]} 
+              onPress={handleDeleteAccount}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+            >
+              <LinearGradient colors={["#ff4444", "#ff0000"]} style={styles.deleteGradient}>
+                <Ionicons name="trash" size={24} color="#ffffff" />
+                <Text style={styles.deleteText}>Delete Account</Text>
+              </LinearGradient>
+            </TouchableOpacity>
             {/* Logout Button */}
             <TouchableOpacity 
               style={[styles.logoutButton, { borderColor: "#37a4c8" }]} 
@@ -546,6 +673,23 @@ const styles = StyleSheet.create({
   copyrightText: {
     fontSize: 14,
     opacity: 0.7,
+  },
+  deleteButton: {
+    marginTop: 24,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+  },
+  deleteGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+  },
+  deleteText: {
+    fontSize: 16,
+    marginLeft: 12,
+    fontWeight: "600",
+    color: "#ffffff",
   },
 });
 

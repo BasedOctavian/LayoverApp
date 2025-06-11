@@ -22,6 +22,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopBar from "../components/TopBar";
 import LoadingScreen from "../components/LoadingScreen";
 import { ThemeContext } from "../context/ThemeContext";
+import useAirports, { Airport } from "../hooks/useAirports";
+import { useFilteredEvents } from "../hooks/useFilteredEvents";
+import { useNearestAirports } from "../hooks/useNearestAirports";
 
 interface Location {
   latitude: number;
@@ -32,13 +35,19 @@ interface Event {
   id: string;
   name: string;
   description: string;
-  latitude: number;
-  longitude: number;
+  latitude: string;
+  longitude: string;
   createdAt: Date;
-  startTime: Date;
-  organizer: string;
+  startTime: Date | null;
+  organizer: string | null;
   organizerName: string;
   attendees: string[];
+  airportCode: string;
+  category: string;
+  private: boolean;
+  eventUID: string;
+  eventImage: string | null;
+  updatedAt: Date;
 }
 
 // Haversine formula for distance calculation
@@ -55,14 +64,69 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 };
 
+// Add this new component before the main component
+const CountdownTimer = ({ startTime }: { startTime: Date | null }) => {
+  const [timeLeft, setTimeLeft] = useState<string>('');
+  const { theme } = React.useContext(ThemeContext);
+
+  useEffect(() => {
+    if (!startTime) {
+      setTimeLeft('TBD');
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = new Date();
+      const diff = startTime.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeLeft('Starting now');
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+      if (days > 0) {
+        setTimeLeft(`${days}d ${hours}h`);
+      } else if (hours > 0) {
+        setTimeLeft(`${hours}h ${minutes}m`);
+      } else {
+        setTimeLeft(`${minutes}m`);
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  return (
+    <View style={[styles.metaItem, { 
+      backgroundColor: theme === "light" ? "#f8f9fa" : "#000000",
+      borderColor: "#37a4c8"
+    }]}>
+      <MaterialIcons name="schedule" size={20} color="#37a4c8" style={styles.metaIcon} />
+      <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+        {timeLeft}
+      </Text>
+    </View>
+  );
+};
+
 export default function EventCreation() {
   const router = useRouter();
   const { getUser } = useUsers();
   const { getEvents } = useEvents();
+  const { getAirports } = useAirports();
   const [events, setEvents] = useState<Event[]>([]);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
+  const [allAirports, setAllAirports] = useState<Airport[]>([]);
   const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
   const [mapRegion, setMapRegion] = useState({
@@ -71,6 +135,9 @@ export default function EventCreation() {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
+  const [showAirportList, setShowAirportList] = useState(false);
+  const [airportListAnim] = useState(new Animated.Value(0));
+  const [eventListAnim] = useState(new Animated.Value(1));
 
   // Add animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -79,7 +146,20 @@ export default function EventCreation() {
   const headerSlideAnim = useRef(new Animated.Value(20)).current;
   const listSlideAnim = useRef(new Animated.Value(30)).current;
 
-  // Fetch current location and events
+  // Get nearest airports when location and airports are available
+  const nearestAirports = useNearestAirports(
+    currentLocation ? { lat: currentLocation.latitude, long: currentLocation.longitude } : null,
+    allAirports
+  );
+
+  // Set initial airport when nearest airports are calculated
+  useEffect(() => {
+    if (!selectedAirport && nearestAirports.closest) {
+      setSelectedAirport(nearestAirports.closest);
+    }
+  }, [nearestAirports.closest, selectedAirport]);
+
+  // Fetch current location, events, and airports
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -96,6 +176,12 @@ export default function EventCreation() {
           longitude: location.coords.longitude,
         });
 
+        // Fetch airports
+        const fetchedAirports = await getAirports();
+        if (fetchedAirports) {
+          setAllAirports(fetchedAirports);
+        }
+
         // Fetch events and organizer names
         const fetchedEvents = await getEvents();
         if (fetchedEvents && Array.isArray(fetchedEvents)) {
@@ -107,13 +193,19 @@ export default function EventCreation() {
                   id: event.id || '',
                   name: event.name || '',
                   description: event.description || '',
-                  latitude: parseFloat(event.latitude) || 0,
-                  longitude: parseFloat(event.longitude) || 0,
+                  latitude: event.latitude || '0',
+                  longitude: event.longitude || '0',
                   createdAt: event.createdAt?.toDate() || new Date(),
-                  startTime: new Date(event.startTime) || new Date(),
-                  organizer: event.organizer || '',
+                  startTime: event.startTime ? new Date(event.startTime) : null,
+                  organizer: event.organizer || null,
                   organizerName: organizer && "name" in organizer ? String(organizer.name) : "Auto Generated",
                   attendees: Array.isArray(event.attendees) ? event.attendees : [],
+                  airportCode: event.airportCode || '',
+                  category: event.category || '',
+                  private: event.private || false,
+                  eventUID: event.eventUID || '',
+                  eventImage: event.eventImage || null,
+                  updatedAt: event.updatedAt?.toDate() || new Date(),
                 } as Event;
               } catch (error) {
                 console.error("Error processing event:", error);
@@ -174,25 +266,42 @@ export default function EventCreation() {
     }
   }, [isLoading, initialLoadComplete]);
 
+  // Filter events based on selected airport
+  const { filteredRegularEvents } = useFilteredEvents(selectedAirport, events, []);
+
   // Sort events by distance
   const sortedEvents = useMemo(() => {
-    if (!currentLocation || !Array.isArray(events) || events.length === 0) return [];
-    return events.slice().sort((a, b) => {
+    if (!currentLocation || !Array.isArray(filteredRegularEvents) || filteredRegularEvents.length === 0) return [];
+    return filteredRegularEvents.slice().sort((a, b) => {
+      // First sort by whether they have attendees
+      const aHasAttendees = a.attendees && a.attendees.length > 0;
+      const bHasAttendees = b.attendees && b.attendees.length > 0;
+      
+      if (aHasAttendees && !bHasAttendees) return -1;
+      if (!aHasAttendees && bHasAttendees) return 1;
+      
+      // If both have attendees or both don't have attendees, sort by attendee count
+      if (aHasAttendees && bHasAttendees) {
+        const attendeeDiff = b.attendees.length - a.attendees.length;
+        if (attendeeDiff !== 0) return attendeeDiff;
+      }
+      
+      // If attendee counts are equal or both have no attendees, sort by distance
       const distanceA = calculateDistance(
         currentLocation.latitude,
         currentLocation.longitude,
-        a.latitude,
-        a.longitude
+        parseFloat(a.latitude),
+        parseFloat(a.longitude)
       );
       const distanceB = calculateDistance(
         currentLocation.latitude,
         currentLocation.longitude,
-        b.latitude,
-        b.longitude
+        parseFloat(b.latitude),
+        parseFloat(b.longitude)
       );
       return distanceA - distanceB;
     });
-  }, [events, currentLocation]);
+  }, [filteredRegularEvents, currentLocation]);
 
   // Update map region when location is available
   useEffect(() => {
@@ -205,6 +314,46 @@ export default function EventCreation() {
       });
     }
   }, [currentLocation]);
+
+  // Animation handlers
+  const handleAirportSelectorPress = () => {
+    // Animate out events list
+    Animated.timing(eventListAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.cubic),
+    }).start(() => {
+      setShowAirportList(true);
+      // Animate in airport list
+      Animated.timing(airportListAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }).start();
+    });
+  };
+
+  const handleAirportSelect = (airport: Airport) => {
+    // Animate out airport list
+    Animated.timing(airportListAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.cubic),
+    }).start(() => {
+      setSelectedAirport(airport);
+      setShowAirportList(false);
+      // Animate in events list
+      Animated.timing(eventListAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }).start();
+    });
+  };
 
   // Loading state
   if (isLoading || !initialLoadComplete) {
@@ -249,8 +398,8 @@ export default function EventCreation() {
     const distance = calculateDistance(
       currentLocation.latitude,
       currentLocation.longitude,
-      item.latitude,
-      item.longitude
+      parseFloat(item.latitude),
+      parseFloat(item.longitude)
     );
     
     const formattedDistance = distance > 1000
@@ -298,14 +447,19 @@ export default function EventCreation() {
                 borderColor: "#37a4c8"
               }]}>
                 <MaterialIcons name="location-pin" size={20} color="#37a4c8" style={styles.metaIcon} />
-                <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{formattedDistance}</Text>
+                <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  {item.airportCode}
+                </Text>
               </View>
+              <CountdownTimer startTime={item.startTime} />
               <View style={[styles.metaItem, { 
                 backgroundColor: theme === "light" ? "#f8f9fa" : "#000000",
                 borderColor: "#37a4c8"
               }]}>
                 <MaterialIcons name="group" size={20} color="#37a4c8" style={styles.metaIcon} />
-                <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{item.attendees?.length || 0} going</Text>
+                <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  {item.attendees?.length || 0} going
+                </Text>
               </View>
             </View>
           </View>
@@ -329,173 +483,283 @@ export default function EventCreation() {
               transform: [{ scale: scaleAnim }]
             }}
           >
-            <FlatList
-              data={sortedEvents}
-              renderItem={({ item, index }) => {
-                return (
-                  <React.Fragment>
-                    <AnimatedCard item={item} index={index} />
-                    {(index === 3 || index === 12) && (
-                      <Animated.View
-                        style={{
-                          opacity: fadeAnim,
-                          transform: [{ translateY: listSlideAnim }],
-                        }}
-                      >
-                        <TouchableOpacity
-                          style={[styles.createButton, { 
-                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                            borderColor: "#37a4c8"
-                          }]}
-                          onPress={() => router.push("/eventCreation")}
-                          activeOpacity={0.7}
+            {showAirportList ? (
+              <Animated.View
+                style={{
+                  flex: 1,
+                  opacity: airportListAnim,
+                  transform: [
+                    {
+                      translateY: airportListAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <FlatList
+                  data={nearestAirports.tenClosest}
+                  keyExtractor={(item: Airport) => item.airportCode}
+                  contentContainerStyle={styles.listContent}
+                  showsVerticalScrollIndicator={false}
+                  ListHeaderComponent={
+                    <View style={styles.headerSection}>
+                      <View style={styles.headerTop}>
+                        <Animated.Text 
+                          style={[
+                            styles.headerText, 
+                            { 
+                              color: theme === "light" ? "#000000" : "#e4fbfe",
+                              transform: [{ translateY: headerSlideAnim }],
+                              opacity: fadeAnim
+                            }
+                          ]}
                         >
-                          <LinearGradient
-                            colors={theme === "light" 
-                              ? ['#ffffff', '#f8f9fa']
-                              : ['#1a1a1a', '#000000']}
-                            style={styles.createButtonGradient}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                          >
-                            <View style={styles.createButtonContent}>
-                              <View style={styles.createButtonIconContainer}>
-                                <MaterialIcons name="add-circle" size={24} color="#37a4c8" />
-                              </View>
-                              <View style={styles.createButtonTextContainer}>
-                                <Text style={[styles.createButtonTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                  Create New Event
-                                </Text>
-                                <Text style={styles.createButtonSubtitle}>
-                                  Start planning your next gathering
-                                </Text>
-                              </View>
-                            </View>
-                          </LinearGradient>
-                        </TouchableOpacity>
-                      </Animated.View>
-                    )}
-                  </React.Fragment>
-                );
-              }}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              ListHeaderComponent={
-                <>
-                  <Animated.View 
-                    style={[
-                      styles.mapContainer, 
-                      { 
-                        borderColor: "#37a4c8",
-                        transform: [
-                          { scale: mapScaleAnim },
-                          { translateY: headerSlideAnim }
-                        ]
-                      }
-                    ]}
-                  >
-                    <MapView
-                      mapType="hybrid"
-                      style={styles.map}
-                      region={mapRegion}
-                      showsUserLocation={false}
-                      showsMyLocationButton={true}
-                      showsCompass={true}
-                      rotateEnabled={true}
-                      scrollEnabled={true}
-                      zoomEnabled={true}
-                      pitchEnabled={true}
+                          Select Airport
+                        </Animated.Text>
+                      </View>
+                    </View>
+                  }
+                  renderItem={({ item: airport }: { item: Airport }) => (
+                    <TouchableOpacity
+                      style={[styles.airportCard, {
+                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                        borderColor: "#37a4c8"
+                      }]}
+                      onPress={() => handleAirportSelect(airport)}
                     >
-                      {Array.isArray(events) && events.map((event) => (
-                        <React.Fragment key={event.id}>
-                          <Circle
-                            center={{ latitude: event.latitude, longitude: event.longitude }}
-                            radius={152.4}
-                            strokeWidth={2}
-                            strokeColor="rgba(55, 164, 201, 0.5)"
-                            fillColor="rgba(55, 164, 201, 0.2)"
-                          />
-                          <Marker
-                            coordinate={{ latitude: event.latitude, longitude: event.longitude }}
-                            title={event.name}
-                            description={event.description}
+                      <View style={styles.airportCardContent}>
+                        <Feather name="airplay" size={24} color="#37a4c8" />
+                        <View style={styles.airportInfo}>
+                          <Text style={[styles.airportName, { 
+                            color: theme === "light" ? "#000000" : "#e4fbfe" 
+                          }]}>
+                            {airport.name}
+                          </Text>
+                          <Text style={styles.airportCode}>{airport.airportCode}</Text>
+                          <Text style={styles.airportLocation}>{airport.location || 'Location not available'}</Text>
+                        </View>
+                        <Feather name="chevron-right" size={20} color="#37a4c8" />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <Animated.View 
+                      style={[
+                        styles.emptyContainer,
+                        {
+                          opacity: fadeAnim,
+                          transform: [{ translateY: listSlideAnim }]
+                        }
+                      ]}
+                    >
+                      <Text style={styles.emptyText}>No airports found nearby</Text>
+                    </Animated.View>
+                  }
+                />
+              </Animated.View>
+            ) : (
+              <Animated.View
+                style={{
+                  flex: 1,
+                  opacity: eventListAnim,
+                  transform: [
+                    {
+                      translateY: eventListAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <FlatList
+                  data={sortedEvents}
+                  renderItem={({ item, index }) => {
+                    return (
+                      <React.Fragment>
+                        <AnimatedCard item={item} index={index} />
+                        {(index === 3 || index === 12) && (
+                          <Animated.View
+                            style={{
+                              opacity: fadeAnim,
+                              transform: [{ translateY: listSlideAnim }],
+                            }}
                           >
-                            <View style={styles.eventMarkerContainer}>
-                              <View style={styles.eventMarkerBackground}>
-                                <MaterialIcons name="event" size={24} style={styles.eventMarkerIcon} />
-                              </View>
-                            </View>
-                          </Marker>
-                        </React.Fragment>
-                      ))}
-                      {currentLocation && (
-                        <Marker
-                          coordinate={{
-                            latitude: currentLocation.latitude,
-                            longitude: currentLocation.longitude,
-                          }}
-                          title="You are here"
-                        >
-                          <View style={styles.userMarkerContainer}>
-                            <View style={styles.currentLocationPulse} />
-                            <View style={styles.userMarkerBackground}>
-                              <MaterialIcons name="my-location" size={24} style={styles.userMarkerIcon} />
-                            </View>
-                          </View>
-                        </Marker>
-                      )}
-                    </MapView>
-                  </Animated.View>
-                  <View style={styles.headerSection}>
-                    <View style={styles.headerTop}>
-                      <Animated.Text 
+                            <TouchableOpacity
+                              style={[styles.createButton, { 
+                                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                borderColor: "#37a4c8"
+                              }]}
+                              onPress={() => router.push("/eventCreation")}
+                              activeOpacity={0.7}
+                            >
+                              <LinearGradient
+                                colors={theme === "light" 
+                                  ? ['#ffffff', '#f8f9fa']
+                                  : ['#1a1a1a', '#000000']}
+                                style={styles.createButtonGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                              >
+                                <View style={styles.createButtonContent}>
+                                  <View style={styles.createButtonIconContainer}>
+                                    <MaterialIcons name="add-circle" size={24} color="#37a4c8" />
+                                  </View>
+                                  <View style={styles.createButtonTextContainer}>
+                                    <Text style={[styles.createButtonTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                      Create New Event
+                                    </Text>
+                                    <Text style={styles.createButtonSubtitle}>
+                                      Start planning your next gathering
+                                    </Text>
+                                  </View>
+                                </View>
+                              </LinearGradient>
+                            </TouchableOpacity>
+                          </Animated.View>
+                        )}
+                      </React.Fragment>
+                    );
+                  }}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={styles.listContent}
+                  showsVerticalScrollIndicator={false}
+                  ListHeaderComponent={
+                    <>
+                      <Animated.View 
                         style={[
-                          styles.headerText, 
+                          styles.mapContainer, 
                           { 
-                            color: theme === "light" ? "#000000" : "#e4fbfe",
-                            transform: [{ translateY: headerSlideAnim }],
-                            opacity: fadeAnim
+                            borderColor: "#37a4c8",
+                            transform: [
+                              { scale: mapScaleAnim },
+                              { translateY: headerSlideAnim }
+                            ]
                           }
                         ]}
                       >
-                        Nearby Events
-                      </Animated.Text>
-                      <Animated.View
-                        style={{
-                          transform: [{ translateY: headerSlideAnim }],
-                          opacity: fadeAnim
-                        }}
-                      >
+                        <MapView
+                          mapType="hybrid"
+                          style={styles.map}
+                          region={mapRegion}
+                          showsUserLocation={false}
+                          showsMyLocationButton={true}
+                          showsCompass={true}
+                          rotateEnabled={true}
+                          scrollEnabled={true}
+                          zoomEnabled={true}
+                          pitchEnabled={true}
+                        >
+                          {Array.isArray(filteredRegularEvents) && filteredRegularEvents.map((event) => (
+                            <React.Fragment key={event.id}>
+                              <Circle
+                                center={{ latitude: parseFloat(event.latitude), longitude: parseFloat(event.longitude) }}
+                                radius={152.4}
+                                strokeWidth={2}
+                                strokeColor="rgba(55, 164, 201, 0.5)"
+                                fillColor="rgba(55, 164, 201, 0.2)"
+                              />
+                              <Marker
+                                coordinate={{ latitude: parseFloat(event.latitude), longitude: parseFloat(event.longitude) }}
+                                title={event.name}
+                                description={event.description}
+                              >
+                                <View style={styles.eventMarkerContainer}>
+                                  <View style={styles.eventMarkerBackground}>
+                                    <MaterialIcons name="event" size={24} style={styles.eventMarkerIcon} />
+                                  </View>
+                                </View>
+                              </Marker>
+                            </React.Fragment>
+                          ))}
+                          {currentLocation && (
+                            <Marker
+                              coordinate={{
+                                latitude: currentLocation.latitude,
+                                longitude: currentLocation.longitude,
+                              }}
+                              title="You are here"
+                            >
+                              <View style={styles.userMarkerContainer}>
+                                <View style={styles.currentLocationPulse} />
+                                <View style={styles.userMarkerBackground}>
+                                  <MaterialIcons name="my-location" size={24} style={styles.userMarkerIcon} />
+                                </View>
+                              </View>
+                            </Marker>
+                          )}
+                        </MapView>
+                      </Animated.View>
+                      <View style={styles.headerSection}>
+                        <View style={styles.headerTop}>
+                          <Animated.Text 
+                            style={[
+                              styles.headerText, 
+                              { 
+                                color: theme === "light" ? "#000000" : "#e4fbfe",
+                                transform: [{ translateY: headerSlideAnim }],
+                                opacity: fadeAnim
+                              }
+                            ]}
+                          >
+                            Nearby Events
+                          </Animated.Text>
+                          <Animated.View
+                            style={{
+                              transform: [{ translateY: headerSlideAnim }],
+                              opacity: fadeAnim
+                            }}
+                          >
+                            <TouchableOpacity
+                              style={[styles.headerButton, { 
+                                backgroundColor: theme === "light" ? "#f8f9fa" : "#000000",
+                                borderColor: "#37a4c8"
+                              }]}
+                              onPress={() => router.push("/eventCreation")}
+                              activeOpacity={0.7}
+                            >
+                              <MaterialIcons name="add" size={24} color="#37a4c8" />
+                            </TouchableOpacity>
+                          </Animated.View>
+                        </View>
                         <TouchableOpacity
-                          style={[styles.headerButton, { 
-                            backgroundColor: theme === "light" ? "#f8f9fa" : "#000000",
+                          style={[styles.airportSelector, {
+                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
                             borderColor: "#37a4c8"
                           }]}
-                          onPress={() => router.push("/eventCreation")}
-                          activeOpacity={0.7}
+                          onPress={handleAirportSelectorPress}
                         >
-                          <MaterialIcons name="add" size={24} color="#37a4c8" />
+                          <View style={styles.airportSelectorContent}>
+                            <Feather name="airplay" size={20} color="#37a4c8" />
+                            <Text style={[styles.airportSelectorText, { 
+                              color: theme === "light" ? "#000000" : "#e4fbfe" 
+                            }]}>
+                              {selectedAirport ? selectedAirport.name : "Select Airport"}
+                            </Text>
+                            <Feather name="chevron-down" size={20} color="#37a4c8" />
+                          </View>
                         </TouchableOpacity>
-                      </Animated.View>
-                    </View>
-                  </View>
-                </>
-              }
-              ListEmptyComponent={
-                <Animated.View 
-                  style={[
-                    styles.emptyContainer,
-                    {
-                      opacity: fadeAnim,
-                      transform: [{ translateY: listSlideAnim }]
-                    }
-                  ]}
-                >
-                  <Text style={styles.emptyText}>No events found nearby</Text>
-                </Animated.View>
-              }
-            />
+                      </View>
+                    </>
+                  }
+                  ListEmptyComponent={
+                    <Animated.View 
+                      style={[
+                        styles.emptyContainer,
+                        {
+                          opacity: fadeAnim,
+                          transform: [{ translateY: listSlideAnim }]
+                        }
+                      ]}
+                    >
+                      <Text style={styles.emptyText}>No events found at this airport</Text>
+                    </Animated.View>
+                  }
+                />
+              </Animated.View>
+            )}
           </Animated.View>
         </LinearGradient>
       </SafeAreaView>
@@ -742,5 +1006,67 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     marginLeft: 8,
+  },
+  airportSelector: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    elevation: 2,
+    shadowColor: "#37a4c8",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  airportSelectorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  airportSelectorText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  airportCard: {
+    marginBottom: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  airportCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+  },
+  airportInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  airportName: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  airportCode: {
+    fontSize: 15,
+    color: "#37a4c8",
+    marginBottom: 2,
+    letterSpacing: 0.2,
+  },
+  airportLocation: {
+    fontSize: 14,
+    color: "#64748B",
+    letterSpacing: 0.2,
   },
 });

@@ -30,6 +30,7 @@ import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import * as ExpoNotifications from 'expo-notifications';
+import { containsFilteredContent, getFilteredContentCategory } from "../../utils/contentFilter";
 
 interface Chat {
   id: string;
@@ -97,6 +98,7 @@ export default function Chat() {
   const marginAnim = useRef(new Animated.Value(50)).current;
   const scrollViewRef = useRef<ScrollView>(null);
   const isInitialScrollDone = useRef(false);
+  const [messageError, setMessageError] = useState(false);
 
   const insets = useSafeAreaInsets();
   const globalTopBarHeight = 50 + insets.top;
@@ -282,6 +284,18 @@ export default function Chat() {
   const handleSendMessage = async () => {
     if (newMessage.trim() === "" || !authUser || !partner) return;
     
+    // Check for inappropriate content
+    if (containsFilteredContent(newMessage)) {
+      setMessageError(true);
+      Alert.alert(
+        "Inappropriate Content",
+        `Your message contains inappropriate content. Please review and try again.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+    
+    setMessageError(false);
     const messageData = {
       text: newMessage,
       date: new Date(),
@@ -575,20 +589,26 @@ export default function Chat() {
                   style={[styles.input, { 
                     backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
                     color: theme === "light" ? "#1a1a1a" : "#ffffff",
-                    borderColor: theme === "light" ? "#e0e0e0" : "#3a3a3a"
+                    borderColor: messageError ? "#ff4444" : theme === "light" ? "#e0e0e0" : "#3a3a3a"
                   }]}
-                  placeholder="Type your message..."
-                  placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
+                  placeholder={messageError ? "Inappropriate content detected" : "Type your message..."}
+                  placeholderTextColor={messageError ? "#ff4444" : theme === "light" ? "#666666" : "#a0a0a0"}
                   value={newMessage}
-                  onChangeText={setNewMessage}
+                  onChangeText={(text) => {
+                    setNewMessage(text);
+                    if (messageError && !containsFilteredContent(text)) {
+                      setMessageError(false);
+                    }
+                  }}
                   multiline
                   maxLength={1000}
                 />
                 <TouchableOpacity
-                  style={styles.sendButton}
+                  style={[styles.sendButton, messageError && styles.sendButtonDisabled]}
                   onPress={handleSendMessage}
+                  disabled={messageError}
                 >
-                  <Text style={styles.sendButtonText}>Send</Text>
+                  <Text style={[styles.sendButtonText, messageError && styles.sendButtonTextDisabled]}>Send</Text>
                 </TouchableOpacity>
               </Animated.View>
             </View>
@@ -837,5 +857,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#cccccc",
+    opacity: 0.7,
+  },
+  sendButtonTextDisabled: {
+    color: "#666666",
   },
 });

@@ -32,6 +32,7 @@ import Animated, {
   withTiming,
   FadeIn,
   FadeOut,
+  Easing,
 } from "react-native-reanimated";
 import {
   Gesture,
@@ -75,6 +76,8 @@ interface User {
   airportCode?: string;
   lastLogin?: any; // Firestore Timestamp
   notifications?: Notification[];
+  blockedUsers?: string[];
+  hasMeBlocked?: string[];
 }
 
 interface Connection {
@@ -127,9 +130,9 @@ const Swipe = () => {
   const [chatId, setChatId] = useState<string | null>(null);
   const buttonScale = useSharedValue(1);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showMessageOptions, setShowMessageOptions] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const { theme } = React.useContext(ThemeContext);
+  const [showMessageOptions, setShowMessageOptions] = useState(false);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -144,18 +147,33 @@ const Swipe = () => {
   const screenOpacity = useSharedValue(0);
   const screenScale = useSharedValue(0.95);
 
-  useEffect(() => {
-    // Animate in when component mounts
-    screenOpacity.value = withTiming(1, { duration: 300 });
-    screenScale.value = withTiming(1, { duration: 300 });
-  }, []);
+  // Replace Animated.Value with useSharedValue
+  const fadeAnim = useSharedValue(0);
+  const scaleAnim = useSharedValue(0.95);
+  const headerSlideAnim = useSharedValue(20);
+  const listSlideAnim = useSharedValue(30);
 
-  const screenStyle = useAnimatedStyle(() => {
-    return {
-      opacity: screenOpacity.value,
-      transform: [{ scale: screenScale.value }],
-    };
-  });
+  // Handle fade in animation when content is ready
+  useEffect(() => {
+    if (!isLoadingUsers) {
+      fadeAnim.value = withTiming(1, {
+        duration: 800,
+        easing: Easing.out(Easing.cubic),
+      });
+      scaleAnim.value = withTiming(1, {
+        duration: 800,
+        easing: Easing.out(Easing.cubic),
+      });
+      headerSlideAnim.value = withTiming(0, {
+        duration: 800,
+        easing: Easing.out(Easing.cubic),
+      });
+      listSlideAnim.value = withTiming(0, {
+        duration: 800,
+        easing: Easing.out(Easing.cubic),
+      });
+    }
+  }, [isLoadingUsers]);
 
   useAnimatedReaction(
     () => currentIndex.value,
@@ -200,58 +218,54 @@ const Swipe = () => {
         return;
       }
 
-      console.log('Handling swipe:', direction, 'for user at index:', currentUserIndex);
-
+      // Start processing the swipe immediately
       if (direction === "right") {
         onSwipedRight(currentUserIndex);
       } else {
         onSwipedLeft(currentUserIndex);
       }
       
-      translateX.value = withSpring(direction === "right" ? width * 1.5 : -width * 1.5, {
-        damping: 15,
-        stiffness: 100,
-        velocity: direction === "right" ? 1000 : -1000,
-      });
-      translateY.value = withSpring(0, {
-        damping: 15,
-        stiffness: 100,
-      });
-      cardRotation.value = withSpring(direction === "right" ? 30 : -30, {
-        damping: 15,
-        stiffness: 100,
+      // Quick animation for current card
+      translateX.value = withTiming(direction === "right" ? width * 1.5 : -width * 1.5, {
+        duration: 150,
+        easing: Easing.out(Easing.cubic),
       });
       
-      requestAnimationFrame(() => {
+      // Process the next card immediately
+      setTimeout(() => {
         try {
-          setTimeout(() => {
-            try {
-              translateX.value = 0;
-              translateY.value = 0;
-              cardRotation.value = 0;
-              
-              // Update currentIndex only if there are more users
-              if (currentUserIndex + 1 < users.length) {
-                currentIndex.value = currentUserIndex + 1;
-              } else {
-                // If we've reached the end, reset to 0 or handle empty state
-                currentIndex.value = 0;
-                if (users.length === 0) {
-                  setShowSwiper(false);
-                }
-              }
-              
-              isAnimating.value = false;
-            } catch (error) {
-              console.error('Error in swipe animation completion:', error);
-              isAnimating.value = false;
-            }
-          }, 300);
+          // Reset transform values
+          translateX.value = direction === "right" ? -width * 1.5 : width * 1.5;
+          
+          // Remove the swiped user from the array
+          const updatedUsers = [...users];
+          updatedUsers.splice(currentUserIndex, 1);
+          setUsers(updatedUsers);
+          
+          // If we've reached the end, handle empty state
+          if (updatedUsers.length === 0) {
+            setShowSwiper(false);
+            // Fade in empty state
+            fadeAnim.value = withTiming(1, {
+              duration: 150,
+              easing: Easing.out(Easing.cubic),
+            });
+          } else {
+            // Update currentIndex to point to the next user
+            currentIndex.value = Math.min(currentUserIndex, updatedUsers.length - 1);
+            // Quick slide in for next card
+            translateX.value = withTiming(0, {
+              duration: 150,
+              easing: Easing.out(Easing.cubic),
+            });
+          }
+          
+          isAnimating.value = false;
         } catch (error) {
-          console.error('Error in requestAnimationFrame:', error);
+          console.error('Error in swipe animation completion:', error);
           isAnimating.value = false;
         }
-      });
+      }, 150); // Reduced timeout
     } catch (error) {
       console.error('Error in handleSwipe:', error);
       isAnimating.value = false;
@@ -331,26 +345,9 @@ const Swipe = () => {
     });
 
   const cardStyle = useAnimatedStyle(() => {
-    const rotate = interpolate(
-      translateX.value,
-      [-width / 2, 0, width / 2],
-      [-30, 0, 30],
-      Extrapolate.CLAMP
-    );
-    
-    const scale = interpolate(
-      Math.abs(translateX.value),
-      [0, width * 0.2],
-      [1, 0.95],
-      Extrapolate.CLAMP
-    );
-
     return {
       transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-        { rotate: `${rotate}deg` },
-        { scale },
+        { translateX: translateX.value }
       ],
     };
   });
@@ -550,11 +547,17 @@ const Swipe = () => {
       setIsLoadingUsers(true);
       console.log('Starting to fetch users...');
       
-      // Get current user's airport code
+      // Get current user's airport code and blocked users
       const currentUserDoc = await doc(db, "users", currentUserUID);
       const currentUserSnapshot = await getDoc(currentUserDoc);
-      const currentUserAirport = currentUserSnapshot.data()?.airportCode;
+      const currentUserData = currentUserSnapshot.data();
+      const currentUserAirport = currentUserData?.airportCode;
+      const blockedUsers = currentUserData?.blockedUsers || [];
+      const hasMeBlocked = currentUserData?.hasMeBlocked || [];
+      
       console.log('Current user airport:', currentUserAirport);
+      console.log('Current user blocked users:', blockedUsers);
+      console.log('Users who blocked current user:', hasMeBlocked);
 
       if (!currentUserAirport) {
         console.log('No airport code found for current user');
@@ -585,7 +588,24 @@ const Swipe = () => {
         }
       });
 
-      console.log('Found pending connections with users:', Array.from(pendingUserIds));
+      // Get all pending chats for current user
+      const chatsRef = collection(db, "chats");
+      const chatsQuery = query(
+        chatsRef,
+        where("participants", "array-contains", currentUserUID),
+        where("status", "==", "pending")
+      );
+      const chatsSnapshot = await getDocs(chatsQuery);
+      
+      chatsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const otherUserId = data.participants.find((id: string) => id !== currentUserUID);
+        if (otherUserId) {
+          pendingUserIds.add(otherUserId);
+        }
+      });
+
+      console.log('Found pending connections/chats with users:', Array.from(pendingUserIds));
 
       // First, get all users at the same airport
       const usersRef = collection(db, "users");
@@ -598,18 +618,31 @@ const Swipe = () => {
       const querySnapshot = await getDocs(airportQuery);
       console.log('Total users at airport:', querySnapshot.docs.length);
 
+      // Get all users' documents to check their blocked lists
+      const userDocs = await Promise.all(
+        querySnapshot.docs.map(doc => getDoc(doc.ref))
+      );
+
       const fetchedUsers = querySnapshot.docs
-        .map(doc => {
+        .map((doc, index) => {
           const data = doc.data();
+          const userDoc = userDocs[index];
+          const userData = userDoc.data();
+          
           console.log('User data:', {
             id: doc.id,
             name: data.name,
             airportCode: data.airportCode,
-            lastLogin: data.lastLogin?.toDate?.() || 'No login time'
+            lastLogin: data.lastLogin?.toDate?.() || 'No login time',
+            blockedUsers: userData?.blockedUsers || [],
+            hasMeBlocked: userData?.hasMeBlocked || []
           });
+          
           return {
             id: doc.id,
-            ...data
+            ...data,
+            blockedUsers: userData?.blockedUsers || [],
+            hasMeBlocked: userData?.hasMeBlocked || []
           } as User;
         })
         .filter(user => {
@@ -617,6 +650,10 @@ const Swipe = () => {
           const isRecent = lastLogin >= oneHourAgo;
           const isNotCurrentUser = user.id !== currentUserUID;
           const isNotPending = !pendingUserIds.has(user.id);
+          const isNotBlocked = !blockedUsers.includes(user.id);
+          const hasNotBlockedMe = !hasMeBlocked.includes(user.id);
+          const hasNotBlockedCurrentUser = !user.blockedUsers?.includes(currentUserUID);
+          const currentUserHasNotBlockedThem = !user.hasMeBlocked?.includes(currentUserUID);
           
           console.log('Filtering user:', {
             id: user.id,
@@ -625,10 +662,18 @@ const Swipe = () => {
             isRecent,
             isNotCurrentUser,
             isNotPending,
-            passesFilter: isRecent && isNotCurrentUser && isNotPending
+            isNotBlocked,
+            hasNotBlockedMe,
+            hasNotBlockedCurrentUser,
+            currentUserHasNotBlockedThem,
+            passesFilter: isRecent && isNotCurrentUser && isNotPending && 
+                         isNotBlocked && hasNotBlockedMe && 
+                         hasNotBlockedCurrentUser && currentUserHasNotBlockedThem
           });
           
-          return isRecent && isNotCurrentUser && isNotPending;
+          return isRecent && isNotCurrentUser && isNotPending && 
+                 isNotBlocked && hasNotBlockedMe && 
+                 hasNotBlockedCurrentUser && currentUserHasNotBlockedThem;
         });
       
       console.log('Final filtered users count:', fetchedUsers.length);
@@ -662,6 +707,7 @@ const Swipe = () => {
       const currentUserDoc = await getDoc(doc(db, "users", currentUserUID));
       const currentUserData = currentUserDoc.data();
 
+      // Update current user's liked users
       await updateUser(currentUserUID, {
         likedUsers: arrayUnion(swipedUserUID),
       });
@@ -697,26 +743,30 @@ const Swipe = () => {
         const chatsCollection = collection(db, "chats");
         await addDoc(chatsCollection, chatData);
 
-        // If it's a match, create notifications for both users
-        if (hasMatched) {
-          // Create notification for the other user
-          const otherUserNotifications = swipedUserData?.notifications || [];
-          await updateDoc(doc(db, "users", swipedUserUID), {
-            notifications: [...otherUserNotifications, {
-              id: Date.now().toString(),
-              title: "New Match! 🎉",
-              body: `${currentUserData?.name || 'Someone'} matched with you!`,
-              data: {
-                type: 'match',
-                matchedUserId: currentUserUID,
-                matchedUserName: currentUserData?.name
-              },
-              timestamp: new Date(),
-              read: false
-            }]
-          });
+        // Create notification for the swiped user
+        const notification = {
+          id: Date.now().toString(),
+          title: hasMatched ? "New Match! 🎉" : "New Connection Request",
+          body: hasMatched 
+            ? `${currentUserData?.name || 'Someone'} matched with you!`
+            : `${currentUserData?.name || 'Someone'} wants to connect with you!`,
+          data: {
+            type: hasMatched ? 'match' : 'connection',
+            matchedUserId: currentUserUID,
+            matchedUserName: currentUserData?.name
+          },
+          timestamp: new Date(),
+          read: false
+        };
 
-          // Create notification for current user
+        // Update swiped user's notifications
+        const swipedUserNotifications = swipedUserData?.notifications || [];
+        await updateDoc(doc(db, "users", swipedUserUID), {
+          notifications: [...swipedUserNotifications, notification]
+        });
+
+        // If it's a match, create notification for current user
+        if (hasMatched) {
           const currentUserNotifications = currentUserData?.notifications || [];
           await updateDoc(doc(db, "users", currentUserUID), {
             notifications: [...currentUserNotifications, {
@@ -979,6 +1029,28 @@ const Swipe = () => {
     }
   };
 
+  // Create animated styles
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: fadeAnim.value,
+    transform: [{ scale: scaleAnim.value }]
+  }));
+
+  const cardsContainerStyle = useAnimatedStyle(() => ({
+    opacity: fadeAnim.value,
+    transform: [
+      { translateY: headerSlideAnim.value },
+      { scale: scaleAnim.value }
+    ]
+  }));
+
+  const quickMessageStyle = useAnimatedStyle(() => ({
+    opacity: fadeAnim.value,
+    transform: [
+      { translateY: listSlideAnim.value },
+      { scale: scaleAnim.value }
+    ]
+  }));
+
   /** Loading state */
   if (loading || isLoadingUsers) {
     return (
@@ -1039,157 +1111,72 @@ const Swipe = () => {
   /** Main Swiper view */
   return (
     <Animated.View 
-      entering={FadeIn.duration(300)}
-      exiting={FadeOut.duration(300)}
-      style={[styles.loadingContainer, screenStyle]}
+      style={[styles.loadingContainer, containerStyle]}
     >
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
           <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={{ flex: 1 }}>
-            {showSwiper && users.length > 0 ? (
+            {showSwiper ? (
               <>
-                <View style={styles.cardsContainer}>
-                  <GestureDetector gesture={gesture}>
-                    <Animated.View style={[styles.cardContainer, cardStyle, { 
-                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                      borderColor: "#37a4c8"
-                    }]}>
-                      {currentUser && renderCard(currentUser)}
-                      <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
-                        <View style={styles.labelContainer}>
-                          <MaterialIcons name="people" size={32} color="#4CD964" />
-                          <Text style={styles.likeText}>CONNECT</Text>
-                        </View>
+                <Animated.View style={[styles.cardsContainer, cardsContainerStyle]}>
+                  {users.length > 0 ? (
+                    <GestureDetector gesture={gesture}>
+                      <Animated.View 
+                        style={[
+                          styles.cardContainer, 
+                          cardStyle, 
+                          { 
+                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                            borderColor: "#37a4c8",
+                          }
+                        ]}
+                      >
+                        {currentUser && renderCard(currentUser)}
+                        <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
+                          <View style={styles.labelContainer}>
+                            <MaterialIcons name="people" size={32} color="#4CD964" />
+                            <Text style={styles.likeText}>CONNECT</Text>
+                          </View>
+                        </Animated.View>
+                        <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
+                          <View style={styles.labelContainer}>
+                            <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
+                            <Text style={styles.nopeText}>NOPE</Text>
+                          </View>
+                        </Animated.View>
                       </Animated.View>
-                      <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
-                        <View style={styles.labelContainer}>
-                          <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
-                          <Text style={styles.nopeText}>NOPE</Text>
-                        </View>
-                      </Animated.View>
-                    </Animated.View>
-                  </GestureDetector>
-                </View>
-                
-                {/* Quick Message Button */}
-                <View style={styles.quickMessageButtonContainer}>
-                  <Animated.View style={buttonStyle}>
-                    <TouchableOpacity 
-                      style={[styles.quickMessageButton, { 
-                        backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8",
-                        borderColor: theme === "light" ? "#37a4c8" : "#37a4c8"
-                      }]}
-                      onPress={() => {
-                        if (currentUser) {
-                          handleShowMessageOptions(currentUser);
+                    </GestureDetector>
+                  ) : (
+                    <Animated.View 
+                      entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
+                      style={[
+                        styles.emptyStateContainer, 
+                        { 
+                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                          opacity: fadeAnim,
+                          transform: [{ scale: scaleAnim }]
                         }
-                      }}
+                      ]}
                     >
-                      <MaterialIcons name="message" size={24} color="#FFF" />
-                      <Text style={styles.quickMessageButtonText}>Send Quick Message</Text>
-                    </TouchableOpacity>
-                  </Animated.View>
-                </View>
+                      <MaterialIcons name="person-off" size={64} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={{ marginBottom: 24 }} />
+                      <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>
+                        No more users at {airportName || (currentUserData?.airportCode || "this airport")}
+                      </Text>
+                      <Text style={{ color: theme === "light" ? "#64748B" : "#CBD5E1", fontSize: 15, textAlign: 'center', marginTop: 8 }}>
+                        Check back later for more travelers!
+                      </Text>
+                    </Animated.View>
+                  )}
+                </Animated.View>
               </>
             ) : (
               <Animated.View 
                 entering={FadeIn.duration(300)}
-                exiting={FadeOut.duration(300)}
-                style={styles.loadingContainer}
+                style={[styles.loadingContainer, cardsContainerStyle]}
               >
-                <LoadingScreen message="Loading user profiles..." />
+                <LoadingScreen message="Finding travelers near you..." />
               </Animated.View>
-            )}
-            
-            {/* Message Options Modal */}
-            {showMessageOptions && selectedUser && (
-              <View style={[styles.messageOptionsContainer, { backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.5)" : "rgba(0, 0, 0, 0.8)" }]}>
-                <View style={[styles.messageOptionsContent, { 
-                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                  borderColor: "#37a4c8"
-                }]}>
-                  <View style={[styles.messageOptionsHeader, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
-                    <Text style={[styles.messageOptionsTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Quick Messages</Text>
-                    <Text style={[styles.messageOptionsSubtitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Send a message to {selectedUser.name}</Text>
-                    <TouchableOpacity 
-                      style={[styles.closeButton, { 
-                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                        borderColor: "#37a4c8"
-                      }]}
-                      onPress={() => setShowMessageOptions(false)}
-                    >
-                      <MaterialIcons name="close" size={20} color={theme === "light" ? "#000000" : "#e4fbfe"} />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <View style={styles.messagesContainer}>
-                    <View style={styles.messageSection}>
-                      <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Preset Messages</Text>
-                      {presetMessages.map((message, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={[styles.presetMessageButton, { 
-                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                            borderColor: "#37a4c8"
-                          }]}
-                          onPress={() => {
-                            sendQuickMessage(message, selectedUser.id);
-                          }}
-                        >
-                          <Text style={[styles.presetMessageText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{message}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    
-                    <View style={styles.messageSection}>
-                      <Text style={[styles.messageSectionTitle, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>Chat Options</Text>
-                      <TouchableOpacity
-                        style={[styles.presetMessageButton, styles.chatButton, { 
-                          backgroundColor: theme === "light" ? "#37a4c8" : "#37a4c8",
-                          borderColor: theme === "light" ? "#37a4c8" : "#37a4c8"
-                        }]}
-                        onPress={() => {
-                          const findOrCreateChat = async () => {
-                            try {
-                              // Check if a chat already exists between these users
-                              const existingChat = await getExistingChat(currentUserUID, selectedUser.id);
-                              
-                              if (existingChat) {
-                                // Use the existing chat
-                                router.push(`/chat/${existingChat.id}`);
-                              } else {
-                                // Create a new chat if none exists
-                                const chatData = {
-                                  participants: [currentUserUID, selectedUser.id],
-                                  createdAt: new Date(),
-                                  lastMessage: null,
-                                };
-                                
-                                const chatId = await addChat(chatData);
-                                router.push(`/chat/${chatId}`);
-                              }
-                              
-                              setShowMessageOptions(false);
-                            } catch (error) {
-                              console.error("Error finding or creating chat:", error);
-                              Alert.alert("Error", "Failed to open chat. Please try again.");
-                            }
-                          };
-                          
-                          findOrCreateChat();
-                        }}
-                      >
-                        <MaterialIcons name="chat" size={20} color="#FFF" />
-                        <Text style={[styles.presetMessageText, { color: '#FFF' }]}>Open Chat</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              </View>
             )}
           </View>
         </LinearGradient>
@@ -1463,37 +1450,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  quickMessageButtonContainer: {
-    position: 'absolute',
-    bottom: 16,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
-    marginBottom: 60,
-  },
-  quickMessageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#38a5c9',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    shadowColor: '#38a5c9',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: '#38a5c9',
-  },
-  quickMessageButtonText: {
-    color: '#FFF',
-    fontSize: 13,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
   messageSection: {
     marginBottom: 20,
   },
@@ -1577,6 +1533,24 @@ const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#37a4c8',
+    marginHorizontal: 'auto',
+    marginBottom: 70,
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
 });
 

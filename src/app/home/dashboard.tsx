@@ -35,7 +35,7 @@ import StatusSheet from "../../components/StatusSheet";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 
 type FeatureButton = {
@@ -51,6 +51,13 @@ type NearbyUser = {
   status: string;
   isInviteCard?: boolean;
   profilePicture?: string;
+  age?: string;
+  bio?: string;
+  languages?: string[];
+  interests?: string[];
+  goals?: string[];
+  pronouns?: string;
+  lastLogin?: any;
 };
 
 interface UserData {
@@ -60,6 +67,12 @@ interface UserData {
   airportCode?: string;
   lastLogin?: any;
   profilePicture?: string;
+  age?: string;
+  bio?: string;
+  languages?: string[];
+  interests?: string[];
+  goals?: string[];
+  pronouns?: string;
 }
 
 function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
@@ -456,15 +469,39 @@ export default function Dashboard() {
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
         const users = await getNearbyUsers(selectedAirport.airportCode, thirtyMinutesAgo) as UserData[];
         
-        // Convert users to NearbyUser format and limit to 3
+        // Get current user's document to check blocked users
+        if (!userId) {
+          console.error('User ID is null');
+          return;
+        }
+        const currentUserRef = doc(db, 'users', userId);
+        const currentUserDoc = await getDoc(currentUserRef);
+        const currentUserData = currentUserDoc.data();
+        
+        // Get lists of blocked users
+        const blockedUsers = currentUserData?.blockedUsers || [];
+        const hasMeBlocked = currentUserData?.hasMeBlocked || [];
+        
+        // Convert users to NearbyUser format and filter out blocked users
         const formattedUsers = users
-          .filter(user => user.id !== userId) // Exclude current user
+          .filter(user => 
+            user.id !== userId && // Exclude current user
+            !blockedUsers.includes(user.id) && // Exclude users blocked by current user
+            !hasMeBlocked.includes(user.id) // Exclude users who blocked current user
+          )
           .slice(0, 3)
           .map(user => ({
             id: user.id,
             name: user.name || 'Anonymous',
             status: user.moodStatus || 'Available',
-            profilePicture: user.profilePicture
+            profilePicture: user.profilePicture,
+            age: user.age,
+            bio: user.bio,
+            languages: user.languages || [],
+            interests: user.interests || [],
+            goals: user.goals || [],
+            pronouns: user.pronouns,
+            lastLogin: user.lastLogin,
           }));
 
         // Generate a unique timestamp for this batch of invite cards
@@ -774,7 +811,6 @@ export default function Dashboard() {
               <View style={[styles.eventHeader, { 
                 borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
               }]}>
-                {React.cloneElement(getEventIcon(item.name), { size: 24 })}
                 <View style={styles.eventTitleContainer}>
                   <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     {item.name}
@@ -837,7 +873,7 @@ export default function Dashboard() {
     { type: "section", id: "users", data: nearbyUsers || [] },
     { type: "section", id: "events", data: allEvents || [] },
     { type: "spacer", id: "spacer1" },
-    ...features.map((feature, index) => ({ type: "feature", id: index.toString(), data: feature })),
+    { type: "feature", id: "feature-grid", data: features },
   ];
 
   useEffect(() => {
@@ -1074,21 +1110,19 @@ export default function Dashboard() {
                             horizontal
                             data={item.data}
                             keyExtractor={(user: NearbyUser) => user.id}
-                            renderItem={({ item: user }: { item: NearbyUser }) => (
-                              <TouchableOpacity
-                                style={[styles.userCard, { 
-                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                }]}
-                                activeOpacity={0.8}
-                                onPress={() => {
+                            renderItem={({ item: user }: { item: NearbyUser }) => {
+                              const handlePress = () => {
                                   if (user.isInviteCard) {
-                                    Linking.openURL('https://www.google.com');
+                                    const appStoreLink = 'https://apps.apple.com/us/app/wingman-connect-on-layovers/id6743148488';
+                                    const message = `Join me on Wingman! Connect with travelers during layovers: ${appStoreLink}`;
+                                    Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
                                   } else {
                                     router.push(`profile/${user.id}`);
                                   }
-                                }}
-                              >
+                              };
+
+                              const renderUserCard = () => (
+                                <View style={styles.userInfo}>
                                 <View style={[styles.avatar, { 
                                   backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
                                   borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
@@ -1102,10 +1136,140 @@ export default function Dashboard() {
                                     <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                                   )}
                                 </View>
-                                <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{user.name}</Text>
-                                <Text style={[styles.userStatus, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>{user.status}</Text>
-                              </TouchableOpacity>
-                            )}
+                                  <View style={styles.nameRow}>
+                                    <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                      {user.name}
+                                    </Text>
+                                    {user.pronouns && (
+                                      <Text style={[styles.pronouns, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                        {user.pronouns}
+                                      </Text>
+                                    )}
+                                  </View>
+                                  <View style={styles.userMetaContainer}>
+                                    {user.age && (
+                                      <View style={[styles.metaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      }]}>
+                                        <Feather name="calendar" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                        <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                          {user.age}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    <View style={[styles.metaItem, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                    }]}>
+                                      <Feather name="heart" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                      <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                        {user.status}
+                                      </Text>
+                                    </View>
+                                    {user.lastLogin && (
+                                      <View style={[styles.metaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      }]}>
+                                        <Feather name="clock" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                        <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                          Last active {(() => {
+                                            const lastLoginDate = user.lastLogin.toDate();
+                                            const now = new Date();
+                                            const diffInMinutes = Math.floor((now.getTime() - lastLoginDate.getTime()) / (1000 * 60));
+                                            
+                                            if (diffInMinutes < 1) return 'just now';
+                                            if (diffInMinutes < 60) return `${diffInMinutes} min${diffInMinutes === 1 ? '' : 's'} ago`;
+                                            
+                                            const diffInHours = Math.floor(diffInMinutes / 60);
+                                            if (diffInHours < 24) return `${diffInHours} hour${diffInHours === 1 ? '' : 's'} ago`;
+                                            
+                                            const diffInDays = Math.floor(diffInHours / 24);
+                                            if (diffInDays < 7) return `${diffInDays} day${diffInDays === 1 ? '' : 's'} ago`;
+                                            
+                                            return lastLoginDate.toLocaleDateString();
+                                          })()}
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  {user.bio && (
+                                    <Text 
+                                      style={[styles.userBio, { color: theme === "light" ? "#64748B" : "#64748B" }]}
+                                      numberOfLines={2}
+                                    >
+                                      {user.bio}
+                                    </Text>
+                                  )}
+                                  {user.languages && user.languages.length > 0 && (
+                                    <View style={styles.tagsContainer}>
+                                      {user.languages.slice(0, 2).map((lang, index) => (
+                                        <View 
+                                          key={index} 
+                                          style={[styles.tag, { 
+                                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                          }]}
+                                        >
+                                          <Feather name="globe" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.tagIcon} />
+                                          <Text style={[styles.tagText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                            {lang}
+                                          </Text>
+                                        </View>
+                                      ))}
+                                      {user.languages.length > 2 && (
+                                        <Text style={[styles.moreTags, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                          +{user.languages.length - 2} more
+                                        </Text>
+                                      )}
+                                    </View>
+                                  )}
+                                </View>
+                              );
+
+                              const renderInviteCard = () => (
+                                <View style={[styles.inviteCardGradient, { 
+                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
+                                }]}>
+                                  <View style={[styles.inviteAvatar, { 
+                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}>
+                                    <View style={[styles.inviteIcon, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(56, 165, 201, 0.15)"
+                                    }]}>
+                                      <FontAwesome5 name="user-plus" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                    </View>
+                                  </View>
+                                  <Text style={[styles.inviteTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                    Invite Friends
+                                  </Text>
+                                  <Text style={[styles.inviteSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                    Share Wingman with your travel buddies
+                                  </Text>
+                                  <View style={[styles.inviteButton, { 
+                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+                                  }]}>
+                                    <Feather name="share-2" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                    <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                      Share App
+                                    </Text>
+                                  </View>
+                                </View>
+                              );
+
+                              return (
+                                <TouchableOpacity
+                                  style={[styles.userCard, { 
+                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}
+                                  activeOpacity={0.7}
+                                  onPress={handlePress}
+                                >
+                                  <View style={styles.userCardGradient}>
+                                    {user.isInviteCard ? renderInviteCard() : renderUserCard()}
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            }}
                             showsHorizontalScrollIndicator={false}
                           />
                         ) : (
@@ -1140,28 +1304,53 @@ export default function Dashboard() {
                                 activeOpacity={0.8}
                                 onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
                               >
+                                <View style={styles.eventImageContainer}>
                                 {event.eventImage ? (
                                   <Image 
                                     source={{ uri: event.eventImage }} 
                                     style={styles.eventImage}
+                                      resizeMode="cover"
                                   />
-                                ) : (
-                                  <View style={[styles.eventImagePlaceholder, { 
-                                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
-                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                  }]}>
-                                    {React.cloneElement(getEventIcon(event.name), { size: 24 })}
-                                  </View>
-                                )}
+                                  ) : (
+                                    <View style={[styles.eventImagePlaceholder, {
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                    }]}>
+                                      <MaterialIcons 
+                                        name="event" 
+                                        size={32} 
+                                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                                      />
+                                    </View>
+                                  )}
+                                  {event.organizer && (
+                                    <View style={[styles.organizerBadge, {
+                                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                    }]}>
+                                      <Feather name="star" size={12} color="#FFFFFF" />
+                                      <Text style={styles.organizerText}>Organized by you</Text>
+                                    </View>
+                                  )}
+                                </View>
                                 <View style={styles.eventContent}>
                                   <View style={[styles.eventHeader, { 
                                     borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
                                   }]}>
-                                    {React.cloneElement(getEventIcon(event.name), { size: 24 })}
                                     <View style={styles.eventTitleContainer}>
                                       <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                                         {event.name}
                                       </Text>
+                                      {event.category && (
+                                        <View style={[styles.categoryTag, {
+                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                                          borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                        }]}>
+                                          <Text style={[styles.categoryText, {
+                                            color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                          }]}>
+                                            {event.category}
+                                      </Text>
+                                        </View>
+                                      )}
                                     </View>
                                   </View>
                                   <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
@@ -1225,32 +1414,36 @@ export default function Dashboard() {
                   }
                 } else if (item.type === "feature") {
                   return (
-                    <View style={[styles.featureItem, { 
-                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                      borderWidth: theme === "light" ? 0 : 1,
-                      borderColor: theme === "light" ? "transparent" : "#38a5c9"
-                    }]}>
+                    <View style={styles.featureSection}>
+                      <View style={styles.featureGridContainer}>
+                        {features.map((feature, index) => (
                       <TouchableOpacity
-                        style={[styles.featureItemContent, { 
+                            key={index}
+                            style={[styles.featureGridItem, { 
                           backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                          borderColor: theme === "light" ? "transparent" : "#38a5c9"
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "#38a5c9"
                         }]}
-                        activeOpacity={0.8}
-                        onPress={() => router.push(item.data.screen)}
+                            activeOpacity={0.7}
+                            onPress={() => router.push(feature.screen)}
                       >
-                        <View style={styles.featureItemLeft}>
-                          {item.data.icon}
-                          <View style={styles.featureItemTextContainer}>
-                            <Text style={[styles.featureItemText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                              {item.data.title}
+                            <View style={[styles.featureIconContainer, {
+                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                            }]}>
+                              {feature.icon}
+                            </View>
+                            <Text style={[styles.featureGridTitle, { 
+                              color: theme === "light" ? "#000000" : "#e4fbfe" 
+                            }]}>
+                              {feature.title}
                             </Text>
-                            <Text style={[styles.featureItemDescription, { color: theme === "light" ? "#64748B" : "#64748B" }]}>
-                              {item.data.description}
+                            <Text style={[styles.featureGridDescription, { 
+                              color: theme === "light" ? "#64748B" : "#64748B" 
+                            }]} numberOfLines={2}>
+                              {feature.description}
                             </Text>
-                          </View>
-                        </View>
-                        <Feather name="chevron-right" size={18} color={theme === "light" ? "#37a4c8" : "#CBD5E1"} />
                       </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   );
                 } else if (item.type === "spacer") {
@@ -1343,12 +1536,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   userCard: {
-    width: 160,
+    width: 300,
     backgroundColor: "#1a1a1a",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 28,
     marginRight: 16,
-    alignItems: "center",
     elevation: 4,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
@@ -1357,116 +1548,292 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#38a5c9",
     marginBottom: 40,
+    overflow: 'hidden',
+  },
+  userCardGradient: {
+    padding: 24,
+    alignItems: 'center',
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
-    borderWidth: 2,
+    marginBottom: 20,
+    borderWidth: 2.5,
     borderColor: "#38a5c9",
     overflow: 'hidden',
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  inviteCardGradient: {
+    padding: 24,
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.05)',
+  },
+  inviteAvatar: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+    borderWidth: 2.5,
+    borderColor: "#38a5c9",
+    overflow: 'hidden',
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  inviteIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(56, 165, 201, 0.15)',
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  inviteTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#e4fbfe",
+    letterSpacing: 0.4,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  inviteSubtitle: {
+    fontSize: 15,
+    color: "#38a5c9",
+    letterSpacing: 0.3,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  inviteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.12)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    gap: 8,
+  },
+  inviteButtonText: {
+    fontSize: 15,
+    color: "#38a5c9",
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   avatarImage: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
   },
-  userName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#e4fbfe",
-    textAlign: "center",
-    marginBottom: 4,
+  userInfo: {
+    width: '100%',
+    alignItems: 'center',
   },
-  userStatus: {
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  userName: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#e4fbfe",
+    letterSpacing: 0.4,
+  },
+  pronouns: {
+    fontSize: 15,
+    color: "#38a5c9",
+    letterSpacing: 0.3,
+    fontWeight: "500",
+  },
+  userMetaContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(56, 165, 201, 0.12)',
+  },
+  metaText: {
     fontSize: 14,
     color: "#38a5c9",
-    textAlign: "center",
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  userBio: {
+    fontSize: 15,
+    color: "#64748B",
+    marginBottom: 16,
+    letterSpacing: 0.3,
+    lineHeight: 22,
+    textAlign: 'center',
+    paddingHorizontal: 4,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    alignItems: 'center',
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(56, 165, 201, 0.12)',
+    gap: 6,
+  },
+  tagIcon: {
+    marginRight: 2,
+  },
+  tagText: {
+    fontSize: 13,
+    color: "#38a5c9",
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  moreTags: {
+    fontSize: 13,
+    color: "#38a5c9",
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   eventCard: {
-    width: 320,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
+    width: 300,
     marginRight: 16,
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#38a5c9",
     overflow: 'hidden',
-    marginBottom: 40,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  eventImageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 160,
   },
   eventImage: {
     width: '100%',
-    height: 180,
-    resizeMode: 'cover',
+    height: '100%',
   },
-  eventContent: {
-    padding: 24,
+  eventImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  eventHeader: {
+  organizerBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    paddingBottom: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  organizerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  eventContent: {
+    padding: 16,
+  },
+  eventHeader: {
+    marginBottom: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(56, 165, 201, 0.1)',
+  },
+  eventTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   eventName: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#e4fbfe",
-    marginBottom: 8,
-    letterSpacing: 0.3,
+    fontSize: 18,
+    fontWeight: '600',
     flex: 1,
+    letterSpacing: 0.3,
   },
   eventDescription: {
-    fontSize: 15,
-    color: "#38a5c9",
+    fontSize: 14,
+    lineHeight: 20,
     marginBottom: 16,
     letterSpacing: 0.2,
-    lineHeight: 22,
   },
   eventMetaContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: 20,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   eventMetaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(56, 165, 201, 0.1)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 12,
+    gap: 6,
   },
   eventMeta: {
     fontSize: 13,
-    color: "#64748B",
-    fontWeight: "600",
+    fontWeight: '500',
     letterSpacing: 0.2,
+  },
+  categoryTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  categoryText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   featureItem: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1a1a1a",
-    borderRadius: 17,
+    borderRadius: 20,
     padding: 16,
     marginBottom: 12,
-    elevation: 3,
+    marginHorizontal: 16,
+    elevation: 2,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
+    shadowRadius: 4,
     borderWidth: 0,
   },
   featureItemContent: {
@@ -1474,24 +1841,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 12,
   },
   featureItemLeft: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    gap: 16,
   },
   featureItemTextContainer: {
-    marginLeft: 14,
     flex: 1,
   },
   featureItemText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
     marginBottom: 4,
+    letterSpacing: 0.3,
   },
   featureItemDescription: {
-    fontSize: 13,
+    fontSize: 14,
     letterSpacing: 0.2,
+    lineHeight: 20,
+  },
+  featureChevronContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   searchHeader: {
     marginHorizontal: 16,
@@ -1787,24 +2164,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     lineHeight: 20,
   },
-  eventImagePlaceholder: {
-    width: '100%',
-    height: 180,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-  },
-  airportMetaContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  airportDistance: {
-    fontSize: 14,
-    color: "#64748B",
-    fontWeight: "500",
-    letterSpacing: 0.2,
-  },
   countdownContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1820,24 +2179,56 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.2,
   },
-  eventTitleContainer: {
-    flex: 1,
+  airportMetaContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 8,
   },
-  categoryTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
+  airportDistance: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "500",
+    letterSpacing: 0.2,
   },
-  categoryText: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  featureSection: {
+    marginBottom: 16,
+  },
+  featureGridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 0,
+    gap: 12,
+  },
+  featureGridItem: {
+    width: '47%',
+    aspectRatio: 1,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    elevation: 2,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  featureIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  featureGridTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  featureGridDescription: {
+    fontSize: 13,
+    letterSpacing: 0.2,
+    lineHeight: 18,
   },
 });
 
