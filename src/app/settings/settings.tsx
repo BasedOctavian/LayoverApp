@@ -293,7 +293,7 @@ export default function Settings() {
   });
 
   return (
-    <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+    <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
       <TopBar onProfilePress={() => handleNavigation("profile/" + userId)} />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
@@ -319,7 +319,7 @@ export default function Settings() {
             {/* Header with Settings Title */}
             <View style={styles.header}>
               <Animated.Text 
-                style={[styles.headerTitle, { color: textColor }]}
+                style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 Settings
@@ -333,7 +333,7 @@ export default function Settings() {
                 accessibilityLabel={`View profile of ${userData.name}`}
               >
                 <Animated.View style={[styles.userHeader, { 
-                  backgroundColor: backgroundColor,
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
                   borderColor: "#37a4c8"
                 }]}>
                   {userData.profilePicture ? (
@@ -345,7 +345,7 @@ export default function Settings() {
                   ) : (
                     <Ionicons name="person-circle" size={50} color="#37a4c8" />
                   )}
-                  <Animated.Text style={[styles.userName, { color: textColor }]}>
+                  <Animated.Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     {userData.name}
                   </Animated.Text>
                 </Animated.View>
@@ -354,44 +354,53 @@ export default function Settings() {
             {/* Account Section */}
             <View style={styles.settingsSection}>
               <Animated.Text 
-                style={[styles.sectionTitle, { color: textColor }]}
+                style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 Account
               </Animated.Text>
               <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
                 onPress={() => handleNavigation("profile/editProfile")}
                 accessibilityRole="button"
                 accessibilityLabel="Edit profile"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="person" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Edit Profile</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Edit Profile</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
                 onPress={() => handleNavigation("/settings/updatePassword")}
                 accessibilityRole="button"
                 accessibilityLabel="Change password"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="lock-closed" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Change Password</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Change Password</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
                 onPress={() => handleNavigation("/settings/blockedUsers")}
                 accessibilityRole="button"
                 accessibilityLabel="Manage blocked users"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="person-remove" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Blocked Users</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Blocked Users</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
@@ -399,20 +408,23 @@ export default function Settings() {
             {/* Notifications Section */}
             <View style={styles.settingsSection}>
               <Animated.Text 
-                style={[styles.sectionTitle, { color: textColor }]}
+                style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 Notifications
               </Animated.Text>
               <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
                 onPress={() => handleNavigation("locked/lockedScreen")}
                 accessibilityRole="button"
                 accessibilityLabel="Notification preferences coming soon"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="notifications" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Notification Preferences</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Notification Preferences</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
@@ -420,24 +432,27 @@ export default function Settings() {
             {/* App Settings Section */}
             <View style={styles.settingsSection}>
               <Animated.Text 
-                style={[styles.sectionTitle, { color: textColor }]}
+                style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 App Settings
               </Animated.Text>
               {/* Theme Toggle */}
               <TouchableOpacity 
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]} 
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]} 
                 onPress={handleThemeToggle}
                 accessibilityRole="switch"
                 accessibilityLabel={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
                 accessibilityState={{ checked: theme === "dark" }}
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="color-palette" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Theme</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Theme</Animated.Text>
                   <View style={[styles.toggleContainer, { 
-                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                    backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
                     borderColor: "#37a4c8"
                   }]}>
                     <Animated.View
@@ -446,7 +461,7 @@ export default function Settings() {
                         { transform: [{ translateX: slideInterpolate }] },
                       ]}
                     />
-                    <Animated.Text style={[styles.toggleText, { color: textColor }]}>
+                    <Animated.Text style={[styles.toggleText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                       {theme === "light" ? "Light" : "Dark"}
                     </Animated.Text>
                   </View>
@@ -454,40 +469,49 @@ export default function Settings() {
               </TouchableOpacity>
               {/* Feedback Button */}
               <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
                 onPress={() => handleNavigation("settings/feedback")}
                 accessibilityRole="button"
                 accessibilityLabel="Send feedback"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="chatbubble-ellipses" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Send Feedback</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Send Feedback</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
               {/* About Button */}
               <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
                 onPress={() => handleNavigation("settings/about")}
                 accessibilityRole="button"
                 accessibilityLabel="About Wingman"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="information-circle" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>About Wingman</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>About Wingman</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
               {/* TOS/EULA Button */}
               <TouchableOpacity
-                style={[styles.settingsItem, { borderColor: "#37a4c8" }]}
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
                 onPress={() => handleNavigation("settings/tos")}
                 accessibilityRole="button"
                 accessibilityLabel="Terms of Service and EULA"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: backgroundColor }]}>
+                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="document-text" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: textColor }]}>Terms of Service & EULA</Animated.Text>
+                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Terms of Service & EULA</Animated.Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </Animated.View>
               </TouchableOpacity>
@@ -512,8 +536,8 @@ export default function Settings() {
               accessibilityLabel="Logout"
             >
               <LinearGradient colors={["#37a4c8", "#37a4c8"]} style={styles.logoutGradient}>
-                <Ionicons name="log-out" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
-                <Animated.Text style={[styles.logoutText, { color: textColor }]}>Logout</Animated.Text>
+                <Ionicons name="log-out" size={24} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+                <Animated.Text style={[styles.logoutText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Logout</Animated.Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -523,11 +547,11 @@ export default function Settings() {
                 source={require('../../../assets/adaptive-icon.png')}
                 style={[
                   styles.footerLogo,
-                  { tintColor: theme === "light" ? "#000000" : "#ffffff" }
+                  { tintColor: theme === "light" ? "#0F172A" : "#e4fbfe" }
                 ]}
                 resizeMode="contain"
               />
-              <Animated.Text style={[styles.copyrightText, { color: textColor }]}>
+              <Animated.Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                 © 2025 Wingman. All rights reserved.
               </Animated.Text>
             </View>
@@ -564,6 +588,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   profilePicture: {
     width: 50,
@@ -588,6 +617,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   settingsGradient: {
     flexDirection: "row",
@@ -631,6 +665,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   logoutGradient: {
     flexDirection: "row",
@@ -679,6 +718,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   deleteGradient: {
     flexDirection: "row",

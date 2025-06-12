@@ -325,7 +325,7 @@ export default function Event() {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
         {event.eventImage && (
@@ -353,24 +353,24 @@ export default function Event() {
               backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
               borderColor: "#37a4c8"
             }]}>
-              <Text style={[styles.eventTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{event.name}</Text>
+              <Text style={[styles.eventTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>{event.name}</Text>
               <View style={[styles.categoryChip, { 
                 backgroundColor: theme === "light" ? "rgba(56,165,201,0.1)" : "rgba(56,165,201,0.1)",
                 borderColor: "#37a4c8"
               }]}>
                 <Text style={styles.eventCategory}>{event.category}</Text>
               </View>
-              <Text style={[styles.eventDescription, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{event.description}</Text>
+              <Text style={[styles.eventDescription, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>{event.description}</Text>
               <View style={styles.detailsGrid}>
                 <View style={styles.detailItem}>
                   <MaterialIcons name="event" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     Created {formatDateTime(event.createdAt)}
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
                   <MaterialIcons name="schedule" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     Starts {formatDateTime(event.startTime)}
                     {isOrganizer && (
                       <TouchableOpacity onPress={() => setShowDatePicker(true)}>
@@ -381,13 +381,13 @@ export default function Event() {
                 </View>
                 <View style={styles.detailItem}>
                   <MaterialIcons name="people" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     {event.attendees?.length || 0} attendees
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
                   <MaterialIcons name="flight" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     {event.airportCode || "No airport set"}
                   </Text>
                 </View>
@@ -470,7 +470,7 @@ export default function Event() {
           mode="datetime"
           onConfirm={handleConfirmDate}
           onCancel={() => setShowDatePicker(false)}
-          textColor={theme === "light" ? "#000000" : "#e4fbfe"}
+          textColor={theme === "light" ? "#0F172A" : "#e4fbfe"}
           themeVariant="dark"
           isDarkModeEnabled={theme === "dark"}
           buttonTextColorIOS="#37a4c8"
@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 3,
     borderWidth: 1,
-    borderColor: "#38a5c9",
+    borderColor: "#38a5c8",
     marginBottom: 10,
     marginTop: 20,
   },
@@ -548,11 +548,11 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#38a5c9",
+    borderColor: "#38a5c8",
   },
   eventCategory: {
     fontSize: 14,
-    color: "#38a5c9",
+    color: "#38a5c8",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 1,
@@ -589,11 +589,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
     borderWidth: 1,
-    borderColor: "#38a5c9",
+    borderColor: "#38a5c8",
   },
   organizerText: {
     fontSize: 15,
-    color: "#38a5c9",
+    color: "#38a5c8",
     fontWeight: "600",
   },
   becomeOrganizerButton: {
@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
   },
   organizedTimestamp: {
     fontSize: 12,
-    color: "#38a5c9",
+    color: "#38a5c8",
     marginTop: 8,
     alignSelf: "flex-end",
   },

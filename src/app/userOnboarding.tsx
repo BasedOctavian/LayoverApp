@@ -38,6 +38,7 @@ type StepKey = "email" | "profile" | "travel" | "social" | "eula";
 interface Step {
   key: StepKey;
   title: string;
+  subtitle?: string;
   icon: IconName;
   fields: Field[];
 }
@@ -50,6 +51,7 @@ interface Field {
   type?: "text" | "password" | "image" | "tags" | "date" | "eula";
   keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
   secure?: boolean;
+  helperText?: string;
 }
 
 type IconName =
@@ -149,6 +151,20 @@ const UserOnboarding = () => {
   });
   const [showFullEula, setShowFullEula] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
+  const [stepProgress] = useState(new Animated.Value(0));
+  const [inputAnimations] = useState({
+    email: new Animated.Value(0),
+    password: new Animated.Value(0),
+    name: new Animated.Value(0),
+    dateOfBirth: new Animated.Value(0),
+    bio: new Animated.Value(0),
+    profilePicture: new Animated.Value(0),
+    travelHistory: new Animated.Value(0),
+    goals: new Animated.Value(0),
+    interests: new Animated.Value(0),
+    languages: new Animated.Value(0),
+  });
+  const [contentMargin] = useState(new Animated.Value(0));
 
   useEffect(() => {
     if (user !== undefined) {
@@ -157,12 +173,57 @@ const UserOnboarding = () => {
     }
   }, [user]);
 
+  useEffect(() => {
+    // Animate step progress
+    Animated.spring(stepProgress, {
+      toValue: (stepIndex + 1) / steps.length,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 40,
+    }).start();
+
+    // Animate current step fields
+    steps[stepIndex].fields.forEach((field, index) => {
+      Animated.sequence([
+        Animated.delay(index * 100),
+        Animated.spring(inputAnimations[field.key as keyof typeof inputAnimations], {
+          toValue: 1,
+          useNativeDriver: true,
+          friction: 8,
+          tension: 40,
+        }),
+      ]).start();
+    });
+  }, [stepIndex]);
+
+  useEffect(() => {
+    Animated.spring(contentMargin, {
+      toValue: stepIndex * 20,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 40,
+    }).start();
+  }, [stepIndex]);
+
   const handleInputChange = useCallback((key: string, value: string | Date | boolean) => {
+    // Animate input on change
+    Animated.sequence([
+      Animated.timing(inputAnimations[key as keyof typeof inputAnimations], {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(inputAnimations[key as keyof typeof inputAnimations], {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 40,
+      }),
+    ]).start();
+
     if (key === "name" && typeof value === "string") {
-      // Check for filtered content
       if (containsFilteredContent(value)) {
         setFieldErrors(prev => ({ ...prev, [key]: true }));
-        // Capitalize each word in the name
         value = value
           .split(" ")
           .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -171,13 +232,14 @@ const UserOnboarding = () => {
         setFieldErrors(prev => ({ ...prev, [key]: false }));
       }
     } else if (key === "bio" && typeof value === "string") {
-      // Check for filtered content
       if (containsFilteredContent(value)) {
         setFieldErrors(prev => ({ ...prev, [key]: true }));
-        // Capitalize first letter of bio
-        value = value.charAt(0).toUpperCase() + value.slice(1);
       } else {
         setFieldErrors(prev => ({ ...prev, [key]: false }));
+      }
+      // Ensure bio always starts with a capital letter
+      if (value.length > 0) {
+        value = value.charAt(0).toUpperCase() + value.slice(1);
       }
     }
     setUserData((prev: UserData) => ({ ...prev, [key]: value }));
@@ -347,6 +409,66 @@ const UserOnboarding = () => {
       return;
     }
 
+    // Validate required fields for each step
+    const currentStep = steps[stepIndex];
+    switch (currentStep.key) {
+      case "email":
+        if (!userData.email?.trim()) {
+          Alert.alert("Required Field", "Please enter your email address");
+          return;
+        }
+        if (!userData.password?.trim()) {
+          Alert.alert("Required Field", "Please enter a password");
+          return;
+        }
+        if (userData.password.length < 8) {
+          Alert.alert("Password Too Short", "Password must be at least 8 characters long");
+          return;
+        }
+        break;
+
+      case "profile":
+        if (!userData.name?.trim()) {
+          Alert.alert("Required Field", "Please enter your full name");
+          return;
+        }
+        if (!userData.dateOfBirth) {
+          Alert.alert("Required Field", "Please select your date of birth");
+          return;
+        }
+        if (!userData.bio?.trim()) {
+          Alert.alert("Required Field", "Please write a short bio about yourself");
+          return;
+        }
+        if (!userData.profilePicture) {
+          Alert.alert("Required Field", "Please add a profile picture");
+          return;
+        }
+        break;
+
+      case "travel":
+        if (!userData.travelHistory || selectedOptions.travelHistory.length === 0) {
+          Alert.alert("Required Field", "Please select at least one country you've visited");
+          return;
+        }
+        if (!userData.goals || selectedOptions.goals.length === 0) {
+          Alert.alert("Required Field", "Please select at least one travel goal");
+          return;
+        }
+        break;
+
+      case "social":
+        if (!userData.interests || selectedOptions.interests.length === 0) {
+          Alert.alert("Required Field", "Please select at least one travel interest");
+          return;
+        }
+        if (!userData.languages || selectedOptions.languages.length === 0) {
+          Alert.alert("Required Field", "Please select at least one language you speak");
+          return;
+        }
+        break;
+    }
+
     if (stepIndex < steps.length - 1) {
       Animated.sequence([
         Animated.timing(scaleAnim, {
@@ -371,8 +493,49 @@ const UserOnboarding = () => {
 
   const handleSubmit = async () => {
     try {
-      if (!userData.email || !userData.password) {
+      // Final validation before submission
+      if (!userData.email?.trim() || !userData.password?.trim()) {
         Alert.alert("Error", "Email and password are required");
+        return;
+      }
+
+      if (!userData.name?.trim()) {
+        Alert.alert("Error", "Full name is required");
+        return;
+      }
+
+      if (!userData.dateOfBirth) {
+        Alert.alert("Error", "Date of birth is required");
+        return;
+      }
+
+      if (!userData.bio?.trim()) {
+        Alert.alert("Error", "Bio is required");
+        return;
+      }
+
+      if (!userData.profilePicture) {
+        Alert.alert("Error", "Profile picture is required");
+        return;
+      }
+
+      if (!userData.travelHistory || selectedOptions.travelHistory.length === 0) {
+        Alert.alert("Error", "At least one country visited is required");
+        return;
+      }
+
+      if (!userData.goals || selectedOptions.goals.length === 0) {
+        Alert.alert("Error", "At least one travel goal is required");
+        return;
+      }
+
+      if (!userData.interests || selectedOptions.interests.length === 0) {
+        Alert.alert("Error", "At least one travel interest is required");
+        return;
+      }
+
+      if (!userData.languages || selectedOptions.languages.length === 0) {
+        Alert.alert("Error", "At least one language is required");
         return;
       }
 
@@ -389,15 +552,15 @@ const UserOnboarding = () => {
       // First create the user document without the profile picture
       const userProfile = {
         email: userData.email,
-        name: userData.name || "",
+        name: userData.name,
         dateOfBirth: userData.dateOfBirth,
         age: age,
-        bio: userData.bio || "",
+        bio: userData.bio,
         profilePicture: "", // Will be updated after upload
-        travelHistory: userData.travelHistory?.split(/,\s*/) || [],
-        goals: userData.goals?.split(/,\s*/) || [],
-        interests: userData.interests?.split(/,\s*/) || [],
-        languages: userData.languages?.split(/,\s*/) || [],
+        travelHistory: selectedOptions.travelHistory,
+        goals: selectedOptions.goals,
+        interests: selectedOptions.interests,
+        languages: selectedOptions.languages,
         isAnonymous: false,
         moodStatus: "neutral",
         acceptedEula: true,
@@ -487,11 +650,46 @@ const UserOnboarding = () => {
   const renderField = (field: Field) => {
     const isFocused = focusedField === field.key;
     const hasError = fieldErrors[field.key];
+    const animation = inputAnimations[field.key as keyof typeof inputAnimations];
+
+    const inputStyle = {
+      transform: [
+        { translateY: animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [20, 0]
+        })}
+      ],
+      opacity: animation
+    };
+
+    const renderHelperText = () => {
+      if (field.helperText) {
+        return (
+          <Animated.Text 
+            style={[
+              styles.helperText,
+              {
+                opacity: animation,
+                transform: [
+                  { translateY: animation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [10, 0]
+                  })}
+                ]
+              }
+            ]}
+          >
+            {field.helperText}
+          </Animated.Text>
+        );
+      }
+      return null;
+    };
 
     switch (field.type) {
       case "eula":
         return (
-          <View style={styles.eulaContainer}>
+          <Animated.View style={[styles.eulaContainer, inputStyle]}>
             <View style={styles.eulaSummary}>
               <View style={styles.eulaHeader}>
                 <Feather name="file-text" size={24} color="#38a5c9" />
@@ -652,40 +850,55 @@ const UserOnboarding = () => {
                 </LinearGradient>
               </View>
             </Modal>
-          </View>
+          </Animated.View>
         );
       case "image":
         return (
-          <TouchableOpacity
-            style={styles.avatarContainer}
-            onPress={handleSelectPhoto}
-            activeOpacity={0.7}
-          >
-            {userData.profilePicture ? (
-              <Image
-                source={{ uri: userData.profilePicture }}
-                style={styles.avatar}
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Image 
-                  source={require("../../assets/adaptive-icon.png")}
-                  style={styles.defaultAvatar}
+          <Animated.View style={[styles.avatarContainer, inputStyle]}>
+            <TouchableOpacity
+              style={[
+                styles.avatarWrapper,
+                isFocused && styles.avatarWrapperFocused,
+                hasError && styles.avatarWrapperError
+              ]}
+              onPress={handleSelectPhoto}
+              activeOpacity={0.7}
+            >
+              {userData.profilePicture ? (
+                <Image
+                  source={{ uri: userData.profilePicture }}
+                  style={styles.avatar}
                 />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Image 
+                    source={require("../../assets/adaptive-icon.png")}
+                    style={styles.defaultAvatar}
+                  />
+                  <View style={styles.avatarOverlay}>
+                    <Feather name="camera" size={24} color="#e4fbfe" />
+                    <Text style={styles.avatarOverlayText}>Add Photo</Text>
+                  </View>
+                </View>
+              )}
+              <View style={[
+                styles.cameraBadge,
+                isFocused && styles.cameraBadgeFocused
+              ]}>
+                <Feather name="camera" size={16} color="#000000" />
               </View>
-            )}
-            <View style={styles.cameraBadge}>
-              <Feather name="camera" size={16} color="#000000" />
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+            {renderHelperText()}
+          </Animated.View>
         );
       case "date":
         return (
-          <View>
+          <Animated.View style={inputStyle}>
             <TouchableOpacity
               style={[
                 styles.inputContainer,
-                isFocused && styles.inputContainerFocused
+                isFocused && styles.inputContainerFocused,
+                hasError && styles.inputContainerError
               ]}
               onPress={handleOpenDatePicker}
               activeOpacity={0.7}
@@ -694,7 +907,7 @@ const UserOnboarding = () => {
               <Feather 
                 name={field.icon} 
                 size={20} 
-                color={isFocused ? "#e4fbfe" : "#38a5c9"} 
+                color={hasError ? "#ff4444" : isFocused ? "#e4fbfe" : "#38a5c9"} 
               />
               <Text style={[
                 styles.dateText,
@@ -709,71 +922,98 @@ const UserOnboarding = () => {
                   : field.placeholder}
               </Text>
             </TouchableOpacity>
-            {showDatePicker && (
-              <View style={styles.datePickerContainer}>
-                <DateTimePicker
-                  value={tempDate || userData.dateOfBirth as Date || new Date()}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={handleDateChange}
-                  maximumDate={(() => {
-                    const maxDate = new Date();
-                    maxDate.setFullYear(maxDate.getFullYear() - 18);
-                    return maxDate;
-                  })()}
-                  textColor="#e4fbfe"
-                  themeVariant="dark"
-                />
-                {Platform.OS === 'ios' && (
-                  <View style={styles.datePickerButtons}>
-                    <TouchableOpacity 
-                      style={styles.datePickerButton} 
-                      onPress={handleCancelDate}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={styles.datePickerButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.datePickerButton, styles.datePickerButtonConfirm]} 
-                      onPress={handleConfirmDate}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={[styles.datePickerButtonText, styles.datePickerButtonTextConfirm]}>
-                        Confirm
-                      </Text>
-                    </TouchableOpacity>
+            {Platform.OS === 'ios' && showDatePicker && (
+              <Modal
+                visible={showDatePicker}
+                transparent={true}
+                animationType="slide"
+              >
+                <View style={styles.modalOverlay}>
+                  <View style={styles.datePickerContainer}>
+                    <View style={styles.datePickerHeader}>
+                      <TouchableOpacity
+                        onPress={handleCancelDate}
+                        style={styles.datePickerButton}
+                      >
+                        <Text style={styles.datePickerButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleConfirmDate}
+                        style={[styles.datePickerButton, styles.datePickerButtonConfirm]}
+                      >
+                        <Text style={[styles.datePickerButtonText, styles.datePickerButtonTextConfirm]}>Confirm</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={tempDate || new Date()}
+                      mode="date"
+                      display="spinner"
+                      onChange={handleDateChange}
+                      maximumDate={new Date(new Date().setFullYear(new Date().getFullYear() - 18))}
+                      minimumDate={new Date(new Date().setFullYear(new Date().getFullYear() - 100))}
+                      textColor="#e4fbfe"
+                    />
                   </View>
-                )}
-              </View>
+                </View>
+              </Modal>
             )}
-          </View>
+            {Platform.OS === 'android' && showDatePicker && (
+              <DateTimePicker
+                value={tempDate || new Date()}
+                mode="date"
+                display="default"
+                onChange={handleDateChange}
+                maximumDate={new Date(new Date().setFullYear(new Date().getFullYear() - 18))}
+                minimumDate={new Date(new Date().setFullYear(new Date().getFullYear() - 100))}
+              />
+            )}
+          </Animated.View>
         );
       case "tags":
-        const fieldOptions = selectedOptions[field.key] || [];
         return (
-          <View style={[
-            styles.tagsContainer,
-            isFocused && styles.tagsContainerFocused
-          ]}>
+          <Animated.View style={[styles.tagsContainer, inputStyle]}>
             <TouchableOpacity
-              style={styles.tagsInput}
+              style={[
+                styles.tagsInput,
+                isFocused && styles.tagsInputFocused,
+                hasError && styles.tagsInputError
+              ]}
               onPress={() => openSelectionModal(field.key)}
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Text style={[
                 styles.tagsInputText,
-                !fieldOptions.length && styles.tagsInputPlaceholder
+                !selectedOptions[field.key]?.length && styles.tagsInputPlaceholder
               ]}>
-                {fieldOptions.length 
-                  ? `${fieldOptions.length} ${field.key === "languages" ? "languages" : field.key === "interests" ? "interests" : "countries"} selected`
+                {selectedOptions[field.key]?.length 
+                  ? `${selectedOptions[field.key].length} ${field.key === "languages" ? "languages" : field.key === "interests" ? "interests" : "countries"} selected`
                   : field.placeholder}
               </Text>
+              <Feather 
+                name="chevron-right" 
+                size={20} 
+                color={hasError ? "#ff4444" : isFocused ? "#e4fbfe" : "#38a5c9"} 
+              />
             </TouchableOpacity>
-            {fieldOptions.length > 0 && (
+            {selectedOptions[field.key]?.length > 0 && (
               <View style={styles.tagsPreview}>
-                {fieldOptions.map((option, index) => (
-                  <View key={index} style={styles.tag}>
+                {selectedOptions[field.key].map((option, index) => (
+                  <Animated.View 
+                    key={index} 
+                    style={[
+                      styles.tag,
+                      {
+                        transform: [
+                          { translateY: animation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [20, 0]
+                          })}
+                        ],
+                        opacity: animation
+                      }
+                    ]}
+                  >
                     <Text style={styles.tagText}>{option}</Text>
                     <TouchableOpacity
                       onPress={() => handleOptionRemove(option, field.key)}
@@ -781,56 +1021,57 @@ const UserOnboarding = () => {
                     >
                       <Feather name="x" size={16} color="#e4fbfe" />
                     </TouchableOpacity>
-                  </View>
+                  </Animated.View>
                 ))}
               </View>
             )}
-          </View>
+          </Animated.View>
         );
       default:
         return (
-          <View style={[
-            styles.inputContainer,
-            isFocused && styles.inputContainerFocused,
-            hasError && styles.inputContainerError
-          ]}>
-            <Feather 
-              name={field.icon} 
-              size={20} 
-              color={hasError ? "#ff4444" : isFocused ? "#e4fbfe" : "#38a5c9"} 
-            />
-            <TextInput
-              style={[styles.input, hasError && styles.inputError]}
-              placeholder={field.placeholder}
-              placeholderTextColor={hasError ? "#ff4444" : "#38a5c9"}
-              secureTextEntry={field.secure}
-              keyboardType={field.keyboardType}
-              onChangeText={(text) => handleInputChange(field.key, text)}
-              value={userData[field.key] as string}
-              onFocus={() => handleFocus(field.key)}
-              onBlur={handleBlur}
-              autoCapitalize={field.key === "name" ? "words" : "sentences"}
-              autoCorrect={field.key === "bio"}
-              spellCheck={field.key === "bio"}
-              multiline={field.key === "bio"}
-              numberOfLines={field.key === "bio" ? 3 : 1}
-              textAlignVertical={field.key === "bio" ? "top" : "center"}
-              returnKeyType={field.key === "bio" ? "done" : "default"}
-              blurOnSubmit={field.key === "bio"}
-              onSubmitEditing={() => {
-                if (field.key === "bio") {
+          <Animated.View style={inputStyle}>
+            <View style={[
+              styles.inputContainer,
+              isFocused && styles.inputContainerFocused,
+              hasError && styles.inputContainerError
+            ]}>
+              <Feather 
+                name={field.icon} 
+                size={20} 
+                color={hasError ? "#ff4444" : isFocused ? "#e4fbfe" : "#38a5c9"} 
+              />
+              <TextInput
+                style={[styles.input, hasError && styles.inputError]}
+                placeholder={field.placeholder}
+                placeholderTextColor={hasError ? "#ff4444" : "#38a5c9"}
+                secureTextEntry={field.secure}
+                keyboardType={field.keyboardType}
+                onChangeText={(text) => handleInputChange(field.key, text)}
+                value={userData[field.key] as string}
+                onFocus={() => handleFocus(field.key)}
+                onBlur={handleBlur}
+                autoCapitalize={field.key === "name" ? "words" : "sentences"}
+                autoCorrect={field.key === "bio"}
+                spellCheck={field.key === "bio"}
+                multiline={field.key === "bio"}
+                numberOfLines={field.key === "bio" ? 3 : 1}
+                textAlignVertical={field.key === "bio" ? "top" : "center"}
+                returnKeyType="done"
+                blurOnSubmit={true}
+                onSubmitEditing={() => {
                   Keyboard.dismiss();
                   handleBlur();
-                }
-              }}
-              onKeyPress={({ nativeEvent }) => {
-                if (field.key === "bio" && nativeEvent.key === "Enter") {
-                  Keyboard.dismiss();
-                  handleBlur();
-                }
-              }}
-            />
-          </View>
+                }}
+                onKeyPress={({ nativeEvent }) => {
+                  if (nativeEvent.key === "Enter") {
+                    Keyboard.dismiss();
+                    handleBlur();
+                  }
+                }}
+              />
+            </View>
+            {renderHelperText()}
+          </Animated.View>
         );
     }
   };
@@ -861,6 +1102,7 @@ const UserOnboarding = () => {
     {
       key: "profile",
       title: "Your Travel Persona 🌍",
+      subtitle: "Let's create your travel identity",
       icon: "user",
       fields: [
         {
@@ -868,6 +1110,7 @@ const UserOnboarding = () => {
           label: "Full Name",
           icon: "user",
           placeholder: "Alex Wanderlust",
+          helperText: "This is how other travelers will know you",
         },
         {
           key: "dateOfBirth",
@@ -875,6 +1118,7 @@ const UserOnboarding = () => {
           icon: "calendar",
           placeholder: "Select your date of birth",
           type: "date",
+          helperText: "You must be 18 or older to use Wingman",
         },
         {
           key: "bio",
@@ -882,6 +1126,7 @@ const UserOnboarding = () => {
           icon: "edit-3",
           placeholder: "Digital nomad & coffee enthusiast...",
           type: "text",
+          helperText: "Share a bit about yourself and your travel style",
         },
         {
           key: "profilePicture",
@@ -889,6 +1134,7 @@ const UserOnboarding = () => {
           icon: "camera",
           type: "image",
           placeholder: "",
+          helperText: "Add a clear photo of yourself",
         },
       ],
     },
@@ -1044,11 +1290,6 @@ const UserOnboarding = () => {
 
   return (
     <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
-      <LinearGradient
-        colors={['#000000', 'transparent']}
-        style={styles.fadeOverlay}
-        pointerEvents="none"
-      />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -1059,9 +1300,32 @@ const UserOnboarding = () => {
           <Animated.View 
             style={[
               styles.contentContainer,
-              { transform: [{ scale: scaleAnim }] }
+              { 
+                transform: [
+                  { scale: scaleAnim },
+                  { translateY: contentMargin.interpolate({
+                    inputRange: [0, 80],
+                    outputRange: [0, -200]
+                  })}
+                ]
+              }
             ]}
           >
+            <View style={styles.progressContainer}>
+              <Animated.View 
+                style={[
+                  styles.progressBar,
+                  {
+                    transform: [{
+                      scaleX: stepProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 1]
+                      })
+                    }]
+                  }
+                ]} 
+              />
+            </View>
             <Text style={styles.title}>{steps[stepIndex].title}</Text>
             {steps[stepIndex].fields.map((field) => (
               <TouchableOpacity
@@ -1071,7 +1335,6 @@ const UserOnboarding = () => {
                   if (field.type === "date") {
                     handleOpenDatePicker();
                   } else if (field.type !== "eula") {
-                    // Focus the input if it's not a date picker or EULA
                     handleFocus(field.key);
                   }
                 }}
@@ -1241,93 +1504,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   avatarContainer: {
-    alignSelf: "center",
-    marginBottom: 11,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  avatarPlaceholder: {
-    width: avatarSize,
-    height: avatarSize,
-    borderRadius: avatarSize / 2,
-    backgroundColor: "#1a1a1a",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#38a5c9",
-  },
-  defaultAvatar: {
-    width: avatarSize * 0.8,
-    height: avatarSize * 0.8,
-    borderRadius: avatarSize / 2,
-  },
-  avatar: {
+  avatarWrapper: {
     width: avatarSize,
     height: avatarSize,
     borderRadius: avatarSize / 2,
     borderWidth: 2,
-    borderColor: "#38a5c9",
-  },
-  cameraBadge: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    backgroundColor: "#38a5c9",
-    padding: 8,
-    borderRadius: 20,
-  },
-  tagsContainer: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    minHeight: 64,
-  },
-  tagsContainerFocused: {
-    borderColor: "#e4fbfe",
-    backgroundColor: "#1a1a1a",
-    shadowColor: "#38a5c9",
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 8,
-  },
-  tagsInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#38a5c9',
-    minHeight: 48,
-  },
-  tagsInputText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#e4fbfe',
-    fontFamily: 'Inter-Regular',
-  },
-  tagsInputPlaceholder: {
-    color: '#38a5c9',
-  },
-  tagsPreview: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 16,
-    gap: 8,
-  },
-  tag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#000000',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
     borderColor: '#38a5c9',
+    overflow: 'hidden',
+    backgroundColor: '#1a1a1a',
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -1337,11 +1525,74 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  tagText: {
+  avatarWrapperFocused: {
+    borderColor: '#e4fbfe',
+    shadowColor: "#38a5c9",
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  avatarWrapperError: {
+    borderColor: '#ff4444',
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+  },
+  defaultAvatar: {
+    width: avatarSize * 0.6,
+    height: avatarSize * 0.6,
+    opacity: 0.5,
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  avatarOverlayText: {
     color: '#e4fbfe',
     fontFamily: 'Inter-Medium',
-    marginRight: 8,
     fontSize: 14,
+  },
+  avatar: {
+    width: '100%',
+    height: '100%',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: '#38a5c9',
+    padding: 8,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  cameraBadgeFocused: {
+    backgroundColor: '#e4fbfe',
+  },
+  helperText: {
+    color: '#38a5c9',
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    marginTop: 12,
+    textAlign: 'center',
   },
   footer: {
     flexDirection: "row",
@@ -1413,22 +1664,24 @@ const styles = StyleSheet.create({
   datePickerContainer: {
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
-    marginTop: 8,
+    margin: 20,
     padding: 16,
     borderWidth: 1,
     borderColor: '#38a5c9',
   },
-  datePickerButtons: {
+  datePickerHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 20,
-    gap: 16,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(56, 165, 201, 0.2)',
   },
   datePickerButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderRadius: 8,
-    minHeight: 48,
   },
   datePickerButtonConfirm: {
     backgroundColor: '#38a5c9',
@@ -1663,14 +1916,6 @@ const styles = StyleSheet.create({
   buttonTextDisabled: {
     color: "#38a5c9",
   },
-  fadeOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 100,
-    zIndex: 1,
-  },
   fullScreenContainer: {
     flex: 1,
     backgroundColor: '#000000',
@@ -1716,6 +1961,139 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 16,
     lineHeight: 24,
+  },
+  progressContainer: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(56, 165, 201, 0.2)',
+    borderRadius: 2,
+    marginBottom: 32,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    width: '100%',
+    backgroundColor: '#38a5c9',
+    borderRadius: 2,
+    transformOrigin: 'left',
+  },
+  tagsContainer: {
+    backgroundColor: "#1a1a1a",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    minHeight: 64,
+  },
+  tagsContainerFocused: {
+    borderColor: "#e4fbfe",
+    backgroundColor: "#1a1a1a",
+    shadowColor: "#38a5c9",
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  tagsInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#38a5c9',
+    minHeight: 48,
+  },
+  tagsInputText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Regular',
+  },
+  tagsInputPlaceholder: {
+    color: '#38a5c9',
+  },
+  tagsPreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 16,
+    gap: 8,
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#38a5c9',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  tagText: {
+    color: '#e4fbfe',
+    fontFamily: 'Inter-Medium',
+    marginRight: 8,
+    fontSize: 14,
+  },
+  inputWrapper: {
+    width: '100%',
+  },
+  dateContainer: {
+    width: '100%',
+  },
+  inputContainerFocused: {
+    borderColor: "#e4fbfe",
+    backgroundColor: "#1a1a1a",
+    shadowColor: "#38a5c9",
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  inputContainerError: {
+    borderColor: "#ff4444",
+    backgroundColor: "rgba(255, 68, 68, 0.1)",
+  },
+  inputError: {
+    color: "#ff4444",
+  },
+  input: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    color: "#e4fbfe",
+    fontFamily: "Inter-Regular",
+    minHeight: 40,
+    paddingVertical: 8,
+  },
+  progressContainer: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(56, 165, 201, 0.2)',
+    borderRadius: 2,
+    marginBottom: 32,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    width: '100%',
+    backgroundColor: '#38a5c9',
+    borderRadius: 2,
+    transformOrigin: 'left',
   },
 });
 

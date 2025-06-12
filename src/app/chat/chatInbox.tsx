@@ -17,6 +17,7 @@ import {
   ImageBackground,
   ScrollView,
   RefreshControl,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
@@ -34,6 +35,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { doc, deleteDoc, updateDoc, getDoc, Timestamp, collection, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../../config/firebaseConfig';
 import BottomNavBar from "../../components/BottomNavBar";
+import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
@@ -474,6 +476,19 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 20,
   },
+  bottomNavContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderTopColor: "#37a4c8",
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
 });
 
 const ChatItem = React.memo(({ 
@@ -830,6 +845,17 @@ const ChatItem = React.memo(({
     loadPartner();
   }, [chat, currentUser, getUser]);
 
+  const handlePress = useCallback(() => {
+    if (chat.status === 'pending') {
+      const partnerId = chat.participants.find(id => id !== currentUser.uid);
+      if (partnerId) {
+        router.push(`/profile/${partnerId}`);
+      }
+    } else {
+      onPress();
+    }
+  }, [chat, currentUser.uid, onPress]);
+
   if (isLoading) {
     return (
       <View style={[styles.chatCard, { justifyContent: "center" }]}>
@@ -884,16 +910,7 @@ const ChatItem = React.memo(({
             styles.chatCardContent,
             chat.status === 'pending' && { opacity: 0.9 }
           ]}
-          onPress={() => {
-            if (chat.status === 'pending') {
-              const partnerId = chat.participants.find(id => id !== currentUser.uid);
-              if (partnerId) {
-                router.push(`/profile/${partnerId}`);
-              }
-            } else {
-              onPress();
-            }
-          }}
+          onPress={handlePress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           activeOpacity={0.7}
@@ -1219,6 +1236,8 @@ export default function ChatInbox() {
   const [activeChats, setActiveChats] = useState<Chat[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [preloadedImages, setPreloadedImages] = useState<Set<string>>(new Set());
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [isThemeChanging, setIsThemeChanging] = useState(false);
 
   // Add fade animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -1226,190 +1245,23 @@ export default function ChatInbox() {
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
   const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
 
-  // Add auth state listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthUser(user);
-        console.log('Auth User UID:', user.uid);
-      } else {
-        router.replace("login/login");
-      }
-      setIsAuthLoading(false);
-    });
-    return unsubscribe;
+  // Add navigation handlers
+  const handleBack = useCallback(() => {
+    router.back();
   }, []);
 
-  // Add refresh function
-  const handleRefresh = async () => {
-    if (!user) return;
-    
-    setIsRefreshing(true);
-    try {
-      // Fetch both chats and connections
-      const [allChats, connectionsSnapshot] = await Promise.all([
-        getChats(),
-        getDocs(collection(db, 'connections'))
-      ]);
+  const handleNavigateToExplore = useCallback(() => {
+    router.push("/chat/chatExplore");
+  }, []);
 
-      if (allChats) {
-        const userChats = allChats.filter(
-          (chat: any) => chat.participants && chat.participants.includes(user.uid)
-        ) as Chat[];
-
-        // Convert connections to chat format for pending connections
-        const pendingConnections = connectionsSnapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }))
-          .filter((connection: any) => 
-            connection.participants && 
-            connection.participants.includes(user.uid) &&
-            connection.status === 'pending'
-          ) as Chat[];
-
-        // Separate pending and active chats
-        const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
-        const active = userChats.filter(chat => chat.status === 'active');
-        
-        // Update all state variables
-        setPendingChats(pending);
-        setActiveChats(active);
-        setChats([...pending, ...active]);
-        setFilteredChats([...pending, ...active]);
-      }
-    } catch (error) {
-      console.error('Error refreshing chats:', error);
-      Alert.alert(
-        "Error",
-        "Failed to refresh chats. Please try again.",
-        [{ text: "OK" }]
-      );
-    } finally {
-      setIsRefreshing(false);
+  const handleNavigation = useCallback((route: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-  };
+    router.push(route);
+  }, []);
 
-  // Subscribe to real-time updates for all chats
-  useEffect(() => {
-    if (!user) return;
-
-    const unsubscribers: (() => void)[] = [];
-
-    const setupChatSubscriptions = async () => {
-      try {
-        // Fetch both chats and connections
-        const [allChats, connectionsSnapshot] = await Promise.all([
-          getChats(),
-          getDocs(collection(db, 'connections'))
-        ]);
-        
-        if (allChats) {
-          const userChats = allChats.filter(
-            (chat: any) => chat.participants && chat.participants.includes(user.uid)
-          ) as Chat[];
-
-          // Convert connections to chat format for pending connections
-          const pendingConnections = connectionsSnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }))
-            .filter((connection: any) => 
-              connection.participants && 
-              connection.participants.includes(user.uid) &&
-              connection.status === 'pending'
-            ) as Chat[];
-
-          // Set up real-time subscriptions for each chat
-          userChats.forEach(chat => {
-            const unsubscribe = subscribeToChat(chat.id, (updatedChat: Chat) => {
-              setChats(prevChats => {
-                const newChats = prevChats.map(c => 
-                  c.id === updatedChat.id ? { ...c, ...updatedChat } : c
-                );
-                
-                // Update filtered chats
-                setFilteredChats(prevFiltered => 
-                  prevFiltered.map(c => c.id === updatedChat.id ? { ...c, ...updatedChat } : c)
-                );
-
-                // Update pending and active chats
-                const pending = newChats.filter(c => c.status === 'pending');
-                const active = newChats.filter(c => c.status !== 'pending');
-                setPendingChats(pending);
-                setActiveChats(active);
-
-                return newChats;
-              });
-            });
-            unsubscribers.push(unsubscribe);
-          });
-
-          // Initial state setup
-          const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
-          const active = userChats.filter(chat => chat.status !== 'pending');
-          
-          setPendingChats(pending);
-          setActiveChats(active);
-          setChats([...pending, ...active]);
-          setFilteredChats([...pending, ...active]);
-        }
-      } catch (error) {
-        console.error('Error loading chats:', error);
-        Alert.alert(
-          "Error",
-          "Failed to load chats. Please try again.",
-          [
-            {
-              text: "Retry",
-              onPress: () => {
-                setInitialLoadComplete(false);
-                setupChatSubscriptions();
-              }
-            }
-          ]
-        );
-      } finally {
-        setInitialLoadComplete(true);
-      }
-    };
-
-    setupChatSubscriptions();
-
-    // Cleanup subscriptions
-    return () => {
-      unsubscribers.forEach(unsubscribe => unsubscribe());
-    };
-  }, [user]);
-
-  // Add image preloading effect
-  useEffect(() => {
-    const preloadChatImages = async () => {
-      const imagePromises = chats.map(async (chat: Chat) => {
-        const partnerId = chat.participants.find((id: string) => id !== user?.uid);
-        if (!partnerId) return null;
-        const userData = await getUser(partnerId);
-        return (userData as Partner)?.profilePicture || null;
-      });
-
-      const imageUrls = await Promise.all(imagePromises);
-      const validUrls = imageUrls.filter((url): url is string => url !== null);
-      
-      // Preload images in batches to avoid overwhelming the device
-      const batchSize = 5;
-      for (let i = 0; i < validUrls.length; i += batchSize) {
-        const batch = validUrls.slice(i, i + batchSize);
-        await Promise.all(batch.map(url => Image.prefetch(url)));
-      }
-    };
-
-    if (chats.length > 0 && user?.uid) {
-      preloadChatImages();
-    }
-  }, [chats, user?.uid, getUser]);
-
+  // Add chat management functions
   const handlePinChat = async (chatId: string) => {
     try {
       const chatRef = doc(db, 'chats', chatId);
@@ -1470,37 +1322,11 @@ export default function ChatInbox() {
     });
   };
 
-  // Optimize FlatList rendering
-  const getItemLayout = useCallback((data: any, index: number) => ({
-    length: CARD_HEIGHT,
-    offset: CARD_HEIGHT * index,
-    index,
-  }), []);
-
-  const keyExtractor = useCallback((item: Chat) => item.id, []);
-
-  // Update the sorting function to always return a number
-  const sortChats = useCallback((a: Chat, b: Chat) => {
-    if (a.isPinned && !b.isPinned) return -1;
-    if (!a.isPinned && b.isPinned) return 1;
-    const timeA = getTimestampMs(a.lastMessageTime);
-    const timeB = getTimestampMs(b.lastMessageTime);
-    return timeB - timeA;
-  }, []);
-
-  // Add performance optimizations for chat list
-  const memoizedActiveChats = useMemo(() => {
-    return activeChats.sort(sortChats);
-  }, [activeChats, sortChats]);
-
-  const memoizedPendingChats = useMemo(() => {
-    return pendingChats;
-  }, [pendingChats]);
-
-  // Add debounced search
-  const debouncedSearch = useCallback(
-    (query: string) => {
-      if (!query.trim()) {
+  // Add search functionality
+  const handleSearch = useCallback((text: string) => {
+    setSearchQuery(text);
+    const timeoutId = setTimeout(() => {
+      if (!text.trim()) {
         setFilteredChats(chats);
         return;
       }
@@ -1509,159 +1335,244 @@ export default function ChatInbox() {
         if (!partnerId) return false;
         return getUser(partnerId).then(userData => {
           const name = (userData as Partner)?.name?.toLowerCase() || '';
-          return name.includes(query.toLowerCase());
+          return name.includes(text.toLowerCase());
         });
       });
       setFilteredChats(filtered);
-    },
-    [chats, user?.uid, getUser]
-  );
-
-  // Update search handler with manual debouncing
-  const handleSearch = useCallback((text: string) => {
-    setSearchQuery(text);
-    const timeoutId = setTimeout(() => {
-      debouncedSearch(text);
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [debouncedSearch]);
+  }, [chats, user?.uid, getUser]);
 
-  // Optimize animations
-  const animateIn = useCallback(() => {
-    fadeAnim.setValue(0);
-    translateYAnim.setValue(20);
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
-      }),
-      Animated.timing(translateYAnim, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
-      })
-    ]).start();
-  }, [fadeAnim, translateYAnim]);
+  // Handle fade in animation when content is ready
+  useEffect(() => {
+    if (!isLoading && initialLoadComplete) {
+      setTimeout(() => {
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+      }, 400);
+    }
+  }, [isLoading, initialLoadComplete]);
 
-  const animateOut = useCallback(() => {
-    Animated.parallel([
+  // Handle theme changes
+  useEffect(() => {
+    if (isThemeChanging) {
+      // First fade out
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
         useNativeDriver: true,
-        easing: Easing.in(Easing.cubic),
-      }),
-      Animated.timing(translateYAnim, {
-        toValue: 20,
-        duration: 300,
-        useNativeDriver: true,
-        easing: Easing.in(Easing.cubic),
-      })
-    ]).start();
-  }, [fadeAnim, translateYAnim]);
+      }).start(() => {
+        // Update animation values for new theme
+        backgroundAnim.setValue(theme === "light" ? 0 : 1);
+        textAnim.setValue(theme === "light" ? 0 : 1);
+        
+        // Fade back in with a slight delay
+        setTimeout(() => {
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            easing: Easing.in(Easing.ease),
+            useNativeDriver: true,
+          }).start(() => {
+            setIsThemeChanging(false);
+          });
+        }, 50);
+      });
+    }
+  }, [theme, isThemeChanging]);
 
-  // Update useFocusEffect
-  useFocusEffect(
-    React.useCallback(() => {
-      animateIn();
-      return () => {
-        animateOut();
-      };
-    }, [animateIn, animateOut])
-  );
+  // Add auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthUser(user);
+        console.log('Auth User UID:', user.uid);
+      } else {
+        router.replace("login/login");
+      }
+      setIsAuthLoading(false);
+    });
+    return unsubscribe;
+  }, []);
 
-  // Update handleBack
-  const handleBack = useCallback(() => {
-    animateOut();
-    router.back();
-  }, [animateOut]);
+  // Add refresh function
+  const handleRefresh = async () => {
+    if (!user) return;
+    
+    setIsRefreshing(true);
+    try {
+      // Fetch both chats and connections
+      const [allChats, connectionsSnapshot] = await Promise.all([
+        getChats(),
+        getDocs(collection(db, 'connections'))
+      ]);
 
-  // Update handleNavigateToExplore
-  const handleNavigateToExplore = useCallback(() => {
-    animateOut();
-    router.push("/chat/chatExplore");
-  }, [animateOut]);
+      if (allChats) {
+        const userChats = allChats.filter(
+          (chat: any) => chat.participants && chat.participants.includes(user.uid)
+        ) as Chat[];
 
-  // Update ListHeaderComponent
-  const ListHeaderComponent = useCallback(() => (
-    memoizedActiveChats.length > 0 ? (
-      <TextInput
-        style={[styles.searchInput, { 
-          backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
-          color: theme === "light" ? "#000000" : "#e4fbfe",
-          borderColor: "#37a4c8"
-        }]}
-        placeholder="Search chats..."
-        placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-        value={searchQuery}
-        onChangeText={handleSearch}
-      />
-    ) : null
-  ), [theme, searchQuery, handleSearch, memoizedActiveChats.length]);
+        // Convert connections to chat format for pending connections
+        const pendingConnections = connectionsSnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          .filter((connection: any) => 
+            connection.participants && 
+            connection.participants.includes(user.uid) &&
+            connection.status === 'pending'
+          ) as Chat[];
 
-  const ListEmptyComponent = useCallback(() => (
-    <View style={styles.stateContainer}>
-      <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#64748B" }]}>
-        No active chats
-      </Text>
-      <TouchableOpacity 
-        style={[styles.retryButton, { marginTop: 16 }]} 
-        onPress={handleNavigateToExplore}
-      >
-        <Text style={styles.retryButtonText}>Find People</Text>
-      </TouchableOpacity>
-    </View>
-  ), [theme, handleNavigateToExplore]);
+        // Separate pending and active chats
+        const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
+        const active = userChats.filter(chat => chat.status === 'active');
+        
+        // Preload images before updating state
+        await preloadChatImages([...pending, ...active]);
+        
+        // Update all state variables
+        setPendingChats(pending);
+        setActiveChats(active);
+        setChats([...pending, ...active]);
+        setFilteredChats([...pending, ...active]);
+      }
+    } catch (error) {
+      console.error('Error refreshing chats:', error);
+      Alert.alert(
+        "Error",
+        "Failed to refresh chats. Please try again.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
-  const renderItem = useCallback(({ item }: { item: Chat }) => (
-    <ChatItem
-      chat={item}
-      currentUser={user!}
-      getUser={async (userId: string) => {
-        const userData = await getUser(userId);
-        if (!userData) throw new Error("User not found");
-        return userData as Partner;
-      }}
-      onPress={() => {
-        router.push("/chat/" + item.id);
-      }}
-      onPinPress={() => handlePinChat(item.id)}
-      onDelete={() => handleDeleteChat(item.id)}
-      onAccept={handleAcceptChat}
-      setPendingChats={setPendingChats}
-      setChats={setChats}
-      setFilteredChats={setFilteredChats}
-    />
-  ), [user, handlePinChat, handleDeleteChat, handleAcceptChat, setPendingChats, setChats, setFilteredChats]);
+  // Add image preloading utility
+  const preloadChatImages = async (chatsToPreload: Chat[]) => {
+    const imagePromises = chatsToPreload.map(async (chat: Chat) => {
+      const partnerId = chat.participants.find((id: string) => id !== user?.uid);
+      if (!partnerId) return null;
+      const userData = await getUser(partnerId);
+      return (userData as Partner)?.profilePicture || null;
+    });
 
-  // Interpolate colors for smooth transitions
-  const backgroundColor = backgroundAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#e6e6e6', '#000000'],
-    extrapolate: 'clamp'
-  });
+    const imageUrls = await Promise.all(imagePromises);
+    const validUrls = imageUrls.filter((url): url is string => url !== null);
+    
+    // Preload images in batches to avoid overwhelming the device
+    const batchSize = 5;
+    for (let i = 0; i < validUrls.length; i += batchSize) {
+      const batch = validUrls.slice(i, i + batchSize);
+      await Promise.all(batch.map(url => Image.prefetch(url)));
+    }
+  };
 
-  const textColor = textAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#000000', '#ffffff'],
-    extrapolate: 'clamp'
-  });
+  // Subscribe to real-time updates for all chats
+  useEffect(() => {
+    if (!user) return;
 
-  // Add error boundary
-  const handleError = useCallback((error: Error) => {
-    console.error('Chat list error:', error);
-    Alert.alert(
-      'Error',
-      'An error occurred while loading chats. Please try again.',
-      [{ text: 'OK', onPress: handleRefresh }]
-    );
-  }, [handleRefresh]);
+    const unsubscribers: (() => void)[] = [];
+    setIsDataLoading(true);
+
+    const setupChatSubscriptions = async () => {
+      try {
+        // Fetch both chats and connections
+        const [allChats, connectionsSnapshot] = await Promise.all([
+          getChats(),
+          getDocs(collection(db, 'connections'))
+        ]);
+        
+        if (allChats) {
+          const userChats = allChats.filter(
+            (chat: any) => chat.participants && chat.participants.includes(user.uid)
+          ) as Chat[];
+
+          // Convert connections to chat format for pending connections
+          const pendingConnections = connectionsSnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }))
+            .filter((connection: any) => 
+              connection.participants && 
+              connection.participants.includes(user.uid) &&
+              connection.status === 'pending'
+            ) as Chat[];
+
+          // Set up real-time subscriptions for each chat
+          userChats.forEach(chat => {
+            const unsubscribe = subscribeToChat(chat.id, (updatedChat: Chat) => {
+              setChats(prevChats => {
+                const newChats = prevChats.map(c => 
+                  c.id === updatedChat.id ? { ...c, ...updatedChat } : c
+                );
+                
+                // Update filtered chats
+                setFilteredChats(prevFiltered => 
+                  prevFiltered.map(c => c.id === updatedChat.id ? { ...c, ...updatedChat } : c)
+                );
+
+                // Update pending and active chats
+                const pending = newChats.filter(c => c.status === 'pending');
+                const active = newChats.filter(c => c.status !== 'pending');
+                setPendingChats(pending);
+                setActiveChats(active);
+
+                return newChats;
+              });
+            });
+            unsubscribers.push(unsubscribe);
+          });
+
+          // Initial state setup
+          const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
+          const active = userChats.filter(chat => chat.status !== 'pending');
+          
+          // Preload images before setting state
+          await preloadChatImages([...pending, ...active]);
+          
+          setPendingChats(pending);
+          setActiveChats(active);
+          setChats([...pending, ...active]);
+          setFilteredChats([...pending, ...active]);
+        }
+      } catch (error) {
+        console.error('Error loading chats:', error);
+        Alert.alert(
+          "Error",
+          "Failed to load chats. Please try again.",
+          [
+            {
+              text: "Retry",
+              onPress: () => {
+                setInitialLoadComplete(false);
+                setupChatSubscriptions();
+              }
+            }
+          ]
+        );
+      } finally {
+        setInitialLoadComplete(true);
+        setIsDataLoading(false);
+      }
+    };
+
+    setupChatSubscriptions();
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+    };
+  }, [user]);
 
   // Add loading state optimization
-  const isLoading = isAuthLoading || chatsLoading || !initialLoadComplete;
+  const isLoading = isAuthLoading || chatsLoading || !initialLoadComplete || isDataLoading;
 
   // Add error state optimization
   const hasError = !!chatsError;
@@ -1669,30 +1580,29 @@ export default function ChatInbox() {
   // Add empty state optimization
   const isEmpty = !isLoading && !hasError && activeChats.length === 0 && pendingChats.length === 0;
 
-  if (isLoading) {
+  // Show black screen during auth check
+  if (!user || !authUser) {
+    return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }} />;
+  }
+
+  // Show loading screen during initial load or theme change
+  if (isLoading || isThemeChanging) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <LoadingScreen message="Loading your chats..." />
+        <LoadingScreen message={isThemeChanging ? "Updating theme..." : "Loading your chats..."} />
       </LinearGradient>
     );
   }
 
-  // Add a safety check for user
-  if (!user || !authUser) {
-    router.replace("login/login");
-    return null;
-  }
-
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
-          showBackButton={true} 
-          title="Chats"
+          showBackButton={false} 
+          title=""
           onProfilePress={() => router.push(`/profile/${user?.uid}`)}
-          onBackPress={handleBack}
         />
         <Animated.View 
           style={[
@@ -1740,12 +1650,12 @@ export default function ChatInbox() {
                 />
               }
             >
-              {memoizedPendingChats.length > 0 && (
+              {pendingChats.length > 0 && (
                 <View style={styles.sectionContainer}>
                   <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     Pending Connections
                   </Text>
-                  {memoizedPendingChats.map((chat) => (
+                  {pendingChats.map((chat) => (
                     <ChatItem
                       key={chat.id}
                       chat={chat}
@@ -1756,7 +1666,7 @@ export default function ChatInbox() {
                         return userData as Partner;
                       }}
                       onPress={() => {
-                        router.push("/chat/" + chat.id);
+                        handleNavigation("/chat/" + chat.id);
                       }}
                       onPinPress={() => handlePinChat(chat.id)}
                       onDelete={() => handleDeleteChat(chat.id)}
@@ -1769,7 +1679,7 @@ export default function ChatInbox() {
                 </View>
               )}
 
-              {memoizedActiveChats.length > 0 ? (
+              {activeChats.length > 0 ? (
                 <View style={styles.sectionContainer}>
                   <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                     Active Chats
@@ -1785,7 +1695,7 @@ export default function ChatInbox() {
                     value={searchQuery}
                     onChangeText={handleSearch}
                   />
-                  {memoizedActiveChats.map((chat) => (
+                  {activeChats.map((chat) => (
                     <ChatItem
                       key={chat.id}
                       chat={chat}
@@ -1796,7 +1706,7 @@ export default function ChatInbox() {
                         return userData as Partner;
                       }}
                       onPress={() => {
-                        router.push("/chat/" + chat.id);
+                        handleNavigation("/chat/" + chat.id);
                       }}
                       onPinPress={() => handlePinChat(chat.id)}
                       onDelete={() => handleDeleteChat(chat.id)}
@@ -1830,7 +1740,23 @@ export default function ChatInbox() {
             <Ionicons name="add" size={24} color="#ffffff" />
           </TouchableOpacity>
         </Animated.View>
-        <BottomNavBar />
+        <Animated.View 
+          style={[
+            styles.bottomNavContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{
+                translateY: translateYAnim.interpolate({
+                  inputRange: [0, 20],
+                  outputRange: [0, 0]
+                })
+              }],
+              backgroundColor: theme === "light" ? "#ffffff" : "#000000",
+            }
+          ]}
+        >
+          <BottomNavBar />
+        </Animated.View>
       </LinearGradient>
     </SafeAreaView>
   );

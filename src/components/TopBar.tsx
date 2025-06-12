@@ -80,11 +80,12 @@ const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <LinearGradient
-      colors={theme === "light" ? ['#e6e6e6', '#e6e6e6'] : ['#000000', '#000000']}
+      colors={theme === "light" ? ['#F8FAFC', '#FFFFFF'] : ['#000000', '#000000']}
       style={[styles.topBar, { 
         paddingTop: insets.top, 
         height: topBarHeight,
-        backgroundColor: theme === "light" ? '#e6e6e6' : '#000000'
+        backgroundColor: theme === "light" ? '#F8FAFC' : '#000000',
+        borderBottomColor: theme === "light" ? '#E2E8F0' : 'rgba(55, 164, 200, 0.3)'
       }]}
     >
       <View style={styles.leftSection}>
@@ -94,7 +95,7 @@ const TopBar: React.FC<TopBarProps> = ({
             style={styles.backButton}
             activeOpacity={0.7}
           >
-            <Ionicons name="chevron-back" size={28} color={theme === "light" ? "#000000" : "#ffffff"} />
+            <Ionicons name="chevron-back" size={28} color={theme === "light" ? "#0F172A" : "#ffffff"} />
           </TouchableOpacity>
         )}
         <TouchableOpacity 
@@ -106,12 +107,12 @@ const TopBar: React.FC<TopBarProps> = ({
             style={[
               styles.logo, 
               showBackButton && styles.logoWithBack,
-              { tintColor: theme === "light" ? "#000000" : "#ffffff" }
+              { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
             ]}
             resizeMode="contain"
           />
         </TouchableOpacity>
-        {title && <Text style={[styles.title, { color: theme === "light" ? "#000000" : "#ffffff" }]}>{title}</Text>}
+        {title && <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{title}</Text>}
       </View>
       
       <View style={styles.rightSection}>
@@ -122,10 +123,15 @@ const TopBar: React.FC<TopBarProps> = ({
             activeOpacity={0.7}
           >
             <View style={styles.notificationContainer}>
-              <Ionicons name="notifications" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
+              <Ionicons name="notifications" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
               {notificationCount > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationText}>
+                <View style={[styles.notificationBadge, { 
+                  borderColor: theme === "light" ? "#FFFFFF" : "#000000",
+                  backgroundColor: theme === "light" ? "#0F172A" : "#FF3B30"
+                }]}>
+                  <Text style={[styles.notificationText, { 
+                    color: theme === "light" ? "#FFFFFF" : "#FFFFFF" 
+                  }]}>
                     {notificationCount > 99 ? '99+' : notificationCount}
                   </Text>
                 </View>
@@ -144,14 +150,22 @@ const TopBar: React.FC<TopBarProps> = ({
               {user?.profilePicture ? (
                 <Image
                   source={{ uri: user.profilePicture }}
-                  style={styles.profileImage}
+                  style={[styles.profileImage, { 
+                    borderColor: theme === "light" ? "#E2E8F0" : "#38a5c9" 
+                  }]}
                 />
               ) : (
-                <View style={styles.profilePlaceholder}>
-                  <Ionicons name="person" size={20} color={theme === "light" ? "#ffffff" : "#ffffff"} />
+                <View style={[styles.profilePlaceholder, { 
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
+                  borderColor: theme === "light" ? "#E2E8F0" : "#38a5c9"
+                }]}>
+                  <Ionicons name="person" size={20} color={theme === "light" ? "#0F172A" : "#ffffff"} />
                 </View>
               )}
-              <View style={[styles.statusIndicator, { borderColor: theme === "light" ? "#e6e6e6" : "#000000" }]} />
+              <View style={[styles.statusIndicator, { 
+                borderColor: theme === "light" ? "#FFFFFF" : "#000000",
+                backgroundColor: theme === "light" ? "#0F172A" : "#4CAF50"
+              }]} />
             </View>
           </TouchableOpacity>
         )}
@@ -168,17 +182,16 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(55, 164, 200, 0.3)',
     marginTop: 0,
     ...Platform.select({
       ios: {
-        shadowColor: '#37a4c8',
+        shadowColor: '#0F172A',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.05,
         shadowRadius: 4,
       },
       android: {
-        elevation: 4,
+        elevation: 2,
       },
     }),
   },

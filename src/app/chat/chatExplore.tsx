@@ -267,6 +267,7 @@ export default function ChatExplore() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [isThemeChanging, setIsThemeChanging] = useState(false);
 
   // States to manage chat fetching and creation
   const [chatLoading, setChatLoading] = useState<boolean>(false);
@@ -275,8 +276,21 @@ export default function ChatExplore() {
 
   // Add fade animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(20)).current;
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
   const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+
+  // Add back the handleBack function
+  const handleBack = () => {
+    // Animate out
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      router.back();
+    });
+  };
 
   // Added auth state listener
   useEffect(() => {
@@ -291,83 +305,47 @@ export default function ChatExplore() {
     return unsubscribe;
   }, []);
 
-  // Add entrance animation
+  // Handle fade in animation when content is ready
   useEffect(() => {
-    if (!loading && !usersLoading && !chatLoading && initialLoadComplete) {
-      // Start with opacity 0
-      fadeAnim.setValue(0);
-      // Animate in
+    if (!loading && initialLoadComplete) {
+      setTimeout(() => {
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+      }, 400);
+    }
+  }, [loading, initialLoadComplete]);
+
+  // Handle theme changes
+  useEffect(() => {
+    if (isThemeChanging) {
+      // First fade out
       Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
+        toValue: 0,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
         useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
-      }).start();
+      }).start(() => {
+        // Update animation values for new theme
+        backgroundAnim.setValue(theme === "light" ? 0 : 1);
+        textAnim.setValue(theme === "light" ? 0 : 1);
+        
+        // Fade back in with a slight delay
+        setTimeout(() => {
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            easing: Easing.in(Easing.ease),
+            useNativeDriver: true,
+          }).start(() => {
+            setIsThemeChanging(false);
+          });
+        }, 50);
+      });
     }
-  }, [loading, usersLoading, chatLoading, initialLoadComplete]);
-
-  // Add focus effect for smooth transitions
-  useFocusEffect(
-    React.useCallback(() => {
-      // Reset and start fade in animation when screen comes into focus
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
-      }).start();
-
-      return () => {
-        // Cleanup animation when screen loses focus
-        fadeAnim.setValue(0);
-      };
-    }, [])
-  );
-
-  // Handle back gesture
-  const handleBack = () => {
-    // Animate out
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      router.back();
-    });
-  };
-
-  // Function to fetch chats where the current user is a participant
-  const getUserChats = async (userId: string) => {
-    setChatLoading(true);
-    try {
-      const chatsCollection = collection(db, "chats");
-      const q = query(chatsCollection, where("participants", "array-contains", userId));
-      const snapshot = await getDocs(q);
-      const chats = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Chat[];
-      return chats;
-    } catch (error) {
-      setChatError("Failed to fetch user chats.");
-      console.error("Error fetching chats:", error);
-    } finally {
-      setChatLoading(false);
-    }
-  };
-
-  // Hook to create a chat document
-  const addChat = async (chatData: any) => {
-    setChatLoading(true);
-    try {
-      const chatsCollection = collection(db, "chats");
-      const docRef = await addDoc(chatsCollection, chatData);
-      return docRef.id;
-    } catch (error) {
-      setChatError("Failed to create chat.");
-      console.error(error);
-    } finally {
-      setChatLoading(false);
-    }
-  };
+  }, [theme, isThemeChanging]);
 
   // Fetch all users excluding the authenticated user
   useEffect(() => {
@@ -462,24 +440,23 @@ export default function ChatExplore() {
     extrapolate: 'clamp'
   });
 
-  if (loading || !initialLoadComplete) {
+  if (loading || !initialLoadComplete || isThemeChanging) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <LoadingScreen message="Loading..." />
+        <LoadingScreen message={isThemeChanging ? "Updating theme..." : "Loading..."} />
       </LinearGradient>
     );
   }
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
-          showBackButton={true} 
-          title="New Chat" 
+          showBackButton={false} 
+          title=""
           onProfilePress={() => router.push(`/profile/${user?.uid}`)}
-          onBackPress={handleBack}
         />
         <Animated.View 
           style={[
@@ -487,10 +464,7 @@ export default function ChatExplore() {
             { 
               opacity: fadeAnim,
               transform: [{
-                translateY: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [20, 0],
-                })
+                translateY: translateYAnim
               }]
             }
           ]}
@@ -521,7 +495,23 @@ export default function ChatExplore() {
             />
           )}
         </Animated.View>
-        <BottomNavBar />
+        <Animated.View 
+          style={[
+            styles.bottomNavContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{
+                translateY: translateYAnim.interpolate({
+                  inputRange: [0, 20],
+                  outputRange: [0, 0]
+                })
+              }],
+              backgroundColor: theme === "light" ? "#ffffff" : "#000000",
+            }
+          ]}
+        >
+          <BottomNavBar />
+        </Animated.View>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -674,5 +664,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderTopColor: "#37a4c8",
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
 });

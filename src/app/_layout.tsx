@@ -64,6 +64,15 @@ export default function RootLayout() {
               }}
             />
 
+            {/* Explore Screen */}
+            <Stack.Screen
+              name="explore"
+              options={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            />
+
             {/* Search Screen */}
             <Stack.Screen
               name="search"

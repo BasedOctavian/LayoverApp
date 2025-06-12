@@ -27,13 +27,13 @@ const BottomNavBar = () => {
   // Interpolate colors for smooth transitions
   const backgroundColor = backgroundAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#e6e6e6', '#000000'],
+    outputRange: ['#F8FAFC', '#000000'],
     extrapolate: 'clamp'
   });
 
   const textColor = textAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#000000', '#ffffff'],
+    outputRange: ['#0F172A', '#ffffff'],
     extrapolate: 'clamp'
   });
 
@@ -59,27 +59,27 @@ const BottomNavBar = () => {
         <Ionicons 
           name={active ? "home" : "home-outline"} 
           size={28} 
-          color={active ? "#37a4c8" : theme === "light" ? "#000000" : "#ffffff"} 
+          color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
       path: "/home/dashboard"
     },
     {
       icon: (active: boolean) => (
-        <MaterialIcons 
-          name={active ? "event" : "event-available"} 
-          size={28} 
-          color={active ? "#37a4c8" : theme === "light" ? "#000000" : "#ffffff"} 
+        <Feather 
+          name="compass" 
+          size={26} 
+          color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
-      path: "/home"
+      path: "/explore"
     },
     {
       icon: (active: boolean) => (
         <FontAwesome5 
           name="user-friends" 
           size={26} 
-          color={active ? "#37a4c8" : theme === "light" ? "#000000" : "#ffffff"} 
+          color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
       path: "/swipe"
@@ -89,7 +89,7 @@ const BottomNavBar = () => {
         <Ionicons 
           name={active ? "chatbubble" : "chatbubble-outline"} 
           size={28} 
-          color={active ? "#37a4c8" : theme === "light" ? "#000000" : "#ffffff"} 
+          color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
       path: "/chat/chatInbox"
@@ -99,7 +99,7 @@ const BottomNavBar = () => {
         <Ionicons 
           name={active ? "settings" : "settings-outline"} 
           size={28} 
-          color={active ? "#37a4c8" : theme === "light" ? "#000000" : "#ffffff"} 
+          color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
       path: "/settings/settings"
@@ -109,11 +109,12 @@ const BottomNavBar = () => {
   return (
     <View>
       <LinearGradient
-        colors={theme === "light" ? ['#e6e6e6', '#e6e6e6'] : ['#000000', '#000000']}
+        colors={theme === "light" ? ['#F8FAFC', '#FFFFFF'] : ['#000000', '#000000']}
         style={[
           styles.container,
           { 
             paddingBottom: Platform.OS === 'ios' ? insets.bottom : 16,
+            borderTopColor: theme === "light" ? '#E2E8F0' : 'rgba(55, 164, 200, 0.3)'
           }
         ]}
       >
@@ -146,16 +147,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: -35,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(55, 164, 200, 0.3)',
     ...Platform.select({
       ios: {
-        shadowColor: '#37a4c8',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 8,
+        elevation: 2,
       },
     }),
   },

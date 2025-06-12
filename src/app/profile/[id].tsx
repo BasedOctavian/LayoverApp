@@ -166,19 +166,19 @@ const Profile = () => {
   // Interpolate colors for smooth transitions
   const backgroundColor = backgroundAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#e6e6e6', '#000000'],
+    outputRange: ['#f8f9fa', '#000000'],
     extrapolate: 'clamp'
   });
 
   const textColor = textAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#000000', '#ffffff'],
+    outputRange: ['#0F172A', '#ffffff'],
     extrapolate: 'clamp'
   });
 
   const secondaryTextColor = textAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#666666', '#ffffff'],
+    outputRange: ['#666666', '#999999'],
     extrapolate: 'clamp'
   });
 
@@ -541,8 +541,8 @@ const Profile = () => {
               shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
               shadowOpacity: theme === "light" ? 0.2 : 0.1,
             }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>About</Text>
-              <Text style={[styles.cardContent, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{userData.bio || "No bio provided"}</Text>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>About</Text>
+              <Text style={[styles.cardContent, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{userData.bio || "No bio provided"}</Text>
             </View>
             <View style={[styles.card, styles.languagesCard, { 
               backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
@@ -550,7 +550,7 @@ const Profile = () => {
               shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
               shadowOpacity: theme === "light" ? 0.2 : 0.1,
             }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Languages</Text>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Languages</Text>
               <View style={styles.tagsContainer}>
                 {userData.languages.map((language, index) => (
                   <View key={index} style={[styles.tag, { 
@@ -559,7 +559,7 @@ const Profile = () => {
                     shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
                     shadowOpacity: theme === "light" ? 0.1 : 0,
                   }]}>
-                    <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{language}</Text>
+                    <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{language}</Text>
                   </View>
                 ))}
               </View>
@@ -575,7 +575,7 @@ const Profile = () => {
               shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
               shadowOpacity: theme === "light" ? 0.2 : 0.1,
             }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Interests</Text>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Interests</Text>
               <View style={styles.tagsContainer}>
                 {userData.interests.map((interest, index) => (
                   <View key={index} style={[styles.tag, { 
@@ -584,7 +584,7 @@ const Profile = () => {
                     shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
                     shadowOpacity: theme === "light" ? 0.1 : 0,
                   }]}>
-                    <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{interest}</Text>
+                    <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{interest}</Text>
                   </View>
                 ))}
               </View>
@@ -596,7 +596,7 @@ const Profile = () => {
               shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
               shadowOpacity: theme === "light" ? 0.2 : 0.1,
             }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Goals</Text>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Goals</Text>
               <View style={styles.tagsContainer}>
                 {userData.goals.map((goal, index) => (
                   <View key={index} style={[styles.tag, { 
@@ -605,7 +605,7 @@ const Profile = () => {
                     shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
                     shadowOpacity: theme === "light" ? 0.1 : 0,
                   }]}>
-                    <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{goal}</Text>
+                    <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{goal}</Text>
                   </View>
                 ))}
               </View>
@@ -646,7 +646,7 @@ const Profile = () => {
                 shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
-                <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Social Media</Text>
+                <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Social Media</Text>
                 <View style={styles.socialMediaLinks}>
                   {userData.socialMedia?.instagram && (
                     <TouchableOpacity 
@@ -658,8 +658,8 @@ const Profile = () => {
                       }]}
                       onPress={() => Linking.openURL(`https://instagram.com/${userData.socialMedia?.instagram}`)}
                     >
-                      <MaterialIcons name="photo-camera" size={24} color={theme === "light" ? "#333333" : "#ffffff"} />
-                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>@{userData.socialMedia.instagram}</Text>
+                      <MaterialIcons name="photo-camera" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>@{userData.socialMedia.instagram}</Text>
                     </TouchableOpacity>
                   )}
                   {userData.socialMedia?.linkedin && (
@@ -672,8 +672,8 @@ const Profile = () => {
                       }]}
                       onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
                     >
-                      <MaterialIcons name="work" size={24} color={theme === "light" ? "#333333" : "#ffffff"} />
-                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>LinkedIn Profile</Text>
+                      <MaterialIcons name="work" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>LinkedIn Profile</Text>
                     </TouchableOpacity>
                   )}
                   {userData.socialMedia?.twitter && (
@@ -686,8 +686,8 @@ const Profile = () => {
                       }]}
                       onPress={() => Linking.openURL(`https://twitter.com/${userData.socialMedia?.twitter}`)}
                     >
-                      <MaterialIcons name="chat" size={24} color={theme === "light" ? "#333333" : "#ffffff"} />
-                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>@{userData.socialMedia.twitter}</Text>
+                      <MaterialIcons name="chat" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>@{userData.socialMedia.twitter}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -699,7 +699,7 @@ const Profile = () => {
                 shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
-                <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Social Media</Text>
+                <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Social Media</Text>
                 <Text style={[styles.noContentText, { color: theme === "light" ? "#666666" : "#999999" }]}>No social media links provided</Text>
               </View>
             )}
@@ -1114,7 +1114,7 @@ const Profile = () => {
     return (
       <SafeAreaView style={styles.flex} edges={["bottom"]}>
         <LinearGradient 
-          colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} 
+          colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} 
           style={styles.flex}
         >
           <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
@@ -1153,14 +1153,14 @@ const Profile = () => {
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
       <LinearGradient 
-        colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} 
+        colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} 
         style={styles.flex}
       >
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <Animated.View style={[
           styles.topBarContainer,
           {
-            backgroundColor: isScrolled ? (theme === "light" ? 'rgba(230, 230, 230, 0.95)' : 'rgba(26, 26, 26, 0.95)') : 'transparent',
+            backgroundColor: isScrolled ? (theme === "light" ? 'rgba(248, 249, 250, 0.95)' : 'rgba(26, 26, 26, 0.95)') : 'transparent',
             borderBottomWidth: isScrolled ? 1 : 0,
             borderBottomColor: "#37a4c8",
           }
@@ -1405,7 +1405,7 @@ const Profile = () => {
                 source={require('../../../assets/adaptive-icon.png')}
                 style={[
                   styles.footerLogo,
-                  { tintColor: theme === "light" ? "#000000" : "#ffffff" }
+                  { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
                 ]}
                 resizeMode="contain"
               />
