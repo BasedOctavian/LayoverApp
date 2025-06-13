@@ -1,28 +1,65 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, View, Text, TouchableOpacity, Image } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome } from "@expo/vector-icons";
 import useAuth from "../hooks/auth"; // Import your auth hook
 import { useGetProfilePicUrl } from "../hooks/useSupabase";
 import LoadingScreen from "../components/LoadingScreen";
+import TopBar from "../components/TopBar";
+import useUsers from "../hooks/useUsers";
+
+// Preload the logo image
+const logoSource = require('../../assets/adaptive-icon.png');
+Image.prefetch(Image.resolveAssetSource(logoSource).uri);
+
+// Pre-render the TopBar to ensure it's ready
+const PreloadedTopBar = () => {
+  return (
+    <View style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
+      <TopBar />
+    </View>
+  );
+};
 
 export default function MainScreen() {
   const router = useRouter();
-  const { user, logout } = useAuth(); // Get the authenticated user and logout function
+  const { user, loading: authLoading } = useAuth(); // Get the authenticated user and loading state
   const { getProfilePicUrl } = useGetProfilePicUrl();
+  const { getUser } = useUsers();
   const [isLoading, setIsLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   useEffect(() => {
-    // Simulate a minimum loading time to ensure smooth transition
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
+    const loadUserData = async () => {
+      try {
+        if (user) {
+          // Fetch user profile data
+          const userData = await getUser(user.uid);
+          if (userData) {
+            setProfileLoaded(true);
+          }
+        } else {
+          // If no user, we don't need to load profile data
+          setProfileLoaded(true);
+        }
+      } catch (error) {
+        console.error("Error loading user data:", error);
+        // Even if there's an error, we should stop loading
+        setProfileLoaded(true);
+      } finally {
+        // Ensure minimum loading time for smooth transition
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 1500);
+      }
+    };
 
-    return () => clearTimeout(timer);
-  }, []);
+    loadUserData();
+  }, [user]);
 
-  if (isLoading) {
+  // Show loading screen while either auth is loading or we're loading profile data for a logged-in user
+  if (isLoading || authLoading || (user && !profileLoaded)) {
     return <LoadingScreen />;
   }
 
@@ -31,7 +68,7 @@ export default function MainScreen() {
     return <Redirect href="/login/login" />;
   }
 
-  // If user is logged in, redirect to dashboard
+  // If user is logged in and profile is loaded, redirect to dashboard
   return <Redirect href="/home/dashboard" />;
 }
 

@@ -183,7 +183,7 @@ export default function Notifications() {
     >
       <View style={styles.notificationContent}>
         <Text style={[styles.notificationTitle, { 
-          color: theme === "light" ? "#000000" : "#ffffff",
+          color: theme === "light" ? "#0F172A" : "#e4fbfe",
           fontWeight: item.read ? "400" : "600"
         }]}>
           {item.title}
@@ -194,7 +194,7 @@ export default function Notifications() {
           {item.body}
         </Text>
         <Text style={[styles.notificationTime, { 
-          color: theme === "light" ? "#999999" : "#666666"
+          color: theme === "light" ? "#666666" : "#a0a0a0"
         }]}>
           {new Date(item.timestamp?.seconds * 1000).toLocaleString()}
         </Text>
@@ -213,17 +213,17 @@ export default function Notifications() {
       <TopBar onProfilePress={() => router.push(`/profile/${auth.currentUser?.uid}`)} />
       <SafeAreaView style={[styles.container, { 
         paddingTop: insets.top,
-        backgroundColor: theme === "light" ? "#ffffff" : "#000000"
+        backgroundColor: theme === "light" ? "#f8f9fa" : "#000000"
       }]}>
         <LinearGradient
-          colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]}
+          colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]}
           style={styles.gradient}
         >
           <View style={styles.content}>
             {notifications.length === 0 ? (
               <>
                 <Ionicons name="notifications-off" size={64} color="#37a4c8" />
-                <Text style={[styles.title, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                   No new notifications!
                 </Text>
                 <Text style={[styles.subtitle, { color: "#37a4c8" }]}>
@@ -233,7 +233,7 @@ export default function Notifications() {
             ) : (
               <>
                 <View style={styles.header}>
-                  <Text style={[styles.title, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     Notifications
                   </Text>
                   <TouchableOpacity

@@ -6,13 +6,12 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  Animated,
   StatusBar,
-  Easing,
   RefreshControl,
   Platform,
-  AccessibilityInfo,
   Alert,
+  Animated,
+  Easing,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, Feather } from "@expo/vector-icons";
@@ -24,7 +23,6 @@ import { auth } from "../../../config/firebaseConfig";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../../context/ThemeContext";
 import TopBar from "../../components/TopBar";
-import LoadingScreen from "../../components/LoadingScreen";
 import * as Haptics from 'expo-haptics';
 import { doc, deleteDoc } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
@@ -35,24 +33,34 @@ export default function Settings() {
   const { getUser } = useUsers();
   const [userData, setUserData] = useState<any>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProfilePictureLoading, setIsProfilePictureLoading] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const [isThemeChanging, setIsThemeChanging] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const profilePictureOpacity = useRef(new Animated.Value(0)).current;
+  const loadingProgress = useRef(new Animated.Value(0)).current;
+  const loadingLineOpacity = useRef(new Animated.Value(0)).current;
 
   // Access ThemeContext
   const { theme, toggleTheme } = React.useContext(ThemeContext);
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
-  
-  // Animation for theme toggle
-  const [toggleAnimation] = useState(new Animated.Value(theme === "light" ? 0 : 1));
-  
-  // New fade animations
-  const fadeAnim = useState(new Animated.Value(0))[0];
-  const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
-  const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+
+  // Animation values
+  const contentBounceAnim = useRef(new Animated.Value(0)).current;
+  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
+  const contentFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Fade in animation for profile picture
+  const fadeInProfilePicture = () => {
+    Animated.timing(profilePictureOpacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }).start();
+  };
 
   // Fetch user data
   const fetchUserData = useCallback(async () => {
@@ -66,7 +74,6 @@ export default function Settings() {
       setError("Failed to load user data. Please try again.");
       console.error("Error fetching user data:", err);
     } finally {
-      setInitialLoadComplete(true);
       setRefreshing(false);
     }
   }, [user, getUser]);
@@ -79,7 +86,7 @@ export default function Settings() {
       } else {
         router.replace("login/login");
       }
-      setLoading(false);
+      setIsLoading(false);
     });
     return unsubscribe;
   }, []);
@@ -96,63 +103,32 @@ export default function Settings() {
     fetchUserData();
   }, [user, fetchUserData]);
 
-  // Animate toggle when theme changes
+  // Add effect for bounce animation when loading completes
   useEffect(() => {
-    Animated.timing(toggleAnimation, {
-      toValue: theme === "light" ? 0 : 1,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [theme]);
-
-  // Handle fade in animation when content is ready
-  useEffect(() => {
-    if (!loading && initialLoadComplete) {
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }).start();
-      }, 400);
-    }
-  }, [loading, initialLoadComplete]);
-
-  // Handle theme toggle with fade effect and haptic feedback
-  const handleThemeToggle = () => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    
-    setIsThemeChanging(true);
-    // First fade out
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 200,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start(() => {
-      // After fade out, change theme and start fade in
-      toggleTheme();
-      
-      // Update animation values for new theme
-      backgroundAnim.setValue(theme === "light" ? 1 : 0);
-      textAnim.setValue(theme === "light" ? 1 : 0);
-      toggleAnimation.setValue(theme === "light" ? 1 : 0);
-      
-      // Fade back in with a slight delay
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
+    if (!isLoading && initialLoadComplete) {
+      Animated.parallel([
+        Animated.timing(contentBounceAnim, {
           toValue: 1,
           duration: 300,
-          easing: Easing.in(Easing.ease),
           useNativeDriver: true,
-        }).start(() => {
-          setIsThemeChanging(false);
-        });
-      }, 50);
-    });
-  };
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(contentScaleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        })
+      ]).start();
+    }
+  }, [isLoading, initialLoadComplete]);
+
+  // Set initial load complete after data is fetched
+  useEffect(() => {
+    if (!isLoading && userData) {
+      setInitialLoadComplete(true);
+    }
+  }, [isLoading, userData]);
 
   // Handle refresh
   const onRefresh = useCallback(() => {
@@ -218,6 +194,9 @@ export default function Settings() {
 
                       try {
                         // Re-authenticate user
+                        if (!authUser.email) {
+                          throw new Error("User email is required for re-authentication");
+                        }
                         const credential = EmailAuthProvider.credential(
                           authUser.email,
                           password
@@ -263,41 +242,61 @@ export default function Settings() {
     );
   };
 
-  // Interpolate colors for smooth transitions
-  const backgroundColor = backgroundAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#e6e6e6', '#000000'],
-    extrapolate: 'clamp'
-  });
-
-  const textColor = textAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#000000', '#ffffff'],
-    extrapolate: 'clamp'
-  });
+  // Add loading progress animation
+  useEffect(() => {
+    if (isLoading || !userData) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(loadingProgress, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(loadingProgress, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      loadingProgress.setValue(0);
+    }
+  }, [isLoading, userData]);
 
   // Show black screen during auth check
   if (!userId) {
     return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#e6e6e6" : "#000000" }} />;
   }
 
-  // Show loading screen during initial load or theme change
-  if (loading || !initialLoadComplete || isThemeChanging) {
-    return <LoadingScreen message={isThemeChanging ? "Updating theme..." : "Loading settings..."} />;
+  // Show loading screen during initial load
+  if (isLoading || !initialLoadComplete) {
+    return (
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }} />
+    );
   }
-
-  // Interpolate animation for sliding effect
-  const slideInterpolate = toggleAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 40],
-  });
 
   return (
     <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
       <TopBar onProfilePress={() => handleNavigation("profile/" + userId)} />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <Animated.View 
+          style={{ 
+            flex: 1,
+            opacity: contentBounceAnim,
+            transform: [
+              { scale: contentScaleAnim },
+              {
+                translateY: contentBounceAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [30, 0]
+                })
+              }
+            ]
+          }}
+        >
           {/* Settings Content */}
           <ScrollView 
             contentContainerStyle={styles.settingsContainer}
@@ -318,47 +317,77 @@ export default function Settings() {
             )}
             {/* Header with Settings Title */}
             <View style={styles.header}>
-              <Animated.Text 
+              <Text 
                 style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 Settings
-              </Animated.Text>
+              </Text>
             </View>
             {/* User Information Section */}
-            {userData && (
-              <TouchableOpacity 
-                onPress={() => handleNavigation("profile/" + userId)}
-                accessibilityRole="button"
-                accessibilityLabel={`View profile of ${userData.name}`}
-              >
-                <Animated.View style={[styles.userHeader, { 
-                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                  borderColor: "#37a4c8"
-                }]}>
-                  {userData.profilePicture ? (
-                    <Image 
-                      source={{ uri: userData.profilePicture }} 
-                      style={styles.profilePicture}
-                      accessibilityLabel={`Profile picture of ${userData.name}`}
-                    />
+            <TouchableOpacity 
+              onPress={() => userData && handleNavigation("profile/" + userId)}
+              accessibilityRole="button"
+              accessibilityLabel={userData ? `View profile of ${userData.name}` : "Loading profile"}
+            >
+              <View style={[styles.userHeader, { 
+                backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                borderColor: "#37a4c8"
+              }]}>
+                <View style={styles.profilePictureContainer}>
+                  {userData?.profilePicture ? (
+                    <Animated.View style={{ opacity: profilePictureOpacity }}>
+                      <Image 
+                        source={{ uri: userData.profilePicture }} 
+                        style={styles.profilePicture}
+                        accessibilityLabel={`Profile picture of ${userData.name}`}
+                        onLoadStart={() => setIsProfilePictureLoading(true)}
+                        onLoadEnd={() => {
+                          setIsProfilePictureLoading(false);
+                          fadeInProfilePicture();
+                        }}
+                      />
+                    </Animated.View>
                   ) : (
                     <Ionicons name="person-circle" size={50} color="#37a4c8" />
                   )}
-                  <Animated.Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    {userData.name}
-                  </Animated.Text>
-                </Animated.View>
-              </TouchableOpacity>
-            )}
+                  {isProfilePictureLoading && (
+                    <View style={[styles.profilePictureLoading, { backgroundColor: theme === "light" ? "#f8f9fa" : "#1a1a1a" }]} />
+                  )}
+                </View>
+                <View style={styles.userNameContainer}>
+                  {userData ? (
+                    <Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {userData.name}
+                    </Text>
+                  ) : (
+                    <View style={[styles.userNamePlaceholder, { backgroundColor: theme === "light" ? "#e6e6e6" : "#2a2a2a" }]} />
+                  )}
+                  <Animated.View 
+                    style={[
+                      styles.loadingLine,
+                      {
+                        backgroundColor: theme === "light" ? "#37a4c8" : "#4db8d4",
+                        transform: [{
+                          translateX: loadingProgress.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-100, 100]
+                          })
+                        }]
+                      }
+                    ]}
+                  />
+                </View>
+              </View>
+            </TouchableOpacity>
             {/* Account Section */}
             <View style={styles.settingsSection}>
-              <Animated.Text 
+              <Text 
                 style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 Account
-              </Animated.Text>
+              </Text>
               <TouchableOpacity
                 style={[styles.settingsItem, { 
                   backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
@@ -368,11 +397,11 @@ export default function Settings() {
                 accessibilityRole="button"
                 accessibilityLabel="Edit profile"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="person" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Edit Profile</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Edit Profile</Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.settingsItem, { 
@@ -383,11 +412,11 @@ export default function Settings() {
                 accessibilityRole="button"
                 accessibilityLabel="Change password"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="lock-closed" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Change Password</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Change Password</Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.settingsItem, { 
@@ -398,21 +427,21 @@ export default function Settings() {
                 accessibilityRole="button"
                 accessibilityLabel="Manage blocked users"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="person-remove" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Blocked Users</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Blocked Users</Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
+                </View>
               </TouchableOpacity>
             </View>
             {/* Notifications Section */}
             <View style={styles.settingsSection}>
-              <Animated.Text 
+              <Text 
                 style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 Notifications
-              </Animated.Text>
+              </Text>
               <TouchableOpacity
                 style={[styles.settingsItem, { 
                   backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
@@ -422,50 +451,50 @@ export default function Settings() {
                 accessibilityRole="button"
                 accessibilityLabel="Notification preferences coming soon"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="notifications" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Notification Preferences</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Notification Preferences</Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
+                </View>
               </TouchableOpacity>
             </View>
             {/* App Settings Section */}
             <View style={styles.settingsSection}>
-              <Animated.Text 
+              <Text 
                 style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
                 accessibilityRole="header"
               >
                 App Settings
-              </Animated.Text>
+              </Text>
               {/* Theme Toggle */}
               <TouchableOpacity 
                 style={[styles.settingsItem, { 
                   backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
                   borderColor: "#37a4c8"
                 }]} 
-                onPress={handleThemeToggle}
+                onPress={toggleTheme}
                 accessibilityRole="switch"
                 accessibilityLabel={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
                 accessibilityState={{ checked: theme === "dark" }}
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="color-palette" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Theme</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Theme</Text>
                   <View style={[styles.toggleContainer, { 
                     backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
                     borderColor: "#37a4c8"
                   }]}>
-                    <Animated.View
+                    <View
                       style={[
                         styles.toggleCircle,
-                        { transform: [{ translateX: slideInterpolate }] },
+                        { transform: [{ translateX: theme === "light" ? 0 : 40 }] },
                       ]}
                     />
-                    <Animated.Text style={[styles.toggleText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    <Text style={[styles.toggleText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                       {theme === "light" ? "Light" : "Dark"}
-                    </Animated.Text>
+                    </Text>
                   </View>
-                </Animated.View>
+                </View>
               </TouchableOpacity>
               {/* Feedback Button */}
               <TouchableOpacity
@@ -477,11 +506,11 @@ export default function Settings() {
                 accessibilityRole="button"
                 accessibilityLabel="Send feedback"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="chatbubble-ellipses" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Send Feedback</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Send Feedback</Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
+                </View>
               </TouchableOpacity>
               {/* About Button */}
               <TouchableOpacity
@@ -493,11 +522,11 @@ export default function Settings() {
                 accessibilityRole="button"
                 accessibilityLabel="About Wingman"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="information-circle" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>About Wingman</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>About Wingman</Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
+                </View>
               </TouchableOpacity>
               {/* TOS/EULA Button */}
               <TouchableOpacity
@@ -509,11 +538,11 @@ export default function Settings() {
                 accessibilityRole="button"
                 accessibilityLabel="Terms of Service and EULA"
               >
-                <Animated.View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="document-text" size={24} color="#37a4c8" />
-                  <Animated.Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Terms of Service & EULA</Animated.Text>
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Terms of Service & EULA</Text>
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
-                </Animated.View>
+                </View>
               </TouchableOpacity>
             </View>
             {/* Delete Account Button */}
@@ -537,7 +566,7 @@ export default function Settings() {
             >
               <LinearGradient colors={["#37a4c8", "#37a4c8"]} style={styles.logoutGradient}>
                 <Ionicons name="log-out" size={24} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
-                <Animated.Text style={[styles.logoutText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Logout</Animated.Text>
+                <Text style={[styles.logoutText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Logout</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -551,9 +580,9 @@ export default function Settings() {
                 ]}
                 resizeMode="contain"
               />
-              <Animated.Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+              <Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                 © 2025 Wingman. All rights reserved.
-              </Animated.Text>
+              </Text>
             </View>
           </ScrollView>
         </Animated.View>
@@ -594,15 +623,41 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
   },
-  profilePicture: {
+  profilePictureContainer: {
     width: 50,
     height: 50,
     borderRadius: 25,
     marginRight: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  profilePicture: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
+  },
+  profilePictureLoading: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 25,
+  },
+  userNameContainer: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+    justifyContent: 'center',
   },
   userName: {
     fontSize: 20,
     fontWeight: "600",
+  },
+  userNamePlaceholder: {
+    height: 20,
+    width: '80%',
+    borderRadius: 4,
   },
   settingsSection: {
     marginBottom: 24,
@@ -681,9 +736,21 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontWeight: "600",
   },
-  loadingText: {
-    fontSize: 18,
-    textAlign: "center",
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingIndicatorContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   errorContainer: {
     flexDirection: "row",
@@ -734,6 +801,15 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontWeight: "600",
     color: "#ffffff",
+  },
+  loadingLine: {
+    position: 'absolute',
+    bottom: -4,
+    left: 0,
+    right: 0,
+    height: 3,
+    width: '100%',
+    borderRadius: 1.5,
   },
 });
 

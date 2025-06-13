@@ -254,6 +254,84 @@ const UserCard = ({ item, onPress }: UserCardProps) => {
   );
 };
 
+const ModernLoadingIndicator = ({ color }: { color: string }) => {
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Start fade in animation
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }).start();
+
+    const pulseAnimation = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    ]);
+
+    Animated.loop(pulseAnimation).start();
+  }, []);
+
+  return (
+    <Animated.View 
+      style={[
+        styles.loadingIndicatorContainer,
+        {
+          opacity: fadeAnim,
+          transform: [{ scale: fadeAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.9, 1]
+          })}]
+        }
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.loadingCircle,
+          {
+            backgroundColor: color,
+            opacity: pulseAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.3, 0.7],
+            }),
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
+      />
+    </Animated.View>
+  );
+};
+
 export default function ChatExplore() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -442,10 +520,24 @@ export default function ChatExplore() {
 
   if (loading || !initialLoadComplete || isThemeChanging) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <LoadingScreen message={isThemeChanging ? "Updating theme..." : "Loading..."} />
-      </LinearGradient>
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+          <View style={styles.loadingContainer}>
+            <ModernLoadingIndicator color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+          </View>
+          <View 
+            style={[
+              styles.bottomNavContainer,
+              {
+                backgroundColor: theme === "light" ? "#ffffff" : "#000000",
+              }
+            ]}
+          >
+            <BottomNavBar />
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
@@ -495,23 +587,16 @@ export default function ChatExplore() {
             />
           )}
         </Animated.View>
-        <Animated.View 
+        <View 
           style={[
             styles.bottomNavContainer,
             {
-              opacity: fadeAnim,
-              transform: [{
-                translateY: translateYAnim.interpolate({
-                  inputRange: [0, 20],
-                  outputRange: [0, 0]
-                })
-              }],
               backgroundColor: theme === "light" ? "#ffffff" : "#000000",
             }
           ]}
         >
           <BottomNavBar />
-        </Animated.View>
+        </View>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -677,5 +762,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
+  },
+  loadingIndicatorContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
 });

@@ -1073,7 +1073,7 @@ const Swipe = () => {
         style={styles.loadingContainer}
       >
         <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-          <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+          <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
             <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
             <View style={styles.stateContainer}>
               <Text style={[styles.errorText, { color: theme === "light" ? "#FF3B30" : "#FF3B30" }]}>{error}</Text>
@@ -1093,7 +1093,7 @@ const Swipe = () => {
         style={styles.loadingContainer}
       >
         <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-          <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
+          <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
             <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
             <View style={[styles.stateContainer, { paddingHorizontal: 32, alignItems: 'center' }]}> 
               <MaterialIcons name="person-off" size={64} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={{ marginBottom: 24 }} />
@@ -1114,39 +1114,57 @@ const Swipe = () => {
       style={[styles.loadingContainer, containerStyle]}
     >
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
           <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
           <View style={{ flex: 1 }}>
             {showSwiper ? (
               <>
                 <Animated.View style={[styles.cardsContainer, cardsContainerStyle]}>
                   {users.length > 0 ? (
-                    <GestureDetector gesture={gesture}>
-                      <Animated.View 
-                        style={[
-                          styles.cardContainer, 
-                          cardStyle, 
-                          { 
-                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                            borderColor: "#37a4c8",
-                          }
-                        ]}
-                      >
-                        {currentUser && renderCard(currentUser)}
-                        <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
-                          <View style={styles.labelContainer}>
-                            <MaterialIcons name="people" size={32} color="#4CD964" />
-                            <Text style={styles.likeText}>CONNECT</Text>
-                          </View>
+                    <>
+                      <GestureDetector gesture={gesture}>
+                        <Animated.View 
+                          style={[
+                            styles.cardContainer, 
+                            cardStyle, 
+                            { 
+                              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                              borderColor: "#37a4c8",
+                            }
+                          ]}
+                        >
+                          {currentUser && renderCard(currentUser)}
+                          <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
+                            <View style={styles.labelContainer}>
+                              <MaterialIcons name="people" size={32} color="#4CD964" />
+                              <Text style={styles.likeText}>CONNECT</Text>
+                            </View>
+                          </Animated.View>
+                          <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
+                            <View style={styles.labelContainer}>
+                              <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
+                              <Text style={styles.nopeText}>NOPE</Text>
+                            </View>
+                          </Animated.View>
                         </Animated.View>
-                        <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
-                          <View style={styles.labelContainer}>
-                            <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
-                            <Text style={styles.nopeText}>NOPE</Text>
-                          </View>
-                        </Animated.View>
-                      </Animated.View>
-                    </GestureDetector>
+                      </GestureDetector>
+                      <View style={styles.navigationButtons}>
+                        <TouchableOpacity 
+                          style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
+                          onPress={() => router.back()}
+                        >
+                          <MaterialIcons name="arrow-back" size={24} color="#37a4c8" />
+                          <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Go Back</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
+                          onPress={() => currentUser && router.push(`/profile/${currentUser.id}`)}
+                        >
+                          <MaterialIcons name="person" size={24} color="#37a4c8" />
+                          <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Profile</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
                   ) : (
                     <Animated.View 
                       entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
@@ -1202,7 +1220,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: "hidden",
     marginHorizontal: 'auto',
-    marginBottom: 70,
+    marginBottom: 21,
     backfaceVisibility: 'hidden',
     backgroundColor: "#1a1a1a",
     borderWidth: 1,
@@ -1551,6 +1569,34 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 5,
+  },
+  navigationButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 16,
+    marginBottom: 32,
+  },
+  navButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#37a4c8',
+    gap: 8,
+    minWidth: 120,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  navButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

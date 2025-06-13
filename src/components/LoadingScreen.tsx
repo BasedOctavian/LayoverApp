@@ -1,68 +1,112 @@
-import React, { useEffect, useContext } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeContext } from '../context/ThemeContext';
-import LoadingSpinner from './LoadingSpinner';
 
 interface LoadingScreenProps {
   message?: string;
+  isEventsLoading?: boolean;
+  isUsersLoading?: boolean;
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ message }) => {
-  const insets = useSafeAreaInsets();
-  const fadeAnim = new Animated.Value(0);
-  const { theme } = useContext(ThemeContext);
+const ModernLoadingIndicator = ({ color }: { color: string }) => {
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
+    const pulseAnimation = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    ]);
+
+    Animated.loop(pulseAnimation).start();
   }, []);
 
   return (
-    <LinearGradient
-      colors={theme === "light" ? ['#e6e6e6', '#ffffff'] : ['#000000', '#1a1a1a']}
-      style={[styles.container, { paddingTop: insets.top }]}
-    >
-      <Animated.View 
+    <View style={styles.loadingIndicatorContainer}>
+      <Animated.View
         style={[
-          styles.content,
+          styles.loadingCircle,
           {
-            opacity: fadeAnim,
-            transform: [
-              {
-                scale: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.95, 1],
-                })
-              }
-            ]
-          }
+            backgroundColor: color,
+            opacity: pulseAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.3, 0.7],
+            }),
+            transform: [{ scale: scaleAnim }],
+          },
         ]}
-      >
-        <LoadingSpinner 
-          size={120}
-          color={theme === "light" ? "#37a4c8" : "#38a5c9"}
-          textColor={theme === "light" ? "#37a4c8" : "#38a5c9"}
-          message={message}
-          showDots={true}
-        />
-      </Animated.View>
-    </LinearGradient>
+      />
+    </View>
+  );
+};
+
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ isEventsLoading = true, isUsersLoading = true }) => {
+  const insets = useSafeAreaInsets();
+  const { theme } = React.useContext(ThemeContext);
+
+  // Only show loading screen if either events or users are still loading
+  if (!isEventsLoading && !isUsersLoading) {
+    return null;
+  }
+
+  return (
+    <View 
+      style={[
+        styles.container, 
+        { 
+          paddingTop: insets.top,
+          backgroundColor: theme === "light" ? '#ffffff' : '#000000'
+        }
+      ]}
+    >
+      <ModernLoadingIndicator color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  content: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingIndicatorContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
 });
 

@@ -12,6 +12,7 @@ import {
   ScrollView,
   Animated,
   Easing,
+  KeyboardEvent,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -30,6 +31,8 @@ const Login = () => {
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardHeight] = useState(new Animated.Value(0));
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -51,6 +54,42 @@ const Login = () => {
 
     checkAuth();
   }, [isAuthLoading, user]);
+
+  useEffect(() => {
+    const keyboardWillShow = (event: KeyboardEvent) => {
+      setKeyboardVisible(true);
+      Animated.timing(keyboardHeight, {
+        toValue: event.endCoordinates.height,
+        duration: 250,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const keyboardWillHide = () => {
+      setKeyboardVisible(false);
+      Animated.timing(keyboardHeight, {
+        toValue: 0,
+        duration: 250,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      keyboardWillShow
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      keyboardWillHide
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const handleFocus = useCallback((field: string) => {
     setFocusedField(field);
@@ -145,6 +184,7 @@ const Login = () => {
                     autoCapitalize="none"
                     onFocus={() => handleFocus('email')}
                     onBlur={handleBlur}
+                    keyboardAppearance="dark"
                   />
                 </View>
               </TouchableOpacity>
@@ -174,6 +214,7 @@ const Login = () => {
                     secureTextEntry
                     onFocus={() => handleFocus('password')}
                     onBlur={handleBlur}
+                    keyboardAppearance="dark"
                   />
                 </View>
               </TouchableOpacity>
@@ -185,28 +226,42 @@ const Login = () => {
                 </View>
               )}
 
-              <TouchableOpacity
-                style={styles.loginButton}
-                onPress={handleLogin}
-                disabled={isLoggingIn}
-                activeOpacity={0.8}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <LinearGradient
-                  colors={["#38a5c9", "#38a5c9"]}
-                  style={styles.buttonGradient}
+              <Animated.View style={[
+                styles.loginButtonContainer,
+                {
+                  transform: [{
+                    translateY: keyboardHeight.interpolate({
+                      inputRange: [0, 300],
+                      outputRange: [0, 100]
+                    })
+                  }]
+                }
+              ]}>
+                <TouchableOpacity
+                  style={styles.loginButton}
+                  onPress={handleLogin}
+                  disabled={isLoggingIn}
+                  activeOpacity={0.8}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text style={styles.buttonText}>Login</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+                  <LinearGradient
+                    colors={["#38a5c9", "#38a5c9"]}
+                    style={styles.buttonGradient}
+                  >
+                    <Text style={styles.buttonText}>Login</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
 
-              <TouchableOpacity 
-                onPress={() => router.push("/userOnboarding")}
-                activeOpacity={0.7}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Text style={styles.signUpText}>Don't have an account? Sign up</Text>
-              </TouchableOpacity>
+                <View style={styles.signUpContainer}>
+                  <TouchableOpacity 
+                    onPress={() => router.push("/userOnboarding")}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={styles.signUpText}>Don't have an account? Sign up</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
             </View>
           </TouchableWithoutFeedback>
         </ScrollView>
@@ -276,11 +331,14 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingVertical: 8,
   },
+  loginButtonContainer: {
+    width: '100%',
+    marginTop: 20,
+  },
   loginButton: {
     borderRadius: 12,
     overflow: "hidden",
     width: "100%",
-    marginTop: 20,
     borderWidth: 1,
     borderColor: "#38a5c9",
     minHeight: 56,
@@ -298,6 +356,11 @@ const styles = StyleSheet.create({
     color: "#38a5c9",
     fontFamily: "Inter-Medium",
     fontSize: 14,
+    textAlign: "center",
+  },
+  signUpContainer: {
+    width: "100%",
+    alignItems: "center",
     marginTop: 20,
   },
   errorContainer: {

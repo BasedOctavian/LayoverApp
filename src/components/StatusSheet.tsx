@@ -1,58 +1,210 @@
-import React, { useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
+  StyleSheet,
   TextInput,
   Animated,
-  StyleSheet,
-  ViewStyle,
-  TextStyle,
-  Platform,
+  ScrollView,
 } from "react-native";
-import { Feather, FontAwesome5, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { PanGestureHandler, State } from "react-native-gesture-handler";
 import { ThemeContext } from "../context/ThemeContext";
-
-// Define the interface for preset status items
-interface PresetStatus {
-  label: string;
-  icon: React.ReactNode;
-  color: string;
-}
+import { Ionicons } from "@expo/vector-icons";
 
 // Define preset statuses with typed array
-const presetStatuses: PresetStatus[] = [
+export type PresetStatus = {
+  label: string;
+  emoji: string;
+  color: string;
+  category: string;
+};
+
+export const presetStatuses: PresetStatus[] = [
+  // Basic statuses (shown in "All" category)
   { 
-    label: "Down to Chat", 
-    icon: <FontAwesome5 name="comment" size={16} color="#FFFFFF" />,
-    color: "#38a5c9"
+    label: "Available", 
+    emoji: "✅",
+    color: "#4CAF50",
+    category: "all"
   },
   { 
-    label: "Food & Drinks?", 
-    icon: <MaterialIcons name="restaurant" size={16} color="#FFFFFF" />,
-    color: "#4CAF50"
+    label: "Busy", 
+    emoji: "⏳",
+    color: "#FF9800",
+    category: "all"
   },
   { 
-    label: "Work Mode", 
-    icon: <Feather name="briefcase" size={16} color="#FFFFFF" />,
-    color: "#FF9800"
+    label: "Away", 
+    emoji: "🚶",
+    color: "#9E9E9E",
+    category: "all"
+  },
+  { 
+    label: "Do Not Disturb", 
+    emoji: "🔕",
+    color: "#F44336",
+    category: "all"
+  },
+  { 
+    label: "Free to Chat", 
+    emoji: "💬",
+    color: "#38a5c9",
+    category: "all"
   },
   { 
     label: "Exploring", 
-    icon: <Ionicons name="airplane" size={16} color="#FFFFFF" />,
-    color: "#9C27B0"
+    emoji: "✈️",
+    color: "#9C27B0",
+    category: "all"
+  },
+  // Social category
+  { 
+    label: "Down to Chat", 
+    emoji: "💬",
+    color: "#38a5c9",
+    category: "social"
   },
   { 
-    label: "Relaxing", 
-    icon: <Feather name="coffee" size={16} color="#FFFFFF" />,
-    color: "#795548"
+    label: "Looking for Company", 
+    emoji: "👥",
+    color: "#38a5c9",
+    category: "social"
   },
   { 
-    label: "Shopping", 
-    icon: <Feather name="shopping-bag" size={16} color="#FFFFFF" />,
-    color: "#E91E63"
+    label: "Sharing Stories", 
+    emoji: "📖",
+    color: "#38a5c9",
+    category: "social"
+  },
+  { 
+    label: "Networking", 
+    emoji: "🤝",
+    color: "#38a5c9",
+    category: "social"
+  },
+  { 
+    label: "Language Exchange", 
+    emoji: "🌍",
+    color: "#38a5c9",
+    category: "social"
+  },
+  { 
+    label: "Group Activities", 
+    emoji: "🎯",
+    color: "#38a5c9",
+    category: "social"
+  },
+  // Food category
+  { 
+    label: "Food & Drinks?", 
+    emoji: "🍽️",
+    color: "#4CAF50",
+    category: "food"
+  },
+  { 
+    label: "Coffee Break", 
+    emoji: "☕",
+    color: "#4CAF50",
+    category: "food"
+  },
+  { 
+    label: "Restaurant Hunting", 
+    emoji: "🔍",
+    color: "#4CAF50",
+    category: "food"
+  },
+  { 
+    label: "Local Cuisine", 
+    emoji: "🍜",
+    color: "#4CAF50",
+    category: "food"
+  },
+  { 
+    label: "Snack Time", 
+    emoji: "🍪",
+    color: "#4CAF50",
+    category: "food"
+  },
+  { 
+    label: "Food Tour", 
+    emoji: "🍕",
+    color: "#4CAF50",
+    category: "food"
+  },
+  // Work category
+  { 
+    label: "Work Mode", 
+    emoji: "💼",
+    color: "#FF9800",
+    category: "work"
+  },
+  { 
+    label: "In a Meeting", 
+    emoji: "📊",
+    color: "#FF9800",
+    category: "work"
+  },
+  { 
+    label: "Remote Work", 
+    emoji: "💻",
+    color: "#FF9800",
+    category: "work"
+  },
+  { 
+    label: "Business Trip", 
+    emoji: "📈",
+    color: "#FF9800",
+    category: "work"
+  },
+  { 
+    label: "Conference Call", 
+    emoji: "📞",
+    color: "#FF9800",
+    category: "work"
+  },
+  { 
+    label: "Project Deadline", 
+    emoji: "⏰",
+    color: "#FF9800",
+    category: "work"
+  },
+  // Travel category
+  { 
+    label: "Exploring", 
+    emoji: "✈️",
+    color: "#9C27B0",
+    category: "travel"
+  },
+  { 
+    label: "Sightseeing", 
+    emoji: "🗺️",
+    color: "#9C27B0",
+    category: "travel"
+  },
+  { 
+    label: "Airport Tour", 
+    emoji: "🏛️",
+    color: "#9C27B0",
+    category: "travel"
+  },
+  { 
+    label: "Duty Free", 
+    emoji: "🛍️",
+    color: "#9C27B0",
+    category: "travel"
+  },
+  { 
+    label: "Lounge Access", 
+    emoji: "🛋️",
+    color: "#9C27B0",
+    category: "travel"
+  },
+  { 
+    label: "Gate Change", 
+    emoji: "🔄",
+    color: "#9C27B0",
+    category: "travel"
   }
 ];
 
@@ -76,48 +228,28 @@ export default function StatusSheet({
   toggleStatusSheet,
 }: StatusSheetProps) {
   const insets = useSafeAreaInsets();
-  const translateY = useRef(new Animated.Value(0)).current;
-  const isClosing = useRef(false);
   const { theme } = React.useContext(ThemeContext);
+  const [selectedCategory, setSelectedCategory] = React.useState<string>("all");
 
-  const onGestureEvent = Animated.event(
-    [{ nativeEvent: { translationY: translateY } }],
-    { useNativeDriver: true }
-  );
-
-  const onHandlerStateChange = (event: any) => {
-    if (event.nativeEvent.oldState === State.ACTIVE) {
-      const { translationY } = event.nativeEvent;
-
-      if (translationY > 100 && !isClosing.current) {
-        isClosing.current = true;
-        translateY.setValue(translationY);
-        
-        Animated.parallel([
-          Animated.timing(sheetAnim, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-          }),
-          Animated.timing(translateY, {
-            toValue: 1000,
-            duration: 200,
-            useNativeDriver: true,
-          })
-        ]).start(() => {
-          translateY.setValue(0);
-          isClosing.current = false;
-          toggleStatusSheet();
-        });
-      } else {
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          bounciness: 8,
-        }).start();
-      }
+  // Reset category to "all" when sheet is shown
+  useEffect(() => {
+    if (showStatusSheet) {
+      setSelectedCategory("all");
     }
-  };
+  }, [showStatusSheet]);
+
+  const categories = [
+    { id: "all", label: "All" },
+    { id: "social", label: "Social" },
+    { id: "food", label: "Food" },
+    { id: "work", label: "Work" },
+    { id: "travel", label: "Travel" }
+  ];
+
+  // Get only the first 6 statuses for the selected category
+  const filteredStatuses = presetStatuses
+    .filter(status => status.category === selectedCategory)
+    .slice(0, 6);
 
   return (
     showStatusSheet && (
@@ -127,178 +259,218 @@ export default function StatusSheet({
           {
             transform: [
               {
-                scale: sheetAnim.interpolate({
+                translateY: sheetAnim.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.9, 1],
+                  outputRange: [100, 0],
                 }),
               },
-              {
-                translateY: Animated.add(
-                  sheetAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [20, 0],
-                  }),
-                  translateY
-                ),
-              },
             ],
-            opacity: sheetAnim,
-            paddingBottom: insets.bottom + 24,
+            paddingBottom: insets.bottom + 16,
             backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-            borderColor: "#37a4c8"
+            zIndex: 2,
           },
         ]}
       >
-        <PanGestureHandler
-          onGestureEvent={onGestureEvent}
-          onHandlerStateChange={onHandlerStateChange}
-        >
-          <Animated.View style={styles.handleContainer}>
-            <View style={[styles.handle, { backgroundColor: "#37a4c8" }]} />
-          </Animated.View>
-        </PanGestureHandler>
-        <Text style={[styles.statusTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Update Status</Text>
-        <View style={styles.statusGrid}>
-          {presetStatuses.map((status, index) => (
+        <View style={styles.headerContainer}>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={toggleStatusSheet}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons 
+              name="close" 
+              size={24} 
+              color={theme === "light" ? "#666666" : "#a0a0a0"} 
+            />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.contentContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoriesContainer}
+            contentContainerStyle={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexGrow: 1,
+              paddingHorizontal: 16
+            }}
+          >
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.categoryChip,
+                  selectedCategory === category.id && styles.categoryChipActive,
+                  { 
+                    backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                    borderColor: selectedCategory === category.id ? "#38a5c9" : "transparent"
+                  }
+                ]}
+                onPress={() => setSelectedCategory(category.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.categoryChipText,
+                  selectedCategory === category.id && styles.categoryChipTextActive,
+                  { color: theme === "light" ? "#666666" : "#a0a0a0" }
+                ]}>
+                  {category.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={styles.statusGrid}>
+            {filteredStatuses.map((status, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[styles.statusChip, { backgroundColor: status.color }]}
+                onPress={() => {
+                  handleUpdateMoodStatus(status.label);
+                  toggleStatusSheet();
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statusEmoji}>{status.emoji}</Text>
+                <Text style={styles.statusText}>{status.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.customStatusContainer}>
+            <TextInput
+              style={[styles.customStatusInput, { 
+                backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                color: theme === "light" ? "#000000" : "#e4fbfe",
+              }]}
+              value={customStatus}
+              onChangeText={setCustomStatus}
+              placeholder="Custom status..."
+              placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
+              maxLength={50}
+            />
             <TouchableOpacity
-              key={index}
-              style={[styles.statusChip, { backgroundColor: status.color }]}
+              style={[
+                styles.submitButton,
+                { 
+                  opacity: customStatus.trim().length > 0 ? 1 : 0.5,
+                  backgroundColor: "#38a5c9"
+                }
+              ]}
+              disabled={customStatus.trim().length === 0}
               onPress={() => {
-                handleUpdateMoodStatus(status.label);
+                handleUpdateMoodStatus(customStatus);
                 toggleStatusSheet();
               }}
+              activeOpacity={0.7}
             >
-              <View style={styles.statusChipContent}>
-                {status.icon}
-                <Text style={styles.statusText}>{status.label}</Text>
-              </View>
+              <Text style={styles.submitButtonText}>Set</Text>
             </TouchableOpacity>
-          ))}
+          </View>
         </View>
-        <Text style={[styles.customStatusLabel, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Custom Status</Text>
-        <TextInput
-          style={[styles.customStatusInput, { 
-            backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
-            color: theme === "light" ? "#000000" : "#e4fbfe",
-            borderColor: "#37a4c8"
-          }]}
-          value={customStatus}
-          onChangeText={setCustomStatus}
-          placeholder="Enter your status..."
-          placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-          maxLength={50}
-        />
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            { 
-              opacity: customStatus.trim().length > 0 ? 1 : 0.5,
-              backgroundColor: "#37a4c8"
-            }
-          ]}
-          disabled={customStatus.trim().length === 0}
-          onPress={() => {
-            handleUpdateMoodStatus(customStatus);
-            toggleStatusSheet();
-          }}
-        >
-          <Text style={styles.submitButtonText}>Update Status</Text>
-        </TouchableOpacity>
       </Animated.View>
     )
   );
 }
 
-// Define typed styles
 const styles = StyleSheet.create({
   statusSheet: {
     position: "absolute",
     bottom: 0,
-    right: 0,
     left: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
-    zIndex: 101,
-    borderWidth: 1,
-  } as ViewStyle,
-  handleContainer: {
-    width: '100%',
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
+    right: 0,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    opacity: 0.8,
-  } as ViewStyle,
-  statusTitle: {
-    fontSize: 14,
-    fontWeight: "600",
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     marginBottom: 16,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  } as TextStyle,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  categoriesContainer: {
+    marginBottom: 16,
+  },
+  categoryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  categoryChipActive: {
+    backgroundColor: "#38a5c9",
+    borderColor: "#38a5c9",
+  },
+  categoryChipText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  categoryChipTextActive: {
+    color: "#FFFFFF",
+  },
   statusGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    justifyContent: "space-between",
     marginBottom: 16,
-  } as ViewStyle,
+  },
   statusChip: {
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    minWidth: "48%",
-    flex: 1,
-  } as ViewStyle,
-  statusChipContent: {
+    width: "48%",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-  } as ViewStyle,
+    gap: 8,
+  },
+  statusEmoji: {
+    fontSize: 18,
+  },
   statusText: {
-    fontSize: 13,
     color: "#FFFFFF",
+    fontSize: 13,
     fontWeight: "600",
-  } as TextStyle,
-  customStatusLabel: {
+  },
+  customStatusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  customStatusInput: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    fontSize: 14,
+  },
+  submitButton: {
+    padding: 12,
+    borderRadius: 12,
+    minWidth: 60,
+    alignItems: "center",
+  },
+  submitButtonText: {
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  } as TextStyle,
-  customStatusInput: {
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    marginBottom: 16,
-    borderWidth: 1,
-  } as TextStyle,
-  submitButton: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: "center",
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  } as ViewStyle,
-  submitButtonText: {
-    fontSize: 15,
-    color: "#FFFFFF",
-    fontWeight: "600",
-  } as TextStyle,
+  },
 });

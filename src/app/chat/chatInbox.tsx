@@ -106,6 +106,84 @@ const getTimestampMs = (value: Date | Timestamp | undefined): number => {
   return 0;
 };
 
+const ModernLoadingIndicator = ({ color }: { color: string }) => {
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Start fade in animation
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
+    }).start();
+
+    const pulseAnimation = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    ]);
+
+    Animated.loop(pulseAnimation).start();
+  }, []);
+
+  return (
+    <Animated.View 
+      style={[
+        styles.loadingIndicatorContainer,
+        {
+          opacity: fadeAnim,
+          transform: [{ scale: fadeAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.9, 1]
+          })}]
+        }
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.loadingCircle,
+          {
+            backgroundColor: color,
+            opacity: pulseAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.3, 0.7],
+            }),
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
+      />
+    </Animated.View>
+  );
+};
+
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
@@ -333,6 +411,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingLogo: {
+    width: 100,
+    height: 100,
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 15,
+    fontWeight: '500',
+    opacity: 0.8,
+  },
   emptyText: {
     fontSize: 16,
     textAlign: "center",
@@ -489,6 +577,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
   },
+  loadingIndicatorContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
 });
 
 const ChatItem = React.memo(({ 
@@ -509,9 +608,29 @@ const ChatItem = React.memo(({
   const [isInitiator, setIsInitiator] = useState(false);
   const { theme } = React.useContext(ThemeContext);
   const swipeableRef = useRef<Swipeable>(null);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const opacityAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
   const pinScaleAnim = useRef(new Animated.Value(1)).current;
+
+  // Add fade in animation
+  useEffect(() => {
+    if (partner) {
+      Animated.parallel([
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        })
+      ]).start();
+    }
+  }, [partner]);
 
   // Add press animation
   const handlePressIn = () => {
@@ -858,17 +977,29 @@ const ChatItem = React.memo(({
 
   if (isLoading) {
     return (
-      <View style={[styles.chatCard, { justifyContent: "center" }]}>
-        <ActivityIndicator color="#37a4c8" />
-      </View>
+      <Animated.View 
+        style={[
+          styles.chatCard,
+          { 
+            opacity: 0,
+            transform: [{ scale: 0.95 }]
+          }
+        ]}
+      />
     );
   }
 
   if (!partner) {
     return (
-      <View style={[styles.chatCard, { justifyContent: "center" }]}>
-        <Text style={styles.errorText}>Failed to load chat</Text>
-      </View>
+      <Animated.View 
+        style={[
+          styles.chatCard,
+          { 
+            opacity: 0,
+            transform: [{ scale: 0.95 }]
+          }
+        ]}
+      />
     );
   }
 
@@ -898,6 +1029,7 @@ const ChatItem = React.memo(({
             backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
             borderColor: "#37a4c8",
             borderWidth: 1,
+            opacity: opacityAnim,
             transform: [{ scale: scaleAnim }],
           }
         ]}
@@ -1219,31 +1351,65 @@ const preloadImages = (urls: (string | null)[]) => {
 
 export default function ChatInbox() {
   const { user } = useAuth();
-  const { getChats, subscribeToChat, loading: chatsLoading, error: chatsError } = useChats();
+  const { getChats, subscribeToChat } = useChats();
   const { getUser } = useUsers();
   const insets = useSafeAreaInsets();
-  const topBarHeight = 50 + insets.top;
   const { theme } = React.useContext(ThemeContext);
 
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [chats, setChats] = useState<Chat[]>([]);
   const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [pinnedChats, setPinnedChats] = useState<string[]>([]);
   const [pendingChats, setPendingChats] = useState<Chat[]>([]);
   const [activeChats, setActiveChats] = useState<Chat[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [preloadedImages, setPreloadedImages] = useState<Set<string>>(new Set());
-  const [isDataLoading, setIsDataLoading] = useState(true);
-  const [isThemeChanging, setIsThemeChanging] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [showContent, setShowContent] = useState(false);
+  const [preloadedPartners, setPreloadedPartners] = useState<Record<string, Partner>>({});
 
-  // Add fade animation
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateYAnim = useRef(new Animated.Value(20)).current;
-  const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
-  const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+  // Animation values
+  const contentBounceAnim = useRef(new Animated.Value(0)).current;
+  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
+  const contentFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Add effect for bounce animation when loading completes
+  useEffect(() => {
+    if (!isLoading && initialLoadComplete) {
+      // First fade in the content
+      Animated.parallel([
+        Animated.timing(contentBounceAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(contentScaleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(contentFadeAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.ease),
+        })
+      ]).start(() => {
+        // After the main content fades in, show the chat items
+        setShowContent(true);
+      });
+    }
+  }, [isLoading, initialLoadComplete]);
+
+  // Set initial load complete after data is fetched
+  useEffect(() => {
+    if (!isLoading && chats.length > 0) {
+      setInitialLoadComplete(true);
+    }
+  }, [isLoading, chats]);
 
   // Add navigation handlers
   const handleBack = useCallback(() => {
@@ -1301,7 +1467,6 @@ export default function ChatInbox() {
   };
 
   const handleDeleteChat = (chatId: string) => {
-    // Update all relevant state arrays
     setChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
     setFilteredChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
     setPendingChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
@@ -1309,7 +1474,6 @@ export default function ChatInbox() {
   };
 
   const handleAcceptChat = (updatedChat: Chat) => {
-    // Remove from pending chats and add to active chats
     setPendingChats((prevChats: Chat[]) => prevChats.filter(chat => chat.id !== updatedChat.id));
     setActiveChats((prevChats: Chat[]) => [updatedChat, ...prevChats]);
     setChats((prevChats: Chat[]) => {
@@ -1343,61 +1507,54 @@ export default function ChatInbox() {
     return () => clearTimeout(timeoutId);
   }, [chats, user?.uid, getUser]);
 
-  // Handle fade in animation when content is ready
-  useEffect(() => {
-    if (!isLoading && initialLoadComplete) {
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }).start();
-      }, 400);
-    }
-  }, [isLoading, initialLoadComplete]);
-
-  // Handle theme changes
-  useEffect(() => {
-    if (isThemeChanging) {
-      // First fade out
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start(() => {
-        // Update animation values for new theme
-        backgroundAnim.setValue(theme === "light" ? 0 : 1);
-        textAnim.setValue(theme === "light" ? 0 : 1);
-        
-        // Fade back in with a slight delay
-        setTimeout(() => {
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 300,
-            easing: Easing.in(Easing.ease),
-            useNativeDriver: true,
-          }).start(() => {
-            setIsThemeChanging(false);
-          });
-        }, 50);
-      });
-    }
-  }, [theme, isThemeChanging]);
-
-  // Add auth state listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthUser(user);
-        console.log('Auth User UID:', user.uid);
-      } else {
-        router.replace("login/login");
+  // Add preloading utility
+  const preloadUserData = async (chat: Chat) => {
+    const partnerId = chat.participants.find(id => id !== user?.uid);
+    if (!partnerId) return null;
+    try {
+      const userData = await getUser(partnerId) as Partner;
+      if (userData?.profilePicture) {
+        await Image.prefetch(userData.profilePicture);
       }
-      setIsAuthLoading(false);
-    });
-    return unsubscribe;
-  }, []);
+      return userData;
+    } catch (error) {
+      console.error('Error preloading user data:', error);
+      return null;
+    }
+  };
+
+  // Add preloading function
+  const preloadAllData = async (chatsToPreload: Chat[]) => {
+    try {
+      const totalChats = chatsToPreload.length;
+      let loadedChats = 0;
+      const partners: Record<string, Partner> = {};
+        
+      // Preload in batches to avoid overwhelming the device
+      const batchSize = 3;
+      for (let i = 0; i < totalChats; i += batchSize) {
+        const batch = chatsToPreload.slice(i, i + batchSize);
+        const results = await Promise.all(batch.map(chat => preloadUserData(chat)));
+        
+        // Store preloaded partners
+        results.forEach((partner, index) => {
+          if (partner) {
+            const partnerId = batch[index].participants.find(id => id !== user?.uid);
+            if (partnerId) {
+              partners[partnerId] = partner as Partner;
+            }
+          }
+        });
+        
+        loadedChats += batch.length;
+        setLoadingProgress(Math.floor((loadedChats / totalChats) * 100));
+      }
+
+      setPreloadedPartners(partners);
+    } catch (error) {
+      console.error('Error preloading data:', error);
+    }
+  };
 
   // Add refresh function
   const handleRefresh = async () => {
@@ -1405,7 +1562,6 @@ export default function ChatInbox() {
     
     setIsRefreshing(true);
     try {
-      // Fetch both chats and connections
       const [allChats, connectionsSnapshot] = await Promise.all([
         getChats(),
         getDocs(collection(db, 'connections'))
@@ -1416,7 +1572,6 @@ export default function ChatInbox() {
           (chat: any) => chat.participants && chat.participants.includes(user.uid)
         ) as Chat[];
 
-        // Convert connections to chat format for pending connections
         const pendingConnections = connectionsSnapshot.docs
           .map(doc => ({
             id: doc.id,
@@ -1428,14 +1583,9 @@ export default function ChatInbox() {
             connection.status === 'pending'
           ) as Chat[];
 
-        // Separate pending and active chats
         const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
         const active = userChats.filter(chat => chat.status === 'active');
         
-        // Preload images before updating state
-        await preloadChatImages([...pending, ...active]);
-        
-        // Update all state variables
         setPendingChats(pending);
         setActiveChats(active);
         setChats([...pending, ...active]);
@@ -1453,36 +1603,14 @@ export default function ChatInbox() {
     }
   };
 
-  // Add image preloading utility
-  const preloadChatImages = async (chatsToPreload: Chat[]) => {
-    const imagePromises = chatsToPreload.map(async (chat: Chat) => {
-      const partnerId = chat.participants.find((id: string) => id !== user?.uid);
-      if (!partnerId) return null;
-      const userData = await getUser(partnerId);
-      return (userData as Partner)?.profilePicture || null;
-    });
-
-    const imageUrls = await Promise.all(imagePromises);
-    const validUrls = imageUrls.filter((url): url is string => url !== null);
-    
-    // Preload images in batches to avoid overwhelming the device
-    const batchSize = 5;
-    for (let i = 0; i < validUrls.length; i += batchSize) {
-      const batch = validUrls.slice(i, i + batchSize);
-      await Promise.all(batch.map(url => Image.prefetch(url)));
-    }
-  };
-
   // Subscribe to real-time updates for all chats
   useEffect(() => {
     if (!user) return;
 
     const unsubscribers: (() => void)[] = [];
-    setIsDataLoading(true);
 
     const setupChatSubscriptions = async () => {
       try {
-        // Fetch both chats and connections
         const [allChats, connectionsSnapshot] = await Promise.all([
           getChats(),
           getDocs(collection(db, 'connections'))
@@ -1493,7 +1621,6 @@ export default function ChatInbox() {
             (chat: any) => chat.participants && chat.participants.includes(user.uid)
           ) as Chat[];
 
-          // Convert connections to chat format for pending connections
           const pendingConnections = connectionsSnapshot.docs
             .map(doc => ({
               id: doc.id,
@@ -1505,7 +1632,6 @@ export default function ChatInbox() {
               connection.status === 'pending'
             ) as Chat[];
 
-          // Set up real-time subscriptions for each chat
           userChats.forEach(chat => {
             const unsubscribe = subscribeToChat(chat.id, (updatedChat: Chat) => {
               setChats(prevChats => {
@@ -1513,12 +1639,10 @@ export default function ChatInbox() {
                   c.id === updatedChat.id ? { ...c, ...updatedChat } : c
                 );
                 
-                // Update filtered chats
                 setFilteredChats(prevFiltered => 
                   prevFiltered.map(c => c.id === updatedChat.id ? { ...c, ...updatedChat } : c)
                 );
 
-                // Update pending and active chats
                 const pending = newChats.filter(c => c.status === 'pending');
                 const active = newChats.filter(c => c.status !== 'pending');
                 setPendingChats(pending);
@@ -1530,17 +1654,19 @@ export default function ChatInbox() {
             unsubscribers.push(unsubscribe);
           });
 
-          // Initial state setup
           const pending = [...pendingConnections, ...userChats.filter(chat => chat.status === 'pending')];
           const active = userChats.filter(chat => chat.status !== 'pending');
+          const allChatsToPreload = [...pending, ...active];
           
-          // Preload images before setting state
-          await preloadChatImages([...pending, ...active]);
+          // Preload all data before showing content
+          await preloadAllData(allChatsToPreload);
           
           setPendingChats(pending);
           setActiveChats(active);
-          setChats([...pending, ...active]);
-          setFilteredChats([...pending, ...active]);
+          setChats(allChatsToPreload);
+          setFilteredChats(allChatsToPreload);
+          setInitialLoadComplete(true);
+          setIsLoading(false);
         }
       } catch (error) {
         console.error('Error loading chats:', error);
@@ -1551,47 +1677,45 @@ export default function ChatInbox() {
             {
               text: "Retry",
               onPress: () => {
-                setInitialLoadComplete(false);
                 setupChatSubscriptions();
               }
             }
           ]
         );
-      } finally {
-        setInitialLoadComplete(true);
-        setIsDataLoading(false);
       }
     };
 
     setupChatSubscriptions();
 
-    // Cleanup subscriptions
     return () => {
       unsubscribers.forEach(unsubscribe => unsubscribe());
     };
   }, [user]);
 
-  // Add loading state optimization
-  const isLoading = isAuthLoading || chatsLoading || !initialLoadComplete || isDataLoading;
-
-  // Add error state optimization
-  const hasError = !!chatsError;
-
-  // Add empty state optimization
-  const isEmpty = !isLoading && !hasError && activeChats.length === 0 && pendingChats.length === 0;
-
-  // Show black screen during auth check
-  if (!user || !authUser) {
+  if (!user) {
     return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }} />;
   }
 
-  // Show loading screen during initial load or theme change
-  if (isLoading || isThemeChanging) {
+  if (isLoading) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <LoadingScreen message={isThemeChanging ? "Updating theme..." : "Loading your chats..."} />
-      </LinearGradient>
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+          <View style={styles.loadingContainer}>
+            <ModernLoadingIndicator color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+          </View>
+          <View 
+            style={[
+              styles.bottomNavContainer,
+              {
+                backgroundColor: theme === "light" ? "#ffffff" : "#000000",
+              }
+            ]}
+          >
+            <BottomNavBar />
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
@@ -1599,139 +1723,112 @@ export default function ChatInbox() {
     <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <TopBar 
-          showBackButton={false} 
-          title=""
-          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
-        />
-        <Animated.View 
-          style={[
-            styles.container, 
-            { 
-              opacity: fadeAnim,
-              transform: [{
-                translateY: translateYAnim
-              }]
+        <TopBar onProfilePress={() => handleNavigation("profile/" + user?.uid)} />
+        <View style={styles.container}>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollViewContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                colors={["#37a4c8"]}
+                tintColor={theme === "light" ? "#37a4c8" : "#ffffff"}
+              />
             }
-          ]}
-        >
-          {isLoading ? (
-            <LoadingScreen message="Loading your chats..." />
-          ) : hasError ? (
-            <View style={styles.stateContainer}>
-              <Text style={styles.errorText}>{chatsError}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-                <Text style={styles.retryButtonText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : isEmpty ? (
-            <View style={styles.stateContainer}>
-              <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#64748B" }]}>
-                No chats yet
-              </Text>
-              <TouchableOpacity 
-                style={[styles.retryButton, { marginTop: 16 }]} 
-                onPress={handleNavigateToExplore}
-              >
-                <Text style={styles.retryButtonText}>Find People</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <ScrollView
-              style={styles.scrollView}
-              contentContainerStyle={styles.scrollViewContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={handleRefresh}
-                  colors={["#37a4c8"]}
-                  tintColor={theme === "light" ? "#37a4c8" : "#ffffff"}
-                />
-              }
-            >
-              {pendingChats.length > 0 && (
-                <View style={styles.sectionContainer}>
-                  <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    Pending Connections
-                  </Text>
-                  {pendingChats.map((chat) => (
-                    <ChatItem
-                      key={chat.id}
-                      chat={chat}
-                      currentUser={user!}
-                      getUser={async (userId: string) => {
-                        const userData = await getUser(userId);
-                        if (!userData) throw new Error("User not found");
-                        return userData as Partner;
-                      }}
-                      onPress={() => {
-                        handleNavigation("/chat/" + chat.id);
-                      }}
-                      onPinPress={() => handlePinChat(chat.id)}
-                      onDelete={() => handleDeleteChat(chat.id)}
-                      onAccept={handleAcceptChat}
-                      setPendingChats={setPendingChats}
-                      setChats={setChats}
-                      setFilteredChats={setFilteredChats}
-                    />
-                  ))}
-                </View>
-              )}
-
-              {activeChats.length > 0 ? (
-                <View style={styles.sectionContainer}>
-                  <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    Active Chats
-                  </Text>
-                  <TextInput
-                    style={[styles.searchInput, { 
-                      backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
-                      color: theme === "light" ? "#000000" : "#e4fbfe",
-                      borderColor: "#37a4c8"
-                    }]}
-                    placeholder="Search chats..."
-                    placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-                    value={searchQuery}
-                    onChangeText={handleSearch}
+          >
+            {pendingChats.length > 0 && (
+              <View style={styles.sectionContainer}>
+                <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  Pending Connections
+                </Text>
+                {showContent && pendingChats.map((chat) => (
+                  <ChatItem
+                    key={chat.id}
+                    chat={chat}
+                    currentUser={user!}
+                    getUser={async (userId: string) => {
+                      // Return preloaded data if available
+                      if (preloadedPartners[userId]) {
+                        return preloadedPartners[userId];
+                      }
+                      // Fallback to fetching if not preloaded
+                      const userData = await getUser(userId);
+                      if (!userData) throw new Error("User not found");
+                      return userData as Partner;
+                    }}
+                    onPress={() => {
+                      handleNavigation("/chat/" + chat.id);
+                    }}
+                    onPinPress={() => handlePinChat(chat.id)}
+                    onDelete={() => handleDeleteChat(chat.id)}
+                    onAccept={handleAcceptChat}
+                    setPendingChats={setPendingChats}
+                    setChats={setChats}
+                    setFilteredChats={setFilteredChats}
                   />
-                  {activeChats.map((chat) => (
-                    <ChatItem
-                      key={chat.id}
-                      chat={chat}
-                      currentUser={user!}
-                      getUser={async (userId: string) => {
-                        const userData = await getUser(userId);
-                        if (!userData) throw new Error("User not found");
-                        return userData as Partner;
-                      }}
-                      onPress={() => {
-                        handleNavigation("/chat/" + chat.id);
-                      }}
-                      onPinPress={() => handlePinChat(chat.id)}
-                      onDelete={() => handleDeleteChat(chat.id)}
-                      onAccept={handleAcceptChat}
-                      setPendingChats={setPendingChats}
-                      setChats={setChats}
-                      setFilteredChats={setFilteredChats}
-                    />
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.stateContainer}>
-                  <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#64748B" }]}>
-                    No active chats
-                  </Text>
-                  <TouchableOpacity 
-                    style={[styles.retryButton, { marginTop: 16 }]} 
-                    onPress={handleNavigateToExplore}
-                  >
-                    <Text style={styles.retryButtonText}>Find People</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </ScrollView>
-          )}
+                ))}
+              </View>
+            )}
+
+            {activeChats.length > 0 ? (
+              <View style={styles.sectionContainer}>
+                <Text style={[styles.sectionTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  Active Chats
+                </Text>
+                <TextInput
+                  style={[styles.searchInput, { 
+                    backgroundColor: theme === "light" ? "#e6e6e6" : "#1a1a1a",
+                    color: theme === "light" ? "#000000" : "#e4fbfe",
+                    borderColor: "#37a4c8"
+                  }]}
+                  placeholder="Search chats..."
+                  placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
+                  value={searchQuery}
+                  onChangeText={handleSearch}
+                />
+                {showContent && activeChats.map((chat) => (
+                  <ChatItem
+                    key={chat.id}
+                    chat={chat}
+                    currentUser={user!}
+                    getUser={async (userId: string) => {
+                      // Return preloaded data if available
+                      if (preloadedPartners[userId]) {
+                        return preloadedPartners[userId];
+                      }
+                      // Fallback to fetching if not preloaded
+                      const userData = await getUser(userId);
+                      if (!userData) throw new Error("User not found");
+                      return userData as Partner;
+                    }}
+                    onPress={() => {
+                      handleNavigation("/chat/" + chat.id);
+                    }}
+                    onPinPress={() => handlePinChat(chat.id)}
+                    onDelete={() => handleDeleteChat(chat.id)}
+                    onAccept={handleAcceptChat}
+                    setPendingChats={setPendingChats}
+                    setChats={setChats}
+                    setFilteredChats={setFilteredChats}
+                  />
+                ))}
+              </View>
+            ) : (
+              <View style={styles.stateContainer}>
+                <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#64748B" }]}>
+                  No active chats
+                </Text>
+                <TouchableOpacity 
+                  style={[styles.retryButton, { marginTop: 16 }]} 
+                  onPress={handleNavigateToExplore}
+                >
+                  <Text style={styles.retryButtonText}>Find People</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
 
           <TouchableOpacity
             style={[styles.newChatButton, { backgroundColor: "#37a4c8" }]}
@@ -1739,24 +1836,17 @@ export default function ChatInbox() {
           >
             <Ionicons name="add" size={24} color="#ffffff" />
           </TouchableOpacity>
-        </Animated.View>
-        <Animated.View 
+        </View>
+        <View 
           style={[
             styles.bottomNavContainer,
             {
-              opacity: fadeAnim,
-              transform: [{
-                translateY: translateYAnim.interpolate({
-                  inputRange: [0, 20],
-                  outputRange: [0, 0]
-                })
-              }],
               backgroundColor: theme === "light" ? "#ffffff" : "#000000",
             }
           ]}
         >
           <BottomNavBar />
-        </Animated.View>
+        </View>
       </LinearGradient>
     </SafeAreaView>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
   Modal,
   FlatList,
   KeyboardAvoidingView,
+  ViewStyle,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -135,7 +136,7 @@ const UserOnboarding = () => {
   const router = useRouter();
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  const [scaleAnim] = useState(new Animated.Value(1));
+  const scaleAnim = useRef(new Animated.Value(1)).current;
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState<Date | null>(null);
   const [eulaScrollPosition, setEulaScrollPosition] = useState(0);
@@ -151,8 +152,8 @@ const UserOnboarding = () => {
   });
   const [showFullEula, setShowFullEula] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
-  const [stepProgress] = useState(new Animated.Value(0));
-  const [inputAnimations] = useState({
+  const stepProgress = useRef(new Animated.Value(0)).current;
+  const inputAnimations = useRef<Record<string, Animated.Value>>({
     email: new Animated.Value(0),
     password: new Animated.Value(0),
     name: new Animated.Value(0),
@@ -163,8 +164,18 @@ const UserOnboarding = () => {
     goals: new Animated.Value(0),
     interests: new Animated.Value(0),
     languages: new Animated.Value(0),
-  });
-  const [contentMargin] = useState(new Animated.Value(0));
+  }).current;
+  const contentMargin = useRef(new Animated.Value(0)).current;
+
+  // Cleanup animations on unmount
+  useEffect(() => {
+    return () => {
+      scaleAnim.stopAnimation();
+      stepProgress.stopAnimation();
+      contentMargin.stopAnimation();
+      Object.values(inputAnimations).forEach(anim => anim.stopAnimation());
+    };
+  }, []);
 
   useEffect(() => {
     if (user !== undefined) {
@@ -458,11 +469,11 @@ const UserOnboarding = () => {
         break;
 
       case "social":
-        if (!userData.interests || selectedOptions.interests.length === 0) {
+        if (!selectedOptions.interests || selectedOptions.interests.length === 0) {
           Alert.alert("Required Field", "Please select at least one travel interest");
           return;
         }
-        if (!userData.languages || selectedOptions.languages.length === 0) {
+        if (!selectedOptions.languages || selectedOptions.languages.length === 0) {
           Alert.alert("Required Field", "Please select at least one language you speak");
           return;
         }
@@ -470,20 +481,41 @@ const UserOnboarding = () => {
     }
 
     if (stepIndex < steps.length - 1) {
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-          easing: Easing.ease,
-        }),
+      // Stop any running animations before starting new ones
+      scaleAnim.stopAnimation();
+      stepProgress.stopAnimation();
+      contentMargin.stopAnimation();
+      Object.values(inputAnimations).forEach(anim => anim.stopAnimation());
+
+      // Reset all animations to their initial values
+      scaleAnim.setValue(1);
+      stepProgress.setValue((stepIndex + 1) / steps.length);
+      contentMargin.setValue(stepIndex * 20);
+      Object.values(inputAnimations).forEach(anim => anim.setValue(0));
+
+      // Start new animations
+      const animations = Animated.parallel([
         Animated.spring(scaleAnim, {
           toValue: 1,
           useNativeDriver: true,
           speed: 50,
           bounciness: 4,
         }),
-      ]).start(() => {
+        Animated.spring(stepProgress, {
+          toValue: (stepIndex + 2) / steps.length,
+          useNativeDriver: true,
+          friction: 8,
+          tension: 40,
+        }),
+        Animated.spring(contentMargin, {
+          toValue: (stepIndex + 1) * 20,
+          useNativeDriver: true,
+          friction: 8,
+          tension: 40,
+        })
+      ]);
+
+      animations.start(() => {
         setStepIndex((prev) => prev + 1);
       });
     } else {
@@ -650,9 +682,9 @@ const UserOnboarding = () => {
   const renderField = (field: Field) => {
     const isFocused = focusedField === field.key;
     const hasError = fieldErrors[field.key];
-    const animation = inputAnimations[field.key as keyof typeof inputAnimations];
+    const animation = inputAnimations[field.key] || new Animated.Value(0);
 
-    const inputStyle = {
+    const inputStyle: Animated.WithAnimatedObject<ViewStyle> = {
       transform: [
         { translateY: animation.interpolate({
           inputRange: [0, 1],
@@ -871,22 +903,9 @@ const UserOnboarding = () => {
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <Image 
-                    source={require("../../assets/adaptive-icon.png")}
-                    style={styles.defaultAvatar}
-                  />
-                  <View style={styles.avatarOverlay}>
-                    <Feather name="camera" size={24} color="#e4fbfe" />
-                    <Text style={styles.avatarOverlayText}>Add Photo</Text>
-                  </View>
+                  <Feather name="camera" size={24} color="#38a5c9" />
                 </View>
               )}
-              <View style={[
-                styles.cameraBadge,
-                isFocused && styles.cameraBadgeFocused
-              ]}>
-                <Feather name="camera" size={16} color="#000000" />
-              </View>
             </TouchableOpacity>
             {renderHelperText()}
           </Animated.View>
@@ -1068,6 +1087,11 @@ const UserOnboarding = () => {
                     handleBlur();
                   }
                 }}
+                keyboardAppearance="dark"
+                autoComplete={field.key === "name" ? "name" : 
+                            field.key === "bio" ? "off" : "off"}
+                textContentType={field.key === "name" ? "name" : 
+                               field.key === "bio" ? "none" : "none"}
               />
             </View>
             {renderHelperText()}
@@ -1243,6 +1267,7 @@ const UserOnboarding = () => {
                     returnKeyType="done"
                     onSubmitEditing={() => setShowCountryModal(false)}
                     blurOnSubmit={true}
+                    keyboardAppearance="dark"
                   />
                 </View>
 
@@ -1307,7 +1332,9 @@ const UserOnboarding = () => {
                     inputRange: [0, 80],
                     outputRange: [0, -200]
                   })}
-                ]
+                ],
+                marginTop: steps[stepIndex].key === "travel" ? '52%' : 
+                         steps[stepIndex].key === "social" ? '52%' : '22%'
               }
             ]}
           >
@@ -1380,22 +1407,27 @@ const UserOnboarding = () => {
               <TouchableOpacity
                 style={[
                   styles.nextButton,
-                  stepIndex === steps.length - 1 && !userData.acceptedEula && styles.nextButtonDisabled
+                  (stepIndex === steps.length - 1 && !userData.acceptedEula) && styles.nextButtonDisabled,
+                  (steps[stepIndex].key === "social" && (!selectedOptions.interests?.length || !selectedOptions.languages?.length)) && styles.nextButtonDisabled
                 ]}
                 onPress={handleNext}
-                disabled={loading || (stepIndex === steps.length - 1 && !userData.acceptedEula)}
+                disabled={loading || 
+                  (stepIndex === steps.length - 1 && !userData.acceptedEula) ||
+                  (steps[stepIndex].key === "social" && (!selectedOptions.interests?.length || !selectedOptions.languages?.length))
+                }
                 activeOpacity={0.8}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <LinearGradient
-                  colors={stepIndex === steps.length - 1 && !userData.acceptedEula 
+                  colors={(steps[stepIndex].key === "social" && (!selectedOptions.interests?.length || !selectedOptions.languages?.length))
                     ? ["#1a1a1a", "#1a1a1a"] 
                     : ["#38a5c9", "#38a5c9"]}
                   style={styles.buttonGradient}
                 >
                   <Text style={[
                     styles.buttonText,
-                    stepIndex === steps.length - 1 && !userData.acceptedEula && styles.buttonTextDisabled
+                    (steps[stepIndex].key === "social" && (!selectedOptions.interests?.length || !selectedOptions.languages?.length))
+                    && styles.buttonTextDisabled
                   ]}>
                     {stepIndex === steps.length - 1
                       ? "Start Exploring! ✈️"
@@ -1434,26 +1466,26 @@ const styles = StyleSheet.create({
   contentContainer: {
     width: "100%",
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingVertical: 20,
     alignItems: "center",
-    marginTop: '22%',
+    marginTop: '52%',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontFamily: "Inter-Bold",
     color: "#e4fbfe",
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: 16,
   },
   fieldContainer: {
-    marginBottom: 24,
+    marginBottom: 12,
     width: "100%",
     paddingHorizontal: 4,
   },
   fieldLabel: {
     color: "#e4fbfe",
     fontFamily: "Inter-Medium",
-    marginBottom: 12,
+    marginBottom: 6,
     fontSize: 14,
     paddingLeft: 4,
   },
@@ -1462,10 +1494,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#1a1a1a",
     borderRadius: 12,
-    padding: 16,
+    padding: 10,
     borderWidth: 1,
     borderColor: "#38a5c9",
-    minHeight: 64,
+    minHeight: 48,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -1491,9 +1523,6 @@ const styles = StyleSheet.create({
     borderColor: "#ff4444",
     backgroundColor: "rgba(255, 68, 68, 0.1)",
   },
-  inputError: {
-    color: "#ff4444",
-  },
   input: {
     flex: 1,
     marginLeft: 12,
@@ -1503,19 +1532,24 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingVertical: 8,
   },
+  inputError: {
+    color: "#ff4444",
+  },
   avatarContainer: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   avatarWrapper: {
-    width: avatarSize,
-    height: avatarSize,
-    borderRadius: avatarSize / 2,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     borderWidth: 2,
     borderColor: '#38a5c9',
     overflow: 'hidden',
     backgroundColor: '#1a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -1547,23 +1581,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#1a1a1a',
   },
-  defaultAvatar: {
-    width: avatarSize * 0.6,
-    height: avatarSize * 0.6,
-    opacity: 0.5,
-  },
-  avatarOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  avatarOverlayText: {
-    color: '#e4fbfe',
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-  },
   avatar: {
     width: '100%',
     height: '100%',
@@ -1591,7 +1608,7 @@ const styles = StyleSheet.create({
     color: '#38a5c9',
     fontFamily: 'Inter-Regular',
     fontSize: 12,
-    marginTop: 12,
+    marginTop: 6,
     textAlign: 'center',
   },
   footer: {
@@ -2094,6 +2111,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#38a5c9',
     borderRadius: 2,
     transformOrigin: 'left',
+  },
+  tagsInputFocused: {
+    borderColor: "#e4fbfe",
+    backgroundColor: "#1a1a1a",
+    shadowColor: "#38a5c9",
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  tagsInputError: {
+    borderColor: "#ff4444",
+    backgroundColor: "rgba(255, 68, 68, 0.1)",
   },
 });
 

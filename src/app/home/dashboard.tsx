@@ -15,28 +15,31 @@ import {
   Modal,
   Linking,
   Image,
+  ActivityIndicator,
+  ScrollView,
+  Alert,
 } from "react-native";
-import { Ionicons, FontAwesome5, MaterialIcons, Feather } from "@expo/vector-icons";
+import { MaterialIcons, Feather, FontAwesome5 } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, orderBy, limit, startAfter, onSnapshot } from "firebase/firestore";
+import { db } from "../../../config/firebaseConfig";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth } from "../../../config/firebaseConfig";
+import * as Location from "expo-location";
+import StatusSheet, { presetStatuses, PresetStatus } from "../../components/StatusSheet";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
-import * as Location from "expo-location";
 import useAirports, { Airport } from "../../hooks/useAirports";
 import useEvents from "../../hooks/useEvents";
 import useSportEvents from "../../hooks/useSportEvents";
 import useUsers from "../../hooks/useUsers";
-import { serverTimestamp } from "firebase/firestore";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../config/firebaseConfig";
-import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNearestAirports } from "../../hooks/useNearestAirports";
 import { useFilteredEvents } from "../../hooks/useFilteredEvents";
-import StatusSheet from "../../components/StatusSheet";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
-import { doc, onSnapshot, getDoc } from "firebase/firestore";
-import { db } from "../../../config/firebaseConfig";
+import { LinearGradient } from "expo-linear-gradient";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -267,8 +270,8 @@ export default function Dashboard() {
     textAnim.setValue(theme === "light" ? 0 : 1);
   }, [theme]);
 
-  const { user } = useAuth();
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user: authUser, userId } = useAuth();
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState<"airports" | "events">("airports");
@@ -282,7 +285,6 @@ export default function Dashboard() {
   const [showStatusSheet, setShowStatusSheet] = useState(false);
   const sheetAnim = useState(new Animated.Value(0))[0];
   const [customStatus, setCustomStatus] = useState("");
-  const [authUser, setAuthUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [updatingMood, setUpdatingMood] = useState(false);
@@ -465,6 +467,7 @@ export default function Dashboard() {
     const fetchNearbyUsers = async () => {
       if (!selectedAirport?.airportCode) return;
       
+      setLoading(true);
       try {
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
         const users = await getNearbyUsers(selectedAirport.airportCode, thirtyMinutesAgo) as UserData[];
@@ -522,6 +525,8 @@ export default function Dashboard() {
       } catch (error) {
         console.error('Error fetching nearby users:', error);
         setNearbyUsers([]);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -560,7 +565,7 @@ export default function Dashboard() {
       description: "Manage your account settings"
     },
     { 
-      icon: <Ionicons name="settings" size={24} color="#38a5c9" />, 
+      icon: <MaterialIcons name="settings" size={24} color="#38a5c9" />, 
       title: "Settings", 
       screen: "settings/settings",
       description: "Customize your app preferences"
@@ -904,6 +909,25 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [userId]);
 
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    
+    if (userId) {
+      const userRef = doc(db, "users", userId);
+      unsubscribe = onSnapshot(userRef, (doc) => {
+        if (doc.exists()) {
+          setUserData(doc.data() as UserData);
+        }
+      });
+    }
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [userId]);
+
   // Show black screen during auth check
   if (!userId) {
     return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#e6e6e6" : "#000000" }} />;
@@ -916,7 +940,12 @@ export default function Dashboard() {
 
   // Show loading screen only during data loading
   if (loading || !initialLoadComplete) {
-    return <LoadingScreen message="Loading your dashboard..." />;
+    return (
+      <LoadingScreen 
+        isEventsLoading={loading} 
+        isUsersLoading={!initialLoadComplete} 
+      />
+    );
   }
 
   return (
@@ -1030,7 +1059,10 @@ export default function Dashboard() {
                     <Feather name="search" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                     <Text style={[styles.searchPlaceholder, { 
                       color: theme === "light" ? "#37a4c8" : "#38a5c9"
-                    }]}>
+                    }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       {selectedAirport ? selectedAirport.name : "Select an airport"}
                     </Text>
                     <Feather name="chevron-down" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.searchIcon} />
@@ -1105,7 +1137,14 @@ export default function Dashboard() {
                           <FontAwesome5 name="users" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
                           <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Nearby Users</Text>
                         </View>
-                        {item.data.length > 0 ? (
+                        {loading ? (
+                          <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                            <Text style={[styles.loadingText, { color: theme === "light" ? "#000000" : "#64748B" }]}>
+                              Finding travelers...
+                            </Text>
+                          </View>
+                        ) : item.data.length > 0 ? (
                           <FlatList
                             horizontal
                             data={item.data}
@@ -1123,19 +1162,19 @@ export default function Dashboard() {
 
                               const renderUserCard = () => (
                                 <View style={styles.userInfo}>
-                                <View style={[styles.avatar, { 
-                                  backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
-                                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                }]}>
-                                  {user.profilePicture ? (
-                                    <Image 
-                                      source={{ uri: user.profilePicture }} 
-                                      style={styles.avatarImage}
-                                    />
-                                  ) : (
-                                    <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                  )}
-                                </View>
+                                  <View style={[styles.avatar, { 
+                                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}>
+                                    {user.profilePicture ? (
+                                      <Image 
+                                        source={{ uri: user.profilePicture }} 
+                                        style={styles.avatarImage}
+                                      />
+                                    ) : (
+                                      <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                    )}
+                                  </View>
                                   <View style={styles.nameRow}>
                                     <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                                       {user.name}
@@ -1146,81 +1185,24 @@ export default function Dashboard() {
                                       </Text>
                                     )}
                                   </View>
-                                  <View style={styles.userMetaContainer}>
-                                    {user.age && (
-                                      <View style={[styles.metaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                      }]}>
-                                        <Feather name="calendar" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                        <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                          {user.age}
-                                        </Text>
-                                      </View>
-                                    )}
-                                    <View style={[styles.metaItem, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                    }]}>
-                                      <Feather name="heart" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                      <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                        {user.status}
-                                      </Text>
-                                    </View>
-                                    {user.lastLogin && (
-                                      <View style={[styles.metaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                      }]}>
-                                        <Feather name="clock" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                        <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                          Last active {(() => {
-                                            const lastLoginDate = user.lastLogin.toDate();
-                                            const now = new Date();
-                                            const diffInMinutes = Math.floor((now.getTime() - lastLoginDate.getTime()) / (1000 * 60));
-                                            
-                                            if (diffInMinutes < 1) return 'just now';
-                                            if (diffInMinutes < 60) return `${diffInMinutes} min${diffInMinutes === 1 ? '' : 's'} ago`;
-                                            
-                                            const diffInHours = Math.floor(diffInMinutes / 60);
-                                            if (diffInHours < 24) return `${diffInHours} hour${diffInHours === 1 ? '' : 's'} ago`;
-                                            
-                                            const diffInDays = Math.floor(diffInHours / 24);
-                                            if (diffInDays < 7) return `${diffInDays} day${diffInDays === 1 ? '' : 's'} ago`;
-                                            
-                                            return lastLoginDate.toLocaleDateString();
-                                          })()}
-                                        </Text>
-                                      </View>
-                                    )}
-                                  </View>
                                   {user.bio && (
                                     <Text 
-                                      style={[styles.userBio, { color: theme === "light" ? "#64748B" : "#64748B" }]}
+                                      style={[styles.userBio, { color: theme === "light" ? "#38a5c9" : "#38a5c9" }]}
                                       numberOfLines={2}
                                     >
                                       {user.bio}
                                     </Text>
                                   )}
-                                  {user.languages && user.languages.length > 0 && (
-                                    <View style={styles.tagsContainer}>
-                                      {user.languages.slice(0, 2).map((lang, index) => (
-                                        <View 
-                                          key={index} 
-                                          style={[styles.tag, { 
-                                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                          }]}
-                                        >
-                                          <Feather name="globe" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.tagIcon} />
-                                          <Text style={[styles.tagText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                            {lang}
-                                          </Text>
-                                        </View>
-                                      ))}
-                                      {user.languages.length > 2 && (
-                                        <Text style={[styles.moreTags, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                          +{user.languages.length - 2} more
-                                        </Text>
-                                      )}
+                                  <View style={styles.userMetaContainer}>
+                                    <View style={[styles.metaItem, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                    }]}>
+                                      <Feather name="heart" size={14} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                      <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                        {user.status}
+                                      </Text>
                                     </View>
-                                  )}
+                                  </View>
                                 </View>
                               );
 
@@ -1232,24 +1214,20 @@ export default function Dashboard() {
                                     backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
                                     borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
                                   }]}>
-                                    <View style={[styles.inviteIcon, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(56, 165, 201, 0.15)"
-                                    }]}>
-                                      <FontAwesome5 name="user-plus" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                    </View>
+                                    <FontAwesome5 name="user-plus" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                                   </View>
                                   <Text style={[styles.inviteTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
                                     Invite Friends
                                   </Text>
                                   <Text style={[styles.inviteSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                    Share Wingman with your travel buddies
+                                    Share Wingman
                                   </Text>
                                   <View style={[styles.inviteButton, { 
                                     backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
                                   }]}>
-                                    <Feather name="share-2" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                    <Feather name="share-2" size={16} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                                     <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                      Share App
+                                      Share
                                     </Text>
                                   </View>
                                 </View>
@@ -1444,6 +1422,22 @@ export default function Dashboard() {
                       </TouchableOpacity>
                         ))}
                       </View>
+                      <View style={[styles.footer, { 
+                        position: 'relative',
+                        marginBottom: 100 // Add space at the bottom to prevent scrolling past
+                      }]}>
+                        <Image
+                          source={require('../../../assets/adaptive-icon.png')}
+                          style={[
+                            styles.footerLogo,
+                            { tintColor: theme === "light" ? "#0F172A" : "#e4fbfe" }
+                          ]}
+                          resizeMode="contain"
+                        />
+                        <Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                          © 2025 Wingman. All rights reserved.
+                        </Text>
+                      </View>
                     </View>
                   );
                 } else if (item.type === "spacer") {
@@ -1460,38 +1454,65 @@ export default function Dashboard() {
                   {
                     opacity: sheetAnim.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [1, 0],
+                      outputRange: [1, 1],
                     }),
                     transform: [
                       {
                         scale: sheetAnim.interpolate({
                           inputRange: [0, 1],
-                          outputRange: [1, 0.8],
+                          outputRange: [1, 1],
                         }),
                       },
                     ],
+                    backgroundColor: "#1a1a1a",
+                    borderWidth: 1,
+                    borderColor: "#37a4c8",
                   },
                 ]}
               >
                 <TouchableOpacity onPress={toggleStatusSheet}>
-                  <Feather name="edit" size={24} color="#FFF" />
+                  {updatingMood ? (
+                    <View style={styles.loadingDot}>
+                      <Animated.View
+                        style={[
+                          styles.loadingDotInner,
+                          {
+                            transform: [
+                              {
+                                scale: sheetAnim.interpolate({
+                                  inputRange: [0, 0.5, 1],
+                                  outputRange: [1, 1.2, 1],
+                                }),
+                              },
+                            ],
+                          },
+                        ]}
+                      />
+                    </View>
+                  ) : userData?.moodStatus ? (
+                    <Text style={{ fontSize: 24 }}>
+                      {presetStatuses.find((status: PresetStatus) => status.label === userData.moodStatus)?.emoji || "✏️"}
+                    </Text>
+                  ) : (
+                    <Feather name="edit" size={24} color="#e4fbfe" />
+                  )}
                 </TouchableOpacity>
               </Animated.View>
             )}
             {/* Status Sheet Component */}
             {showStatusSheet && (
-              <TouchableWithoutFeedback onPress={toggleStatusSheet}>
-                <View style={styles.overlay} />
-              </TouchableWithoutFeedback>
+              <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.2)', zIndex: 1 }]} />
             )}
-            <StatusSheet
-              showStatusSheet={showStatusSheet}
-              sheetAnim={sheetAnim}
-              customStatus={customStatus}
-              setCustomStatus={setCustomStatus}
-              handleUpdateMoodStatus={handleUpdateMoodStatus}
-              toggleStatusSheet={toggleStatusSheet}
-            />
+            <View style={{ zIndex: 2 }}>
+              <StatusSheet
+                showStatusSheet={showStatusSheet}
+                sheetAnim={sheetAnim}
+                customStatus={customStatus}
+                setCustomStatus={setCustomStatus}
+                handleUpdateMoodStatus={handleUpdateMoodStatus}
+                toggleStatusSheet={toggleStatusSheet}
+              />
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -1536,10 +1557,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   userCard: {
-    width: 280,
+    width: 168,
     backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    marginRight: 12,
+    borderRadius: 12,
+    marginRight: 8,
     elevation: 4,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
@@ -1547,183 +1568,179 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     borderWidth: 1,
     borderColor: "#38a5c9",
-    marginBottom: 24,
+    marginBottom: 16,
     overflow: 'hidden',
   },
   userCardGradient: {
-    padding: 16,
+    padding: 12,
     alignItems: 'center',
   },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
-    borderWidth: 2,
+    marginBottom: 8,
+    borderWidth: 1.5,
     borderColor: "#38a5c9",
     overflow: 'hidden',
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
-  },
-  inviteCardGradient: {
-    padding: 16,
-    alignItems: 'center',
-    backgroundColor: 'rgba(56, 165, 201, 0.05)',
-  },
-  inviteAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(56, 165, 201, 0.1)',
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "#38a5c9",
-    overflow: 'hidden',
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  inviteIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(56, 165, 201, 0.15)',
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  inviteTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#e4fbfe",
-    letterSpacing: 0.3,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  inviteSubtitle: {
-    fontSize: 13,
-    color: "#38a5c9",
-    letterSpacing: 0.2,
-    textAlign: 'center',
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  inviteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(56, 165, 201, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    gap: 6,
-  },
-  inviteButtonText: {
-    fontSize: 13,
-    color: "#38a5c9",
-    fontWeight: "600",
-    letterSpacing: 0.2,
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
   },
   userInfo: {
     width: '100%',
     alignItems: 'center',
+    padding: 12,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    marginBottom: 10,
+    gap: 6,
+    marginBottom: 6,
   },
   userName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#e4fbfe",
-    letterSpacing: 0.3,
+    letterSpacing: 0.1,
   },
   pronouns: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#38a5c9",
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
     fontWeight: "500",
   },
   userMetaContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 12,
-    flexWrap: 'wrap',
+    marginBottom: 8,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(56, 165, 201, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(56, 165, 201, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 165, 201, 0.2)',
   },
   metaText: {
     fontSize: 12,
     color: "#38a5c9",
     fontWeight: "600",
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
   },
   userBio: {
-    fontSize: 13,
-    color: "#64748B",
-    marginBottom: 12,
-    letterSpacing: 0.2,
-    lineHeight: 18,
+    fontSize: 12,
+    color: "#38a5c9",
+    marginBottom: 8,
+    letterSpacing: 0.1,
+    lineHeight: 16,
     textAlign: 'center',
     paddingHorizontal: 4,
   },
   tagsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
     flexWrap: 'wrap',
-    gap: 10,
-    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    marginTop: 2,
   },
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: 'rgba(56, 165, 201, 0.12)',
-    gap: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(56, 165, 201, 0.08)',
   },
   tagIcon: {
     marginRight: 2,
   },
   tagText: {
-    fontSize: 13,
+    fontSize: 9,
     color: "#38a5c9",
-    fontWeight: "600",
-    letterSpacing: 0.3,
+    fontWeight: "500",
+    letterSpacing: 0.1,
   },
   moreTags: {
-    fontSize: 13,
+    fontSize: 9,
+    color: "#38a5c9",
+    fontWeight: "500",
+    letterSpacing: 0.1,
+  },
+  inviteCardGradient: {
+    padding: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.03)',
+  },
+  inviteAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(56, 165, 201, 0.08)',
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+    borderWidth: 1.5,
+    borderColor: "#38a5c9",
+    overflow: 'hidden',
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+  },
+  inviteTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#e4fbfe",
+    letterSpacing: 0.1,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  inviteSubtitle: {
+    fontSize: 12,
+    color: "#38a5c9",
+    letterSpacing: 0.1,
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 16,
+    paddingHorizontal: 4,
+  },
+  inviteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 165, 201, 0.2)',
+  },
+  inviteButtonText: {
+    fontSize: 12,
     color: "#38a5c9",
     fontWeight: "600",
-    letterSpacing: 0.3,
+    letterSpacing: 0.1,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   eventCard: {
-    width: 300,
-    marginRight: 16,
+    width: 280,
+    marginRight: 12,
     borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
@@ -1961,6 +1978,8 @@ const styles = StyleSheet.create({
     fontSize: 17,
     marginLeft: 14,
     letterSpacing: 0.3,
+    numberOfLines: 1,
+    ellipsizeMode: 'tail',
   },
   searchIcon: {
     marginLeft: 10,
@@ -2060,7 +2079,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 1,
   },
   airportResultContent: {
@@ -2230,6 +2248,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.2,
     lineHeight: 18,
+  },
+  featureGridText: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 16, // Reduced from 40 to 16
+    marginBottom: 20,
+  },
+  footerLogo: {
+    width: 80,
+    height: 80,
+    marginBottom: 12,
+  },
+  copyrightText: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "600",
+    letterSpacing: 0.2,
+  },
+  loadingDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#37a4c8",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingDotInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#e4fbfe",
   },
 });
 

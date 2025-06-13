@@ -1,5 +1,5 @@
-import React, { useContext, useRef, useCallback } from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, Text, Platform } from 'react-native';
+import React, { useContext, useRef, useCallback, useState, useEffect } from 'react';
+import { View, Image, TouchableOpacity, StyleSheet, Text, Platform, Animated } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -32,6 +32,18 @@ const TopBar: React.FC<TopBarProps> = ({
   const { theme } = useContext(ThemeContext);
   const { user } = useAuth();
   const isNavigating = useRef(false);
+  const [isLogoLoaded, setIsLogoLoaded] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isLogoLoaded) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isLogoLoaded]);
 
   const handleNavigation = useCallback((route: string) => {
     if (isNavigating.current) return;
@@ -88,7 +100,7 @@ const TopBar: React.FC<TopBarProps> = ({
         borderBottomColor: theme === "light" ? '#E2E8F0' : 'rgba(55, 164, 200, 0.3)'
       }]}
     >
-      <View style={styles.leftSection}>
+      <Animated.View style={[styles.leftSection, { opacity: fadeAnim }]}>
         {showBackButton && (
           <TouchableOpacity 
             onPress={onBackPress || handleBackPress} 
@@ -110,12 +122,14 @@ const TopBar: React.FC<TopBarProps> = ({
               { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
             ]}
             resizeMode="contain"
+            fadeDuration={0}
+            onLoad={() => setIsLogoLoaded(true)}
           />
         </TouchableOpacity>
         {title && <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{title}</Text>}
-      </View>
+      </Animated.View>
       
-      <View style={styles.rightSection}>
+      <Animated.View style={[styles.rightSection, { opacity: fadeAnim }]}>
         {showNotifications && (
           <TouchableOpacity 
             onPress={handleNotificationPress} 
@@ -169,7 +183,7 @@ const TopBar: React.FC<TopBarProps> = ({
             </View>
           </TouchableOpacity>
         )}
-      </View>
+      </Animated.View>
     </LinearGradient>
   );
 };
