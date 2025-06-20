@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated } from "react-native";
+import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Easing } from "react-native";
 import useEvents from "../../hooks/useEvents";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
@@ -15,8 +15,9 @@ import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import useChat from "../../hooks/useChat";
-import { doc, getDoc, updateDoc, arrayUnion, deleteDoc, addDoc, collection } from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, deleteDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
+import LoadingImage from "../../components/LoadingImage";
 
 interface Event {
   id: string;
@@ -26,16 +27,262 @@ interface Event {
   eventImage?: string;
   createdAt: any;
   startTime: any;
-  attendees?: string[];
+  attendees: string[];
   organizer: string | null;
   organizedAt?: any;
   airportCode?: string;
+  eventUID: string;
 }
 
 interface UserData {
   id: string;
   name: string;
 }
+
+const ADMIN_IDS = ['hDn74gYZCdZu0efr3jMGTIWGrRQ2', 'WhNhj8WPUpbomevJQ7j69rnLbDp2'];
+
+const sendPushNotification = async (expoPushToken: string, eventName: string, attendeeName: string, notificationType: 'event_attendee' | 'event_update') => {
+  try {
+    const notificationContent = notificationType === 'event_attendee' 
+      ? {
+          title: 'New Event Attendee',
+          body: `${attendeeName} is attending your event "${eventName}"`,
+          data: { type: 'event_attendee' }
+        }
+      : {
+          title: 'Event Updated',
+          body: `The event "${eventName}" has been updated`,
+          data: { type: 'event_update' }
+        };
+
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+      },
+      body: JSON.stringify({
+        to: expoPushToken,
+        ...notificationContent,
+        sound: 'default',
+        priority: 'high',
+        data: { 
+          ...notificationContent.data,
+          timestamp: new Date().toISOString()
+        },
+      }),
+    });
+  } catch (error) {
+    console.error('Error sending push notification:', error);
+  }
+};
+
+const notifyOrganizer = async (organizerId: string, eventName: string, attendeeName: string, eventUID: string) => {
+  try {
+    const organizerDoc = await getDoc(doc(db, 'users', organizerId));
+    if (organizerDoc.exists()) {
+      const organizerData = organizerDoc.data();
+      
+      // Check if organizer has notifications enabled and has a push token
+      if (organizerData.expoPushToken && 
+          organizerData.notificationPreferences?.notificationsEnabled && 
+          organizerData.notificationPreferences?.events) {
+        await sendPushNotification(organizerData.expoPushToken, eventName, attendeeName, 'event_attendee');
+      }
+
+      // Add notification to organizer's notifications array
+      const notification = {
+        type: 'event_attendee',
+        message: `${attendeeName} is attending your event "${eventName}"`,
+        timestamp: serverTimestamp(),
+        read: false,
+        eventUID: eventUID
+      };
+
+      await updateDoc(doc(db, 'users', organizerId), {
+        notifications: arrayUnion(notification)
+      });
+    }
+  } catch (error) {
+    console.error('Error notifying organizer:', error);
+  }
+};
+
+const notifyAdmins = async (eventName: string) => {
+  try {
+    // Get push tokens for admin users
+    const adminTokens = await Promise.all(
+      ADMIN_IDS.map(async (adminId) => {
+        const adminDoc = await getDoc(doc(db, 'users', adminId));
+        if (adminDoc.exists()) {
+          const adminData = adminDoc.data();
+          return adminData.expoPushToken;
+        }
+        return null;
+      })
+    );
+
+    // Send notifications to admins with valid push tokens
+    const notificationPromises = adminTokens
+      .filter(token => token) // Filter out null tokens
+      .map(token => sendPushNotification(token!, eventName, "", 'event_update'));
+
+    await Promise.all(notificationPromises);
+  } catch (error) {
+    console.error('Error notifying admins:', error);
+  }
+};
+
+const notifyAttendees = async (event: Event, eventName: string, updateType: string, eventUID: string) => {
+  try {
+    if (!event?.attendees?.length) return;
+
+    // Get all attendee documents
+    const attendeeDocs = await Promise.all(
+      event.attendees.map((attendeeId: string) => getDoc(doc(db, 'users', attendeeId)))
+    );
+
+    // Process each attendee
+    const notificationPromises = attendeeDocs.map(async (attendeeDoc: any) => {
+      if (!attendeeDoc.exists()) return;
+
+      const attendeeData = attendeeDoc.data();
+      const notification = {
+        type: 'event_update',
+        message: `The event "${eventName}" has been updated`,
+        timestamp: new Date().toISOString(),
+        read: false,
+        eventUID: eventUID,
+        updateType: updateType
+      };
+
+      // Add notification to attendee's notifications array
+      await updateDoc(doc(db, 'users', attendeeDoc.id), {
+        notifications: arrayUnion(notification)
+      });
+
+      // Send push notification if attendee has token and notifications enabled
+      if (attendeeData.expoPushToken && 
+          attendeeData.notificationPreferences?.notificationsEnabled && 
+          attendeeData.notificationPreferences?.events) {
+        await sendPushNotification(
+          attendeeData.expoPushToken,
+          eventName,
+          '', // No attendee name needed for event updates
+          'event_update'
+        );
+      }
+    });
+
+    await Promise.all(notificationPromises);
+  } catch (error) {
+    console.error("Error notifying attendees:", error);
+  }
+};
+
+const ModernLoadingIndicator = ({ color }: { color: string }) => {
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const shadowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Complex animation sequence
+    const pulseAnimation = Animated.sequence([
+      // First phase: grow and fade in
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.3,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+        Animated.timing(shadowAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+      ]),
+      // Second phase: shrink and fade out
+      Animated.parallel([
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.9,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+        Animated.timing(shadowAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+      ]),
+    ]);
+
+    // Continuous rotation animation
+    const rotationAnimation = Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    );
+
+    // Start both animations
+    Animated.loop(pulseAnimation).start();
+    rotationAnimation.start();
+  }, []);
+
+  const spin = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <View style={styles.loadingIndicatorContainer}>
+      <Animated.View
+        style={[
+          styles.loadingCircle,
+          {
+            backgroundColor: color,
+            opacity: pulseAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.3, 0.8],
+            }),
+            transform: [
+              { scale: scaleAnim },
+              { rotate: spin }
+            ],
+            shadowOpacity: shadowAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.2, 0.5],
+            }),
+            shadowRadius: shadowAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [4, 8],
+            }),
+          },
+        ]}
+      />
+    </View>
+  );
+};
 
 export default function Event() {
   const { id } = useLocalSearchParams();
@@ -144,8 +391,18 @@ export default function Event() {
       const newAttendees = isAttending
         ? currentAttendees.filter((uid: string) => uid !== user.uid)
         : [...currentAttendees, user.uid];
+
       await updateEvent(event.id, { attendees: newAttendees });
       setEvent((prev: Event | null) => prev ? { ...prev, attendees: newAttendees } : null);
+
+      // If user is attending (not leaving) and there's an organizer, notify them
+      if (!isAttending && event.organizer) {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.data();
+        const attendeeName = userData?.name || 'Someone';
+        
+        await notifyOrganizer(event.organizer, event.name, attendeeName, event.eventUID);
+      }
     } catch (error) {
       console.error("Error updating attendance:", error);
     } finally {
@@ -206,6 +463,9 @@ export default function Event() {
       const timestamp = date.toISOString();
       await updateEvent(event.id, { startTime: timestamp });
       setEvent((prev: Event | null) => prev ? { ...prev, startTime: timestamp } : null);
+      
+      // Notify all attendees about the update
+      await notifyAttendees(event, event.name, 'startTime', event.eventUID);
     } catch (error) {
       console.error("Error updating start time:", error);
     } finally {
@@ -228,20 +488,18 @@ export default function Event() {
           style: "destructive",
           onPress: async () => {
             try {
-              // Create a new report document with detailed information
               const reportData = {
                 reportedEventId: eventId,
                 reportedBy: authUser?.uid,
                 reportedEventName: event?.name || 'Unknown Event',
                 reportedByUserName: authUser?.displayName || 'Anonymous',
-                createdAt: new Date(),
+                createdAt: serverTimestamp(),
                 status: "pending",
                 type: "event_report",
-                lastUpdated: new Date(),
+                lastUpdated: serverTimestamp(),
                 reviewedBy: null,
                 reviewNotes: null,
                 reviewDate: null,
-                // Add event metadata
                 reportedEvent: {
                   name: event?.name || 'Unknown Event',
                   description: event?.description,
@@ -254,19 +512,21 @@ export default function Event() {
                 }
               };
               
-              // Add the report to the reports collection
               await addDoc(collection(db, "reports"), reportData);
+              
+              // Notify admins about the report
+              await notifyAdmins(event?.name || 'Unknown Event');
               
               Alert.alert(
                 "Report Submitted",
-                "Thank you for your report. Our team will review it and take appropriate action.",
+                "Thank you for your report. Our team will review it shortly.",
                 [{ text: "OK" }]
               );
             } catch (error) {
               console.error("Error reporting event:", error);
               Alert.alert(
                 "Error",
-                "Failed to submit report. Please try again later.",
+                "Failed to submit report. Please try again.",
                 [{ text: "OK" }]
               );
             }
@@ -277,7 +537,17 @@ export default function Event() {
   };
 
   if (!event) {
-    return null;
+    return (
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+          <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
+          <View style={styles.loadingContainer}>
+            <ModernLoadingIndicator color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
+    );
   }
 
   const isOrganizer = user?.uid === event.organizer;
@@ -330,7 +600,7 @@ export default function Event() {
         <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
         {event.eventImage && (
           <View style={[styles.imageContainer, { top: topBarHeight }]}>
-            <Image 
+            <LoadingImage 
               source={{ uri: event.eventImage }} 
               style={styles.eventImage}
             />
@@ -396,13 +666,14 @@ export default function Event() {
             </View>
             <View style={styles.bottomButtons}>
               <TouchableOpacity
-                style={styles.buttonContainer}
+                style={[styles.buttonContainer, (!isAttending && !isOrganizer) && styles.buttonContainerDisabled]}
                 onPress={() => router.push(`event/eventChat/${id}`)}
                 accessibilityLabel="Event Chat"
                 accessibilityHint="Navigate to event discussion"
+                disabled={!isAttending && !isOrganizer}
               >
                 <LinearGradient 
-                  colors={["#37a4c8", "#2F80ED"]} 
+                  colors={(!isAttending && !isOrganizer) ? ["#cccccc", "#999999"] : ["#37a4c8", "#2F80ED"]} 
                   style={[styles.buttonGradient, { borderRadius: 12 }]}
                 >
                   <View style={styles.chatButtonContent}>
@@ -416,7 +687,9 @@ export default function Event() {
                         </View>
                       )}
                     </View>
-                    <Text style={[styles.buttonText, { color: "#ffffff" }]}>Event Chat</Text>
+                    <Text style={[styles.buttonText, { color: "#ffffff" }]}>
+                      {(!isAttending && !isOrganizer) ? "Join to Chat" : "Event Chat"}
+                    </Text>
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
@@ -689,5 +962,29 @@ const styles = StyleSheet.create({
   reportButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  buttonContainerDisabled: {
+    opacity: 0.7,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingIndicatorContainer: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });

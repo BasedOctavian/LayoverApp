@@ -24,9 +24,10 @@ import { MaterialIcons, Feather, FontAwesome } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import useEvents from "../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
+import useAuth from "../hooks/auth";
 import * as Location from "expo-location";
-import { SafeAreaView, useSafeAreaInsets, Edge } from "react-native-safe-area-context";
 import TopBar from "../components/TopBar";
+import SafeAreaWrapper from "../components/SafeAreaWrapper";
 import { ThemeContext } from "../context/ThemeContext";
 import useAirports, { Airport } from "../hooks/useAirports";
 import { useFilteredEvents } from "../hooks/useFilteredEvents";
@@ -35,6 +36,8 @@ import * as Haptics from "expo-haptics";
 import BottomNavBar from "../components/BottomNavBar";
 import LoadingElement from "../components/LoadingElement";
 import useLoadingMessages from "../hooks/useLoadingMessages";
+import LoadingScreen from "../components/LoadingScreen";
+import useNotificationCount from "../hooks/useNotificationCount";
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
@@ -108,39 +111,29 @@ const CountdownTimer = ({ startTime }: { startTime: Date | null }) => {
   ), [theme]);
 
   // If no start time, return memoized TBD state
-    if (!startTime) {
+  if (!startTime) {
     return tbdState;
+  }
+
+  const now = new Date();
+  const diff = startTime.getTime() - now.getTime();
+  let timeDisplay = '';
+
+  if (diff <= 0) {
+    timeDisplay = 'Now';
+  } else {
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (days > 0) {
+      timeDisplay = `${days}d ${hours}h`;
+    } else if (hours > 0) {
+      timeDisplay = `${hours}h ${minutes}m`;
+    } else {
+      timeDisplay = `${minutes}m`;
     }
-
-  const [timeLeft, setTimeLeft] = useState<string>('');
-
-  useEffect(() => {
-    const updateTimer = () => {
-      const now = new Date();
-      const diff = startTime.getTime() - now.getTime();
-
-      if (diff <= 0) {
-        setTimeLeft('Starting now');
-        return;
-      }
-
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-      if (days > 0) {
-        setTimeLeft(`${days}d ${hours}h`);
-      } else if (hours > 0) {
-        setTimeLeft(`${hours}h ${minutes}m`);
-      } else {
-        setTimeLeft(`${minutes}m`);
-      }
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 60000);
-    return () => clearInterval(interval);
-  }, [startTime]);
+  }
 
   return (
     <View style={[styles.metaItem, { 
@@ -149,7 +142,7 @@ const CountdownTimer = ({ startTime }: { startTime: Date | null }) => {
     }]}>
       <MaterialIcons name="schedule" size={16} color="#37a4c8" style={styles.metaIcon} />
       <Text style={[styles.metaText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-        {timeLeft}
+        {timeDisplay}
       </Text>
     </View>
   );
@@ -218,6 +211,7 @@ export default function Explore() {
   const { getUser, getUsers } = useUsers();
   const { getEvents } = useEvents();
   const { getAirports } = useAirports();
+  const { user } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
@@ -225,7 +219,6 @@ export default function Explore() {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
-  const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
   const [showAirportList, setShowAirportList] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState(false);
@@ -250,14 +243,18 @@ export default function Explore() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
-  const searchResultsAnim = useRef(new Animated.Value(0)).current;
   const eventsHeaderAnim = useRef(new Animated.Value(0)).current;
   const travelersHeaderAnim = useRef(new Animated.Value(0)).current;
   const loadingMessage = useLoadingMessages();
   const messageFadeAnim = useRef(new Animated.Value(1)).current;
   const [error, setError] = useState<string | null>(null);
   const contentBounceAnim = useRef(new Animated.Value(0)).current;
-  const contentScaleAnim = useRef(new Animated.Value(0.98)).current; // Start closer to 1 for subtle scale
+  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
+  const [visibleAirportCount, setVisibleAirportCount] = useState(10);
+  const AIRPORTS_PER_PAGE = 10;
+
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
 
   // Get nearest airports when location and airports are available
   const nearestAirports = useNearestAirports(
@@ -348,25 +345,37 @@ export default function Explore() {
       if (selectedAirport) {
         const allUsers = await getUsers();
         const filteredUsers = allUsers
-          .filter((user: any) => user.airportCode === selectedAirport.airportCode)
-          .map((user: any) => ({
-            id: user.id,
-            name: user.name || 'Anonymous',
-            age: user.age || 0,
-            airportCode: user.airportCode || '',
-            bio: user.bio || '',
-            profilePicture: user.profilePicture || 'https://via.placeholder.com/150',
-            interests: user.interests || [],
-            moodStatus: user.moodStatus || 'neutral',
-            languages: user.languages || [],
-            goals: user.goals || [],
-            travelHistory: user.travelHistory || []
-          }));
+          .filter((userDoc: any) => 
+            userDoc.airportCode === selectedAirport.airportCode && 
+            userDoc.id !== user?.uid // Filter out the authenticated user using document ID
+          )
+          .map((userDoc: any) => ({
+            id: userDoc.id,
+            name: userDoc.name || 'Anonymous',
+            age: userDoc.age || 0,
+            airportCode: userDoc.airportCode || '',
+            bio: userDoc.bio || '',
+            profilePicture: userDoc.profilePicture || 'https://via.placeholder.com/150',
+            interests: userDoc.interests || [],
+            moodStatus: userDoc.moodStatus || 'neutral',
+            languages: userDoc.languages || [],
+            goals: userDoc.goals || [],
+            travelHistory: userDoc.travelHistory || []
+          }))
+          .sort((a, b) => {
+            // Sort users with profile pictures first
+            const aHasProfilePic = a.profilePicture && a.profilePicture !== 'https://via.placeholder.com/150';
+            const bHasProfilePic = b.profilePicture && b.profilePicture !== 'https://via.placeholder.com/150';
+            
+            if (aHasProfilePic && !bHasProfilePic) return -1;
+            if (!aHasProfilePic && bHasProfilePic) return 1;
+            return 0;
+          });
         setUsers(filteredUsers);
       }
     };
     fetchUsers();
-  }, [selectedAirport?.airportCode]);
+  }, [selectedAirport?.airportCode, user?.uid]);
 
   // Filter events based on selected airport
   const { filteredRegularEvents } = useFilteredEvents(selectedAirport, events, []);
@@ -374,32 +383,35 @@ export default function Explore() {
   // Sort events by distance
   const sortedEvents = useMemo(() => {
     if (!currentLocation || !Array.isArray(filteredRegularEvents) || filteredRegularEvents.length === 0) return [];
-    return filteredRegularEvents.slice().sort((a, b) => {
-      // Primary sort by attendee count
-      const aAttendees = a.attendees?.length || 0;
-      const bAttendees = b.attendees?.length || 0;
-      
-      // If attendee counts are different, sort by that
-      if (aAttendees !== bAttendees) {
-        return bAttendees - aAttendees; // Descending order (most attendees first)
-      }
-      
-      // If attendee counts are equal, sort by distance
-      const distanceA = calculateDistance(
-        currentLocation.latitude,
-        currentLocation.longitude,
-        parseFloat(a.latitude),
-        parseFloat(a.longitude)
-      );
-      const distanceB = calculateDistance(
-        currentLocation.latitude,
-        currentLocation.longitude,
-        parseFloat(b.latitude),
-        parseFloat(b.longitude)
-      );
-      return distanceA - distanceB;
-    });
-  }, [filteredRegularEvents, currentLocation]);
+    return filteredRegularEvents
+      .filter(event => {
+        // Only filter out events that have a start time and are more than 1 hour past
+        if (!event.startTime) return true;
+        const startTime = new Date(event.startTime);
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+        return startTime > oneHourAgo;
+      })
+      .sort((a, b) => {
+        // First sort by whether user is attending
+        const userIsAttendingA = a.attendees?.includes(user?.uid);
+        const userIsAttendingB = b.attendees?.includes(user?.uid);
+        if (userIsAttendingA && !userIsAttendingB) return -1;
+        if (!userIsAttendingA && userIsAttendingB) return 1;
+        
+        // Then sort by whether user is organizer
+        const userIsOrganizerA = a.organizer === user?.uid;
+        const userIsOrganizerB = b.organizer === user?.uid;
+        if (userIsOrganizerA && !userIsOrganizerB) return -1;
+        if (!userIsOrganizerA && userIsOrganizerB) return 1;
+        
+        // Then sort by start time (events without start time go to the end)
+        if (!a.startTime && !b.startTime) return 0;
+        if (!a.startTime) return 1;
+        if (!b.startTime) return -1;
+        return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      });
+  }, [filteredRegularEvents, currentLocation, user?.uid]);
 
   // Filter events and users based on search query
   const filteredEvents = useMemo(() => {
@@ -609,19 +621,6 @@ export default function Explore() {
   const remainingEvents = sortedEvents.length - 4;
   const remainingUsers = users.length - 3;
 
-  // Add this effect to handle the search results animation
-  useEffect(() => {
-    const animation = Animated.timing(searchResultsAnim, {
-      toValue: isSearching ? 1 : 0,
-      duration: 300,
-      useNativeDriver: true,
-      easing: Easing.bezier(0.4, 0.0, 0.2, 1), // Material Design standard easing
-    });
-
-    animation.start();
-    return () => animation.stop();
-  }, [isSearching]);
-
   // Add this effect to handle the section headers animation
   useEffect(() => {
     const animations = Animated.parallel([
@@ -632,7 +631,7 @@ export default function Explore() {
         easing: Easing.bezier(0.4, 0.0, 0.2, 1),
       }),
       Animated.timing(travelersHeaderAnim, {
-        toValue: isSearching ? 1 : 0,
+        toValue: 0,
         duration: 300,
         useNativeDriver: true,
         easing: Easing.bezier(0.4, 0.0, 0.2, 1),
@@ -641,7 +640,7 @@ export default function Explore() {
 
     animations.start();
     return () => animations.stop();
-  }, [isSearching]);
+  }, []);
 
   // Add effect for message fade animation
   useEffect(() => {
@@ -679,13 +678,54 @@ export default function Explore() {
     }
   }, [isLoading, initialLoadComplete]);
 
+  // Add the filtered airports logic
+  const filteredAirports = useMemo(() => {
+    if (!allAirports) return [];
+    
+    // First filter the airports based on search query
+    const filtered = allAirports.filter((airport: Airport) => 
+      airport?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      airport?.airportCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      airport?.location?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    // If we have current location, calculate distances and sort
+    if (currentLocation) {
+      const withDistances = filtered.map(airport => ({
+        ...airport,
+        distance: calculateDistance(
+          currentLocation.latitude,
+          currentLocation.longitude,
+          airport.lat,
+          airport.long
+        )
+      }));
+
+      // Sort by distance, but put selected airport at top
+      return withDistances.sort((a, b) => {
+        if (selectedAirport && a.airportCode === selectedAirport.airportCode) return -1;
+        if (selectedAirport && b.airportCode === selectedAirport.airportCode) return 1;
+        return a.distance - b.distance;
+      });
+    }
+
+    // If no location, just put selected airport at top
+    return filtered.sort((a, b) => {
+      if (selectedAirport && a.airportCode === selectedAirport.airportCode) return -1;
+      if (selectedAirport && b.airportCode === selectedAirport.airportCode) return 1;
+      return 0;
+    });
+  }, [allAirports, searchQuery, currentLocation, selectedAirport]);
+
+  const visibleAirports = filteredAirports.slice(0, visibleAirportCount);
+
+  const handleLoadMoreAirports = () => {
+    setVisibleAirportCount(prev => prev + AIRPORTS_PER_PAGE);
+  };
+
   // Show loading screen during initial load
   if (isLoading || !initialLoadComplete) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]}>
-        <ModernLoadingIndicator color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                </View>
-    );
+    return <LoadingScreen />;
   }
 
   // Regular card component without animations
@@ -773,10 +813,7 @@ export default function Explore() {
       style={{ flex: 1 }}
     >
       <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-      <SafeAreaView 
-        style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} 
-        edges={["bottom"] as Edge[]}
-      >
+      <SafeAreaWrapper edges={["bottom"]}>
         <Animated.View 
           style={{ 
             flex: 1,
@@ -792,12 +829,12 @@ export default function Explore() {
             ]
           }}
         >
-          <TopBar onProfilePress={() => router.push("profile")} />
+          <TopBar onProfilePress={() => router.push("profile")} notificationCount={notificationCount} />
           <View style={{ flex: 1 }}>
             {showAirportList ? (
               <View style={{ flex: 1 }}>
                 <FlatList
-                  data={nearestAirports.tenClosest}
+                  data={visibleAirports}
                   keyExtractor={(item: Airport) => item.airportCode}
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
@@ -812,6 +849,28 @@ export default function Explore() {
                         >
                           Select Airport
                         </Text>
+                      </View>
+                      <View style={[styles.searchContainer, {
+                        backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
+                        borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+                        marginBottom: 16
+                      }]}>
+                        <Feather name="search" size={20} color={theme === "light" ? "#64748B" : "#37a4c8"} />
+                        <TextInput
+                          style={[styles.searchInput, {
+                            color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                          }]}
+                          placeholder="Search airports..."
+                          placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                          value={searchQuery}
+                          onChangeText={setSearchQuery}
+                          keyboardAppearance={theme === "light" ? "light" : "dark"}
+                        />
+                        {searchQuery ? (
+                          <TouchableOpacity onPress={() => setSearchQuery("")}>
+                            <Feather name="x" size={20} color={theme === "light" ? "#64748B" : "#37a4c8"} />
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     </View>
                   }
@@ -833,6 +892,13 @@ export default function Explore() {
                           </Text>
                           <Text style={styles.airportCode}>{airport.airportCode}</Text>
                           <Text style={styles.airportLocation}>{airport.location || 'Location not available'}</Text>
+                          {airport.distance !== undefined && (
+                            <Text style={[styles.airportDistance, { 
+                              color: theme === "light" ? "#64748B" : "#94A3B8" 
+                            }]}>
+                              {(airport.distance * 0.621371).toFixed(1)} mi away
+                            </Text>
+                          )}
                         </View>
                         <Feather name="chevron-right" size={20} color="#37a4c8" />
                       </View>
@@ -840,8 +906,23 @@ export default function Explore() {
                   )}
                   ListEmptyComponent={
                     <View style={styles.emptyContainer}>
-                      <Text style={styles.emptyText}>No airports found nearby</Text>
+                      <Text style={styles.emptyText}>No airports found</Text>
                     </View>
+                  }
+                  ListFooterComponent={
+                    visibleAirports.length < filteredAirports.length ? (
+                      <TouchableOpacity
+                        style={[styles.loadMoreButton, {
+                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                          borderColor: "#37a4c8"
+                        }]}
+                        onPress={handleLoadMoreAirports}
+                      >
+                        <Text style={[styles.loadMoreText, { color: "#37a4c8" }]}>
+                          Load More Airports
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null
                   }
                 />
               </View>
@@ -915,30 +996,6 @@ export default function Explore() {
                       </View>
                     </View>
                   </Animated.View>
-
-                    {/* Search Results Header */}
-                    {isSearching && (
-                      <Animated.View 
-                        style={[
-                          styles.searchHeader,
-                          {
-                            opacity: searchResultsAnim,
-                            transform: [{
-                              translateY: searchResultsAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [-8, 0]
-                              })
-                            }]
-                          }
-                        ]}
-                      >
-                        <Text style={[styles.searchResultsCount, { 
-                          color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                        }]}>
-                          {filteredEvents.length + filteredUsers.length} results found
-                        </Text>
-                      </Animated.View>
-                    )}
 
                     {/* Events Section */}
                     <Animated.View 
@@ -1072,10 +1129,10 @@ export default function Explore() {
                         )}
                       </View>
                     ) : (
-                      <View style={styles.emptyContainer}>
+                      <View style={[styles.emptyContainer, { display: isSearching ? 'none' : 'flex' }]}>
                         <MaterialIcons name="event-busy" size={48} color="#37a4c8" style={styles.emptyIcon} />
                           <Text style={styles.emptyText}>
-                            {isSearching ? "No events match your search" : "No events found at this airport"}
+                            No events found at this airport
                           </Text>
                           {!isSearching && (
                         <TouchableOpacity
@@ -1092,22 +1149,13 @@ export default function Explore() {
                     )}
                   </Animated.View>
 
-                  {/* Search Divider */}
-                  {isSearching && filteredEvents.length > 0 && filteredUsers.length > 0 && (
-                    <View style={styles.searchDivider} />
-                  )}
-
                   {/* Users Section */}
                   <Animated.View 
                     style={[
-                      styles.sectionHeader, 
-                      { 
-                        marginTop: isSearching ? 0 : 24,
+                      styles.sectionHeader,
+                      {
                         transform: [{
-                          translateY: travelersHeaderAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [-20, 0]
-                          })
+                          translateY: 0
                         }]
                       }
                     ]}
@@ -1116,195 +1164,185 @@ export default function Explore() {
                       <Text style={[styles.headerText, { 
                         color: theme === "light" ? "#0F172A" : "#e4fbfe"
                       }]}>
-                        {`Travelers at ${selectedAirport?.airportCode || "Airport"}`}
+                        Nearby Travelers
                       </Text>
                       <Text style={[styles.sectionSubtitle, { 
                         color: theme === "light" ? "#475569" : "#94A3B8" 
                       }]}>
-                          {filteredUsers.length} travelers nearby
+                        {filteredUsers.length} travelers available
                       </Text>
                     </View>
                   </Animated.View>
 
                   <Animated.View 
                     style={[
-                      styles.usersListContent,
+                      styles.gridContent,
                       {
                         opacity: contentBounceAnim,
                         transform: [
                           {
                             translateY: contentBounceAnim.interpolate({
                               inputRange: [0, 1],
-                              outputRange: [50, 0]
+                              outputRange: [40, 0]
                             })
                           }
                         ]
                       }
                     ]}
                   >
-                      {filteredUsers.length > 0 ? (
-                      <>
+                    {filteredUsers.length > 0 ? (
+                      <View style={styles.usersWrapper}>
                         {/* Initial 3 users */}
-                          {filteredUsers.slice(0, 3).map((item) => (
-                          <View key={item.id} style={[styles.userCard, { 
-                            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                            borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
-                            shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
-                          }]}>
+                        {filteredUsers.slice(0, 3).map((user, index) => (
+                          <TouchableOpacity
+                            key={`user-${user.id}`}
+                            style={[styles.userCard, { 
+                              backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+                              shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+                            }]}
+                            onPress={() => router.push(`/profile/${user.id}`)}
+                          >
                             <View style={styles.userCardContent}>
                               <View style={styles.userHeader}>
                                 <Image
-                                  source={{ uri: item.profilePicture }}
+                                  source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
                                   style={styles.profileImage}
                                 />
                                 <View style={styles.userMainInfo}>
                                   <Text style={[styles.userName, { 
-                                    color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                                    color: theme === "light" ? "#000000" : "#e4fbfe" 
                                   }]}>
-                                    {item.name}
+                                    {user.name}
                                   </Text>
                                   <View style={styles.userDetails}>
-                                    <Text style={[styles.userAge, { 
-                                      color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                    }]}>{item.age} years old</Text>
-                                    <Text style={[styles.userLocation, { 
-                                      color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                    }]}>• {item.airportCode}</Text>
+                                    <Text style={[styles.userAge, { color: "#37a4c8" }]}>
+                                      {user.age} years old
+                                    </Text>
+                                    <Text style={[styles.userLocation, { color: "#37a4c8" }]}>
+                                      • {user.airportCode}
+                                    </Text>
                                   </View>
                                 </View>
                               </View>
                               
                               <View style={styles.userBioContainer}>
                                 <Text style={[styles.userBio, { 
-                                  color: theme === "light" ? "#475569" : "#94A3B8" 
-                                }]} numberOfLines={2}>
-                                  {item.bio || "No bio available"}
+                                  color: theme === "light" ? "#64748B" : "#94A3B8" 
+                                }]} 
+                                numberOfLines={2}>
+                                  {user.bio || "No bio available"}
                                 </Text>
                               </View>
 
                               <View style={styles.userInterestsContainer}>
-                                {item.interests?.slice(0, 3).map((interest: string, index: number) => (
-                                  <View key={`${item.id}-interest-${index}`} style={[styles.interestTag, { 
-                                    backgroundColor: theme === "light" ? "#F8FAFC" : "rgba(55, 164, 200, 0.2)",
-                                    borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
-                                  }]}>
-                                    <Text style={[styles.interestText, { 
-                                      color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                    }]}>{interest}</Text>
+                                {user.interests?.slice(0, 3).map((interest: string, index: number) => (
+                                  <View 
+                                    key={index} 
+                                    style={[styles.interestTag, {
+                                      backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                                      borderColor: "#37a4c8"
+                                    }]}
+                                  >
+                                    <Text style={[styles.interestText, { color: "#37a4c8" }]}>
+                                      {interest}
+                                    </Text>
                                   </View>
                                 ))}
-                                {item.interests?.length > 3 && (
-                                  <View style={[styles.interestTag, { 
-                                    backgroundColor: theme === "light" ? "#F8FAFC" : "rgba(55, 164, 200, 0.2)",
-                                    borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
-                                  }]}>
-                                    <Text style={[styles.interestText, { 
-                                      color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                    }]}>+{item.interests.length - 3}</Text>
-                                  </View>
-                                )}
                               </View>
 
                               <View style={styles.userMoodContainer}>
-                                <View style={[styles.moodIndicator, { 
-                                  backgroundColor: item.moodStatus === "happy" ? "#4CD964" : 
-                                                item.moodStatus === "neutral" ? "#FFCC00" : "#FF3B30"
-                                }]} />
+                                <View style={[styles.moodIndicator, { backgroundColor: "#10B981" }]} />
                                 <Text style={[styles.moodText, { 
-                                  color: theme === "light" ? "#475569" : "#94A3B8" 
+                                  color: theme === "light" ? "#64748B" : "#94A3B8" 
                                 }]}>
-                                  {item.moodStatus || "Available"}
+                                  {user.moodStatus || "Available"}
                                 </Text>
                               </View>
                             </View>
-                          </View>
+                          </TouchableOpacity>
                         ))}
 
                         {/* Additional users with fade animation */}
-                          {filteredUsers.slice(3).map((item) => (
-                          <Animated.View
-                            key={item.id}
+                        {filteredUsers.slice(3).map((user, index) => (
+                          <Animated.View 
+                            key={`additional-user-${user.id}`}
                             style={{
                               opacity: additionalUsersAnim,
                               display: expandedUsers ? 'flex' : 'none',
+                              marginBottom: 16,
                             }}
                           >
-                            <View style={[styles.userCard, { 
-                              backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
-                              shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
-                            }]}>
+                            <TouchableOpacity
+                              style={[styles.userCard, { 
+                                backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                                borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+                                shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+                              }]}
+                              onPress={() => router.push(`/profile/${user.id}`)}
+                            >
                               <View style={styles.userCardContent}>
                                 <View style={styles.userHeader}>
                                   <Image
-                                    source={{ uri: item.profilePicture }}
+                                    source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
                                     style={styles.profileImage}
                                   />
                                   <View style={styles.userMainInfo}>
                                     <Text style={[styles.userName, { 
-                                      color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                                      color: theme === "light" ? "#000000" : "#e4fbfe" 
                                     }]}>
-                                      {item.name}
+                                      {user.name}
                                     </Text>
                                     <View style={styles.userDetails}>
-                                      <Text style={[styles.userAge, { 
-                                        color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                      }]}>{item.age} years old</Text>
-                                      <Text style={[styles.userLocation, { 
-                                        color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                      }]}>• {item.airportCode}</Text>
+                                      <Text style={[styles.userAge, { color: "#37a4c8" }]}>
+                                        {user.age} years old
+                                      </Text>
+                                      <Text style={[styles.userLocation, { color: "#37a4c8" }]}>
+                                        • {user.airportCode}
+                                      </Text>
                                     </View>
                                   </View>
                                 </View>
                                 
                                 <View style={styles.userBioContainer}>
                                   <Text style={[styles.userBio, { 
-                                    color: theme === "light" ? "#475569" : "#94A3B8" 
-                                  }]} numberOfLines={2}>
-                                    {item.bio || "No bio available"}
+                                    color: theme === "light" ? "#64748B" : "#94A3B8" 
+                                  }]} 
+                                  numberOfLines={2}>
+                                    {user.bio || "No bio available"}
                                   </Text>
                                 </View>
 
                                 <View style={styles.userInterestsContainer}>
-                                  {item.interests?.slice(0, 3).map((interest: string, index: number) => (
-                                    <View key={`${item.id}-interest-${index}`} style={[styles.interestTag, { 
-                                      backgroundColor: theme === "light" ? "#F8FAFC" : "rgba(55, 164, 200, 0.2)",
-                                      borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
-                                    }]}>
-                                      <Text style={[styles.interestText, { 
-                                        color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                      }]}>{interest}</Text>
+                                  {user.interests?.slice(0, 3).map((interest: string, index: number) => (
+                                    <View 
+                                      key={index} 
+                                      style={[styles.interestTag, {
+                                        backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                                        borderColor: "#37a4c8"
+                                      }]}
+                                    >
+                                      <Text style={[styles.interestText, { color: "#37a4c8" }]}>
+                                        {interest}
+                                      </Text>
                                     </View>
                                   ))}
-                                  {item.interests?.length > 3 && (
-                                    <View style={[styles.interestTag, { 
-                                      backgroundColor: theme === "light" ? "#F8FAFC" : "rgba(55, 164, 200, 0.2)",
-                                      borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
-                                    }]}>
-                                      <Text style={[styles.interestText, { 
-                                        color: theme === "light" ? "#0F172A" : "#37a4c8" 
-                                      }]}>+{item.interests.length - 3}</Text>
-                                    </View>
-                                  )}
                                 </View>
 
                                 <View style={styles.userMoodContainer}>
-                                  <View style={[styles.moodIndicator, { 
-                                    backgroundColor: item.moodStatus === "happy" ? "#4CD964" : 
-                                                  item.moodStatus === "neutral" ? "#FFCC00" : "#FF3B30"
-                                  }]} />
+                                  <View style={[styles.moodIndicator, { backgroundColor: "#10B981" }]} />
                                   <Text style={[styles.moodText, { 
-                                    color: theme === "light" ? "#475569" : "#94A3B8" 
+                                    color: theme === "light" ? "#64748B" : "#94A3B8" 
                                   }]}>
-                                    {item.moodStatus || "Available"}
+                                    {user.moodStatus || "Available"}
                                   </Text>
                                 </View>
                               </View>
-                            </View>
+                            </TouchableOpacity>
                           </Animated.View>
                         ))}
 
-                          {filteredUsers.length > 3 && (
+                        {filteredUsers.length > 3 && (
                           <Animated.View 
                             style={[
                               styles.toggleButtonContainer,
@@ -1328,7 +1366,7 @@ export default function Explore() {
                             >
                               <View style={styles.toggleButtonContent}>
                                 <Text style={[styles.toggleButtonText, { color: "#37a4c8" }]}>
-                                    {expandedUsers ? "Show Less" : `Show ${filteredUsers.length - 3} More`}
+                                  {expandedUsers ? "Show Less" : `Show ${filteredUsers.length - 3} More`}
                                 </Text>
                                 <MaterialIcons 
                                   name={expandedUsers ? "expand-less" : "expand-more"}
@@ -1339,13 +1377,13 @@ export default function Explore() {
                             </TouchableOpacity>
                           </Animated.View>
                         )}
-                      </>
+                      </View>
                     ) : (
                       <View style={styles.emptyContainer}>
-                        <MaterialIcons name="people-outline" size={48} color="#37a4c8" style={styles.emptyIcon} />
-                          <Text style={styles.emptyText}>
-                            {isSearching ? "No travelers match your search" : "No travelers found at this airport"}
-                          </Text>
+                        <MaterialIcons name="people" size={48} color="#37a4c8" style={styles.emptyIcon} />
+                        <Text style={styles.emptyText}>
+                          {isSearching ? "No travelers match your search" : "No travelers found at this airport"}
+                        </Text>
                       </View>
                     )}
                   </Animated.View>
@@ -1354,7 +1392,7 @@ export default function Explore() {
             )}
           </View>
         </Animated.View>
-      </SafeAreaView>
+      </SafeAreaWrapper>
     </LinearGradient>
   );
 }
@@ -1388,16 +1426,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 24,
+    marginBottom: -20,
     backgroundColor: 'transparent',
-  },
-  searchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    marginTop: -30,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1644,19 +1674,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   loadMoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,
     borderWidth: 1,
-    gap: 8,
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    alignItems: 'center',
+    marginVertical: 16,
+    elevation: 2,
+    shadowColor: "#37a4c8",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   loadMoreText: {
     fontSize: 16,
@@ -1674,6 +1705,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     backgroundColor: 'transparent',
+    zIndex: 1,
   },
   toggleButton: {
     flexDirection: 'row',
@@ -1688,6 +1720,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
+    backgroundColor: 'transparent',
   },
   toggleButtonContent: {
     flexDirection: 'row',
@@ -1708,12 +1741,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#37a4c8',
-  },
-  searchCategory: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-    letterSpacing: 0.3,
   },
   searchDivider: {
     height: 1,
@@ -1912,5 +1939,15 @@ const styles = StyleSheet.create({
   retryButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  airportDistance: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  usersWrapper: {
+    position: 'relative',
+    minHeight: 200,
+    paddingBottom: 80,
   },
 }); 

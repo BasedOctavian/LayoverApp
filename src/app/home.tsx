@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
-  SafeAreaView,
   Animated,
   Easing,
   Pressable,
@@ -18,13 +17,15 @@ import { useRouter } from "expo-router";
 import useEvents from "../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
 import * as Location from "expo-location";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TopBar from "../components/TopBar";
 import LoadingScreen from "../components/LoadingScreen";
+import SafeAreaWrapper from "../components/SafeAreaWrapper";
 import { ThemeContext } from "../context/ThemeContext";
 import useAirports, { Airport } from "../hooks/useAirports";
 import { useFilteredEvents } from "../hooks/useFilteredEvents";
 import { useNearestAirports } from "../hooks/useNearestAirports";
+import useAuth from "../hooks/auth";
+import useNotificationCount from "../hooks/useNotificationCount";
 
 interface Location {
   latitude: number;
@@ -121,13 +122,13 @@ export default function EventCreation() {
   const { getUser } = useUsers();
   const { getEvents } = useEvents();
   const { getAirports } = useAirports();
+  const { user } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
-  const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
   const [mapRegion, setMapRegion] = useState({
     latitude: 39.8283,
@@ -138,6 +139,9 @@ export default function EventCreation() {
   const [showAirportList, setShowAirportList] = useState(false);
   const [airportListAnim] = useState(new Animated.Value(0));
   const [eventListAnim] = useState(new Animated.Value(1));
+
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
 
   // Add animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -470,8 +474,8 @@ export default function EventCreation() {
 
   return (
     <>
-      <TopBar onProfilePress={() => router.push("profile")} />
-      <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]}>
+      <TopBar onProfilePress={() => router.push("profile")} notificationCount={notificationCount} />
+      <SafeAreaWrapper>
         <LinearGradient 
           colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} 
           style={styles.flex}
@@ -762,7 +766,7 @@ export default function EventCreation() {
             )}
           </Animated.View>
         </LinearGradient>
-      </SafeAreaView>
+      </SafeAreaWrapper>
     </>
   );
 }

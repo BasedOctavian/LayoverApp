@@ -13,14 +13,13 @@ import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import useUsers from "./../hooks/useUsers";
 import { arrayUnion, doc, onSnapshot, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView } from "react-native-safe-area-context";
 import useAuth from "../hooks/auth";
 import { router } from "expo-router";
 import { db } from "../../config/firebaseConfig";
-import TopBar from "../components/TopBar";
 import { collection, addDoc, query, where, getDocs, limit, startAfter } from "firebase/firestore";
 import useChats from "../hooks/useChats";
 import LoadingScreen from "../components/LoadingScreen";
+import SafeAreaWrapper from "../components/SafeAreaWrapper";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -33,6 +32,7 @@ import Animated, {
   FadeIn,
   FadeOut,
   Easing,
+  withRepeat,
 } from "react-native-reanimated";
 import {
   Gesture,
@@ -40,6 +40,8 @@ import {
   PanGestureHandler,
 } from "react-native-gesture-handler";
 import { ThemeContext } from "../context/ThemeContext";
+import TopBar from "../components/TopBar";
+import useNotificationCount from "../hooks/useNotificationCount";
 
 interface TravelHistory {
   id: string;
@@ -88,6 +90,7 @@ interface Connection {
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
 const CARD_HEIGHT = height * 0.55;
+const IMAGE_HEIGHT = CARD_HEIGHT * 0.54;
 
 // Airport name lookup hook
 function useAirportName(airportCode: string | undefined) {
@@ -115,6 +118,385 @@ function useAirportName(airportCode: string | undefined) {
   return airportName;
 }
 
+// Memoized DataToggle component
+const MemoizedDataToggle = React.memo(({ 
+  useFakeData, 
+  isTestLoading, 
+  setUseFakeData, 
+  setIsTestLoading,
+  theme 
+}: { 
+  useFakeData: boolean;
+  isTestLoading: boolean;
+  setUseFakeData: (value: boolean) => void;
+  setIsTestLoading: (value: boolean) => void;
+  theme: "light" | "dark";
+}) => (
+  <View style={styles.dataToggleContainer}>
+    <TouchableOpacity 
+      style={[
+        styles.dataToggleButton,
+        !useFakeData && !isTestLoading && styles.dataToggleButtonActive,
+        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+      ]}
+      onPress={() => {
+        setUseFakeData(false);
+        setIsTestLoading(false);
+      }}
+    >
+      <MaterialIcons name="people" size={20} color={!useFakeData && !isTestLoading ? "#37a4c8" : "#64748B"} />
+      <Text style={[
+        styles.dataToggleText,
+        { color: !useFakeData && !isTestLoading ? "#37a4c8" : "#64748B" }
+      ]}>Real Users</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[
+        styles.dataToggleButton,
+        useFakeData && !isTestLoading && styles.dataToggleButtonActive,
+        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+      ]}
+      onPress={() => {
+        setUseFakeData(true);
+        setIsTestLoading(false);
+      }}
+    >
+      <MaterialIcons name="computer" size={20} color={useFakeData && !isTestLoading ? "#37a4c8" : "#64748B"} />
+      <Text style={[
+        styles.dataToggleText,
+        { color: useFakeData && !isTestLoading ? "#37a4c8" : "#64748B" }
+      ]}>Test Data</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[
+        styles.dataToggleButton,
+        isTestLoading && styles.dataToggleButtonActive,
+        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+      ]}
+      onPress={() => {
+        setUseFakeData(false);
+        setIsTestLoading(true);
+      }}
+    >
+      <MaterialIcons name="hourglass-empty" size={20} color={isTestLoading ? "#37a4c8" : "#64748B"} />
+      <Text style={[
+        styles.dataToggleText,
+        { color: isTestLoading ? "#37a4c8" : "#64748B" }
+      ]}>Test Loading</Text>
+    </TouchableOpacity>
+  </View>
+));
+
+// Memoized Navigation Buttons component
+const MemoizedNavigationButtons = React.memo(({ 
+  onBack, 
+  onProfile, 
+  currentUser,
+  theme 
+}: { 
+  onBack: () => void;
+  onProfile: () => void;
+  currentUser: User | null;
+  theme: "light" | "dark";
+}) => (
+  <View style={styles.navigationButtons}>
+    <TouchableOpacity 
+      style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
+      onPress={onBack}
+    >
+      <MaterialIcons name="arrow-back" size={24} color="#37a4c8" />
+      <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Go Back</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
+      onPress={onProfile}
+      disabled={!currentUser}
+    >
+      <MaterialIcons name="person" size={24} color="#37a4c8" />
+      <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>View Profile</Text>
+    </TouchableOpacity>
+  </View>
+));
+
+// New LoadingCard component
+const LoadingCard = React.memo(({ theme }: { theme: "light" | "dark" }) => {
+  const pulseAnim = useSharedValue(1);
+
+  useEffect(() => {
+    pulseAnim.value = withRepeat(
+      withTiming(1.2, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+  }, []);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseAnim.value }],
+    opacity: interpolate(
+      pulseAnim.value,
+      [1, 1.2],
+      [0.5, 1],
+      Extrapolate.CLAMP
+    )
+  }));
+
+  return (
+    <View style={[styles.cardContainer, styles.cardShadow]}>
+      <View style={[styles.cardContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a", position: 'relative' }]}>
+        <View style={[styles.imageContainer, { backgroundColor: theme === "light" ? "#f3f4f6" : "#2a2a2a" }]}>
+          <View style={styles.imageOverlay}>
+            <View style={styles.profileHeader}>
+              <View style={{ width: "60%", height: 24, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
+              <View style={{ width: "40%", height: 20, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginTop: 8, borderRadius: 4 }} />
+            </View>
+          </View>
+        </View>
+        <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={{ width: 18, height: 18, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
+              <View style={{ width: "80%", height: 16, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginLeft: 8, borderRadius: 4 }} />
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a" }]} />
+          </View>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={{ width: 18, height: 18, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
+              <View style={{ width: "90%", height: 16, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginLeft: 8, borderRadius: 4 }} />
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a" }]} />
+          </View>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={{ width: 18, height: 18, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
+              <View style={{ width: "70%", height: 16, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginLeft: 8, borderRadius: 4 }} />
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a" }]} />
+          </View>
+        </View>
+        <View style={styles.loadingContainer}>
+          <Animated.View style={[styles.loadingDot, pulseStyle, { backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9" }]} />
+        </View>
+      </View>
+    </View>
+  );
+});
+
+// Modify SwipeCard component to handle loading state
+const SwipeCard = React.memo(({ 
+  user, 
+  gesture, 
+  cardStyle, 
+  likeStyle, 
+  nopeStyle,
+  theme,
+  isAnimating
+}: { 
+  user: User | null;
+  gesture: any;
+  cardStyle: any;
+  likeStyle: any;
+  nopeStyle: any;
+  theme: "light" | "dark";
+  isAnimating: boolean;
+}) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const imageOpacity = useSharedValue(0);
+  const contentOpacity = useSharedValue(0);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // Move useEffect outside of any conditions
+  useEffect(() => {
+    const loadImage = async () => {
+      if (!user?.profilePicture) {
+        setImageLoaded(true);
+        imageOpacity.value = withTiming(1, {
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+        });
+        contentOpacity.value = withTiming(1, {
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+        });
+        return;
+      }
+
+      try {
+        // Reset states
+        setImageLoaded(false);
+        imageOpacity.value = 0;
+        contentOpacity.value = 0;
+
+        // Preload image
+        await Image.prefetch(user.profilePicture);
+        
+        // Fade in image first
+        imageOpacity.value = withTiming(1, {
+          duration: 500,
+          easing: Easing.out(Easing.cubic),
+        });
+        
+        // Then fade in content
+        contentOpacity.value = withTiming(1, {
+          duration: 500,
+          easing: Easing.out(Easing.cubic),
+        });
+        
+        setImageLoaded(true);
+      } catch (error) {
+        console.error('Error preloading image:', error);
+        setImageLoaded(true);
+        // Still fade in content even if image fails
+        imageOpacity.value = withTiming(1, {
+          duration: 500,
+          easing: Easing.out(Easing.cubic),
+        });
+        contentOpacity.value = withTiming(1, {
+          duration: 500,
+          easing: Easing.out(Easing.cubic),
+        });
+      } finally {
+        setIsInitialLoad(false);
+      }
+    };
+
+    loadImage();
+  }, [user?.profilePicture]);
+
+  const imageStyle = useAnimatedStyle(() => ({
+    opacity: imageOpacity.value,
+    transform: [
+      {
+        scale: interpolate(
+          imageOpacity.value,
+          [0, 1],
+          [0.95, 1],
+          Extrapolate.CLAMP
+        ),
+      },
+    ],
+  }));
+
+  const animatedContentStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+    transform: [
+      {
+        translateY: interpolate(
+          contentOpacity.value,
+          [0, 1],
+          [10, 0],
+          Extrapolate.CLAMP
+        ),
+      },
+    ],
+  }));
+
+  if (!user) return null;
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View 
+        style={[
+          styles.cardContainer, 
+          cardStyle, 
+          { 
+            borderColor: "#37a4c8",
+          }
+        ]}
+      >
+        {isAnimating || isInitialLoad ? (
+          <LoadingCard theme={theme} />
+        ) : (
+          <>
+            <LinearGradient
+              colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#000000", "#1a1a1a"]}
+              style={[styles.cardContent]}
+            >
+              <View style={styles.imageContainer}> 
+                <Animated.View style={[styles.profileImageContainer, imageStyle]}>
+                  <Image
+                    source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
+                    style={styles.profileImage}
+                    onLoad={() => setImageLoaded(true)}
+                  />
+                </Animated.View>
+                <LinearGradient
+                  colors={['transparent', theme === "light" ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.8)']}
+                  style={styles.imageOverlay}
+                >
+                  <Animated.View style={[styles.profileHeader, animatedContentStyle]}>
+                    <Text style={styles.nameText}>
+                      {user.name}, {user.age}
+                    </Text>
+                    <View style={[styles.locationContainer, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]}> 
+                      <MaterialIcons name="location-on" size={16} color="#37a4c8" />
+                      <Text style={styles.locationText}>{user.airportCode}</Text>
+                    </View>
+                  </Animated.View>
+                </LinearGradient>
+              </View>
+              <Animated.View style={[styles.contentContainer]}> 
+                {user.bio && (
+                  <View style={styles.section}> 
+                    <View style={styles.sectionHeader}> 
+                      <MaterialIcons name="person" size={18} color="#37a4c8" />
+                      <Text 
+                        style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
+                        numberOfLines={3}
+                        ellipsizeMode="tail"
+                      >
+                        {user.bio.length > 120 ? `${user.bio.substring(0, 120)}...` : user.bio}
+                      </Text>
+                    </View>
+                    <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+                  </View>
+                )}
+                <View style={styles.section}> 
+                  <View style={styles.sectionHeader}> 
+                    <MaterialIcons name="translate" size={18} color="#37a4c8" />
+                    <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}> 
+                      {user.languages?.join(" • ")}
+                      {user.interests && user.interests.length > 0 && (
+                        <Text style={{ color: theme === "light" ? "#64748B" : "#94A3B8" }}>
+                          {" • "}{user.interests.join(" • ")}
+                        </Text>
+                      )}
+                    </Text>
+                  </View>
+                  <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+                </View>
+                {user.moodStatus && (
+                  <View style={[styles.moodContainer, { 
+                    backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                    alignSelf: 'center',
+                    marginTop: 'auto',
+                    marginBottom: 8
+                  }]}> 
+                    <MaterialIcons name="mood" size={16} color="#37a4c8" />
+                    <Text style={styles.moodText}>{user.moodStatus}</Text>
+                  </View>
+                )}
+              </Animated.View>
+            </LinearGradient>
+            <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}> 
+              <View style={styles.labelContainer}> 
+                <MaterialIcons name="people" size={32} color="#4CD964" />
+                <Text style={styles.likeText}>CONNECT</Text>
+              </View>
+            </Animated.View>
+            <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}> 
+              <View style={styles.labelContainer}> 
+                <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
+                <Text style={styles.nopeText}>NOPE</Text>
+              </View>
+            </Animated.View>
+          </>
+        )}
+      </Animated.View>
+    </GestureDetector>
+  );
+});
+
 const Swipe = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -130,9 +512,15 @@ const Swipe = () => {
   const [chatId, setChatId] = useState<string | null>(null);
   const buttonScale = useSharedValue(1);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showLoadingCard, setShowLoadingCard] = useState(false);
+  const loadingStartTime = useRef<number | null>(null);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  const { theme } = React.useContext(ThemeContext);
+  const { theme: colorScheme } = React.useContext(ThemeContext);
+  const theme = colorScheme || "light"; // Provide default value
   const [showMessageOptions, setShowMessageOptions] = useState(false);
+
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -210,11 +598,15 @@ const Swipe = () => {
   const handleSwipe = (direction: "left" | "right") => {
     try {
       if (isAnimating.value || !users.length) return;
+      
       isAnimating.value = true;
+      setShowLoadingCard(true);
+      loadingStartTime.current = Date.now();
 
       const currentUserIndex = currentIndex.value;
       if (currentUserIndex >= users.length) {
         isAnimating.value = false;
+        setShowLoadingCard(false);
         return;
       }
 
@@ -225,50 +617,46 @@ const Swipe = () => {
         onSwipedLeft(currentUserIndex);
       }
       
-      // Quick animation for current card
+      // Quick animation for current card only
       translateX.value = withTiming(direction === "right" ? width * 1.5 : -width * 1.5, {
         duration: 150,
         easing: Easing.out(Easing.cubic),
       });
       
-      // Process the next card immediately
+      // Process the next card after animation
       setTimeout(() => {
         try {
           // Reset transform values
           translateX.value = direction === "right" ? -width * 1.5 : width * 1.5;
           
-          // Remove the swiped user from the array
-          const updatedUsers = [...users];
-          updatedUsers.splice(currentUserIndex, 1);
-          setUsers(updatedUsers);
+          // Update currentIndex to point to the next user
+          currentIndex.value = Math.min(currentUserIndex + 1, users.length - 1);
           
-          // If we've reached the end, handle empty state
-          if (updatedUsers.length === 0) {
-            setShowSwiper(false);
-            // Fade in empty state
-            fadeAnim.value = withTiming(1, {
-              duration: 150,
-              easing: Easing.out(Easing.cubic),
-            });
-          } else {
-            // Update currentIndex to point to the next user
-            currentIndex.value = Math.min(currentUserIndex, updatedUsers.length - 1);
-            // Quick slide in for next card
-            translateX.value = withTiming(0, {
-              duration: 150,
-              easing: Easing.out(Easing.cubic),
-            });
-          }
+          // Quick slide in for next card
+          translateX.value = withTiming(0, {
+            duration: 150,
+            easing: Easing.out(Easing.cubic),
+          });
           
-          isAnimating.value = false;
+          // Ensure loading dot is visible for at least 1 second
+          const elapsed = Date.now() - (loadingStartTime.current || 0);
+          const minDuration = 1000;
+          const remaining = Math.max(0, minDuration - elapsed);
+          
+          setTimeout(() => {
+            isAnimating.value = false;
+            setShowLoadingCard(false);
+          }, remaining);
         } catch (error) {
           console.error('Error in swipe animation completion:', error);
           isAnimating.value = false;
+          setShowLoadingCard(false);
         }
-      }, 150); // Reduced timeout
+      }, 150);
     } catch (error) {
       console.error('Error in handleSwipe:', error);
       isAnimating.value = false;
+      setShowLoadingCard(false);
     }
   };
 
@@ -453,66 +841,165 @@ const Swipe = () => {
 
   const sendMatchNotification = async (matchedUserId: string, matchedUserName: string) => {
     try {
-      console.log('Starting to send match notification to:', matchedUserId);
+      console.log('=== Starting Match Notification Process ===');
+      console.log('Target User:', {
+        id: matchedUserId,
+        name: matchedUserName
+      });
       
-      // Get matched user's push token
+      // Get matched user's data
       const matchedUserDoc = await getDoc(doc(db, 'users', matchedUserId));
       if (!matchedUserDoc.exists()) {
-        console.log('Matched user document not found');
+        console.log('❌ Matched user document not found:', matchedUserId);
         return;
       }
 
       const matchedUserData = matchedUserDoc.data();
-      const pushToken = matchedUserData?.expoPushToken;
-
-      if (!pushToken) {
-        console.log('No push token found for matched user');
-        return;
-      }
+      console.log('📄 Matched user data retrieved:', {
+        hasPushToken: !!matchedUserData?.expoPushToken,
+        pushToken: matchedUserData?.expoPushToken, // Log the actual token
+        notificationPreferences: matchedUserData?.notificationPreferences,
+        currentNotificationsCount: matchedUserData?.notifications?.length || 0
+      });
 
       // Get current user's name
       const currentUserDoc = await getDoc(doc(db, 'users', currentUserUID));
       if (!currentUserDoc.exists()) {
-        console.log('Current user document not found');
+        console.log('❌ Current user document not found:', currentUserUID);
         return;
       }
       
       const currentUserName = currentUserDoc.data()?.name || 'Someone';
-      console.log('Sending notification from:', currentUserName, 'to:', matchedUserName);
+      console.log('👤 Current user info:', {
+        id: currentUserUID,
+        name: currentUserName
+      });
 
-      // Send push notification using Expo's push notification service
-      const message = {
-        to: pushToken,
-        sound: 'default',
-        title: 'New Match! 🎉',
-        body: `${currentUserName} also wants to connect with you!`,
+      // Create notification for the swiped user
+      const notification = {
+        id: Date.now().toString(),
+        title: "New Connection Request",
+        body: `${currentUserName} wants to connect with you!`,
         data: {
-          type: 'match',
+          type: 'connection',
           matchedUserId: currentUserUID,
           matchedUserName: currentUserName
         },
+        timestamp: new Date(),
+        read: false
       };
 
-      console.log('Attempting to send notification with data:', message);
+      console.log('📝 Created notification object:', notification);
 
-      const response = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(message),
+      // Update swiped user's notifications
+      const swipedUserNotifications = matchedUserData?.notifications || [];
+      console.log('📊 Current notifications count:', swipedUserNotifications.length);
+      
+      await updateDoc(doc(db, "users", matchedUserId), {
+        notifications: [...swipedUserNotifications, notification]
+      });
+      console.log('✅ In-app notification added to user document');
+
+      // Debug notification preferences
+      console.log('🔍 Checking notification preferences:', {
+        hasToken: !!matchedUserData?.expoPushToken,
+        token: matchedUserData?.expoPushToken,
+        notificationsEnabled: matchedUserData?.notificationPreferences?.notificationsEnabled,
+        connectionsEnabled: matchedUserData?.notificationPreferences?.connections,
+        fullPreferences: matchedUserData?.notificationPreferences
       });
 
-      const responseData = await response.json();
-      console.log('Notification send response:', responseData);
+      // Send push notification if user has token and notifications enabled
+      if (matchedUserData?.expoPushToken && 
+          matchedUserData?.notificationPreferences?.notificationsEnabled && 
+          matchedUserData?.notificationPreferences?.connections) {
+        
+        console.log('📱 Push notification conditions met:', {
+          hasToken: true,
+          token: matchedUserData.expoPushToken,
+          notificationsEnabled: true,
+          connectionsEnabled: true
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to send notification: ${responseData.message || 'Unknown error'}`);
+        try {
+          console.log('🚀 Attempting to send push notification to:', {
+            token: matchedUserData.expoPushToken,
+            name: currentUserName
+          });
+
+          const pushPayload = {
+            to: matchedUserData.expoPushToken,
+            title: "New Connection Request",
+            body: `${currentUserName} wants to connect with you!`,
+            sound: 'default',
+            priority: 'high',
+            data: {
+              type: 'connection',
+              matchedUserId: currentUserUID,
+              matchedUserName: currentUserName
+            },
+          };
+
+          console.log('📦 Push notification payload:', pushPayload);
+
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+            },
+            body: JSON.stringify(pushPayload),
+          });
+
+          const responseData = await response.json();
+          
+          if (!response.ok) {
+            console.error('❌ Push notification failed:', {
+              status: response.status,
+              statusText: response.statusText,
+              data: responseData,
+              requestPayload: pushPayload
+            });
+          } else {
+            console.log('✅ Push notification sent successfully:', {
+              responseData,
+              receiverId: matchedUserId,
+              senderName: currentUserName
+            });
+          }
+        } catch (error: any) {
+          console.error('❌ Error sending push notification:', {
+            error,
+            errorMessage: error.message,
+            errorStack: error.stack,
+            receiverId: matchedUserId,
+            token: matchedUserData.expoPushToken,
+            senderName: currentUserName
+          });
+        }
+      } else {
+        console.log('ℹ️ Push notification not sent. Reason:', {
+          hasToken: !!matchedUserData?.expoPushToken,
+          token: matchedUserData?.expoPushToken,
+          notificationsEnabled: matchedUserData?.notificationPreferences?.notificationsEnabled,
+          connectionsEnabled: matchedUserData?.notificationPreferences?.connections,
+          receiverId: matchedUserId,
+          receiverName: matchedUserName,
+          fullPreferences: matchedUserData?.notificationPreferences
+        });
       }
-    } catch (error) {
-      console.error('Error sending match notification:', error);
+
+      console.log('=== Match Notification Process Completed ===');
+
+    } catch (error: any) {
+      console.error('❌ Error in match notification process:', {
+        error,
+        errorMessage: error.message,
+        errorStack: error.stack,
+        matchedUserId,
+        currentUserUID
+      });
       // Don't throw the error, just log it to prevent app crash
     }
   };
@@ -546,7 +1033,7 @@ const Swipe = () => {
     try {
       setIsLoadingUsers(true);
       console.log('Starting to fetch users...');
-      
+
       // Get current user's airport code and blocked users
       const currentUserDoc = await doc(db, "users", currentUserUID);
       const currentUserSnapshot = await getDoc(currentUserDoc);
@@ -554,14 +1041,17 @@ const Swipe = () => {
       const currentUserAirport = currentUserData?.airportCode;
       const blockedUsers = currentUserData?.blockedUsers || [];
       const hasMeBlocked = currentUserData?.hasMeBlocked || [];
+      const dislikedUsers = currentUserData?.dislikedUsers || [];
+      const likedUsers = currentUserData?.likedUsers || [];
       
       console.log('Current user airport:', currentUserAirport);
       console.log('Current user blocked users:', blockedUsers);
       console.log('Users who blocked current user:', hasMeBlocked);
+      console.log('Disliked users:', dislikedUsers);
+      console.log('Liked users:', likedUsers);
 
       if (!currentUserAirport) {
         console.log('No airport code found for current user');
-        Alert.alert("Error", "Please set your airport code in your profile.");
         return;
       }
 
@@ -574,38 +1064,20 @@ const Swipe = () => {
       const connectionsRef = collection(db, "connections");
       const connectionsQuery = query(
         connectionsRef,
-        where("participants", "array-contains", currentUserUID),
-        where("status", "==", "pending")
+        where("participants", "array-contains", currentUserUID)
       );
       const connectionsSnapshot = await getDocs(connectionsQuery);
-      const pendingUserIds = new Set<string>();
+      const connectedUserIds = new Set<string>();
       
       connectionsSnapshot.docs.forEach(doc => {
         const data = doc.data();
         const otherUserId = data.participants.find((id: string) => id !== currentUserUID);
         if (otherUserId) {
-          pendingUserIds.add(otherUserId);
+          connectedUserIds.add(otherUserId);
         }
       });
 
-      // Get all pending chats for current user
-      const chatsRef = collection(db, "chats");
-      const chatsQuery = query(
-        chatsRef,
-        where("participants", "array-contains", currentUserUID),
-        where("status", "==", "pending")
-      );
-      const chatsSnapshot = await getDocs(chatsQuery);
-      
-      chatsSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const otherUserId = data.participants.find((id: string) => id !== currentUserUID);
-        if (otherUserId) {
-          pendingUserIds.add(otherUserId);
-        }
-      });
-
-      console.log('Found pending connections/chats with users:', Array.from(pendingUserIds));
+      console.log('Found connections with users:', Array.from(connectedUserIds));
 
       // First, get all users at the same airport
       const usersRef = collection(db, "users");
@@ -646,34 +1118,26 @@ const Swipe = () => {
           } as User;
         })
         .filter(user => {
+          // First check if this is the current user
+          if (user.id === currentUserUID) {
+            console.log('Filtering out current user:', user.id);
+            return false;
+          }
+
           const lastLogin = user.lastLogin?.toDate?.() || new Date(0);
           const isRecent = lastLogin >= oneHourAgo;
-          const isNotCurrentUser = user.id !== currentUserUID;
-          const isNotPending = !pendingUserIds.has(user.id);
+          const isNotConnected = !connectedUserIds.has(user.id);
           const isNotBlocked = !blockedUsers.includes(user.id);
           const hasNotBlockedMe = !hasMeBlocked.includes(user.id);
           const hasNotBlockedCurrentUser = !user.blockedUsers?.includes(currentUserUID);
           const currentUserHasNotBlockedThem = !user.hasMeBlocked?.includes(currentUserUID);
+          const isNotDisliked = !dislikedUsers.includes(user.id);
+          const isNotLiked = !likedUsers.includes(user.id);
           
-          console.log('Filtering user:', {
-            id: user.id,
-            name: user.name,
-            lastLogin: lastLogin.toISOString(),
-            isRecent,
-            isNotCurrentUser,
-            isNotPending,
-            isNotBlocked,
-            hasNotBlockedMe,
-            hasNotBlockedCurrentUser,
-            currentUserHasNotBlockedThem,
-            passesFilter: isRecent && isNotCurrentUser && isNotPending && 
-                         isNotBlocked && hasNotBlockedMe && 
-                         hasNotBlockedCurrentUser && currentUserHasNotBlockedThem
-          });
-          
-          return isRecent && isNotCurrentUser && isNotPending && 
+          return isRecent && isNotConnected && 
                  isNotBlocked && hasNotBlockedMe && 
-                 hasNotBlockedCurrentUser && currentUserHasNotBlockedThem;
+                 hasNotBlockedCurrentUser && currentUserHasNotBlockedThem &&
+                 isNotDisliked && isNotLiked;
         });
       
       console.log('Final filtered users count:', fetchedUsers.length);
@@ -729,19 +1193,7 @@ const Swipe = () => {
       try {
         console.log('Creating pending connection');
         const connectionsCollection = collection(db, "connections");
-        const docRef = await addDoc(connectionsCollection, connectionData);
-        
-        // Create a chat with pending status
-        const chatData = {
-          participants: [currentUserUID, swipedUserUID],
-          createdAt: new Date(),
-          lastMessage: null,
-          status: 'pending',
-          connectionId: docRef.id
-        };
-        
-        const chatsCollection = collection(db, "chats");
-        await addDoc(chatsCollection, chatData);
+        await addDoc(connectionsCollection, connectionData);
 
         // Create notification for the swiped user
         const notification = {
@@ -764,6 +1216,85 @@ const Swipe = () => {
         await updateDoc(doc(db, "users", swipedUserUID), {
           notifications: [...swipedUserNotifications, notification]
         });
+
+        // Send push notification for both matches and connection requests
+        console.log('Sending push notification for:', hasMatched ? 'match' : 'connection request');
+        if (swipedUserData?.expoPushToken && 
+            swipedUserData?.notificationPreferences?.notificationsEnabled && 
+            swipedUserData?.notificationPreferences?.connections) {
+          
+          console.log('📱 Push notification conditions met:', {
+            hasToken: true,
+            token: swipedUserData.expoPushToken,
+            notificationsEnabled: true,
+            connectionsEnabled: true
+          });
+
+          try {
+            const pushPayload = {
+              to: swipedUserData.expoPushToken,
+              title: hasMatched ? "New Match! 🎉" : "New Connection Request",
+              body: hasMatched 
+                ? `${currentUserData?.name || 'Someone'} matched with you!`
+                : `${currentUserData?.name || 'Someone'} wants to connect with you!`,
+              sound: 'default',
+              priority: 'high',
+              data: {
+                type: hasMatched ? 'match' : 'connection',
+                matchedUserId: currentUserUID,
+                matchedUserName: currentUserData?.name
+              },
+            };
+
+            console.log('📦 Push notification payload:', pushPayload);
+
+            const response = await fetch('https://exp.host/--/api/v2/push/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Accept-encoding': 'gzip, deflate',
+              },
+              body: JSON.stringify(pushPayload),
+            });
+
+            const responseData = await response.json();
+            
+            if (!response.ok) {
+              console.error('❌ Push notification failed:', {
+                status: response.status,
+                statusText: response.statusText,
+                data: responseData,
+                requestPayload: pushPayload
+              });
+            } else {
+              console.log('✅ Push notification sent successfully:', {
+                responseData,
+                receiverId: swipedUserUID,
+                senderName: currentUserData?.name
+              });
+            }
+          } catch (error: any) {
+            console.error('❌ Error sending push notification:', {
+              error,
+              errorMessage: error.message,
+              errorStack: error.stack,
+              receiverId: swipedUserUID,
+              token: swipedUserData.expoPushToken,
+              senderName: currentUserData?.name
+            });
+          }
+        } else {
+          console.log('ℹ️ Push notification not sent. Reason:', {
+            hasToken: !!swipedUserData?.expoPushToken,
+            token: swipedUserData?.expoPushToken,
+            notificationsEnabled: swipedUserData?.notificationPreferences?.notificationsEnabled,
+            connectionsEnabled: swipedUserData?.notificationPreferences?.connections,
+            receiverId: swipedUserUID,
+            receiverName: swipedUser.name,
+            fullPreferences: swipedUserData?.notificationPreferences
+          });
+        }
 
         // If it's a match, create notification for current user
         if (hasMatched) {
@@ -848,74 +1379,49 @@ const Swipe = () => {
             </LinearGradient>
           </View>
 
-          {/* Content Section */}
+          {/* Content Section - Now with only 3 rows */}
           <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
-            {/* Bio Section */}
+            {/* Row 1: Bio - Most important for initial connection */}
             {user.bio && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <MaterialIcons name="person" size={18} color="#37a4c8" />
-                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>{user.bio}</Text>
-                </View>
-                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-              </View>
-            )}
-
-            {/* Languages Section */}
-            {user.languages && user.languages.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <MaterialIcons name="translate" size={18} color="#37a4c8" />
-                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    {user.languages.join(" • ")}
+                  <Text 
+                    style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
+                    numberOfLines={3}
+                    ellipsizeMode="tail"
+                  >
+                    {user.bio.length > 120 ? `${user.bio.substring(0, 120)}...` : user.bio}
                   </Text>
                 </View>
                 <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
               </View>
             )}
 
-            {/* Interests Section */}
-            {user.interests && user.interests.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <MaterialIcons name="favorite" size={18} color="#37a4c8" />
-                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    {user.interests.join(" • ")}
-                  </Text>
-                </View>
-                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+            {/* Row 2: Languages & Interests - Combined for better space usage */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <MaterialIcons name="translate" size={18} color="#37a4c8" />
+                <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  {user.languages?.join(" • ")}
+                  {user.interests && user.interests.length > 0 && (
+                    <Text style={{ color: theme === "light" ? "#64748B" : "#94A3B8" }}>
+                      {" • "}{user.interests.join(" • ")}
+                    </Text>
+                  )}
+                </Text>
               </View>
-            )}
+              <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+            </View>
 
-            {/* Goals Section */}
-            {user.goals && user.goals.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <MaterialIcons name="flight-takeoff" size={18} color="#37a4c8" />
-                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    Wants to visit: {user.goals.join(" • ")}
-                  </Text>
-                </View>
-                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-              </View>
-            )}
-
-            {/* Travel History Section */}
-            {user.travelHistory && user.travelHistory.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <MaterialIcons name="history" size={18} color="#37a4c8" />
-                  <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    Visited: {user.travelHistory.map(trip => trip.name).join(" • ")}
-                  </Text>
-                </View>
-                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-              </View>
-            )}
-
-            {/* Mood Status */}
+            {/* Row 3: Mood Status - Small badge at the bottom */}
             {user.moodStatus && (
-              <View style={[styles.moodContainer, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)" }]}>
+              <View style={[styles.moodContainer, { 
+                backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                alignSelf: 'center',
+                marginTop: 'auto',
+                marginBottom: 8
+              }]}> 
                 <MaterialIcons name="mood" size={16} color="#37a4c8" />
                 <Text style={styles.moodText}>{user.moodStatus}</Text>
               </View>
@@ -936,89 +1442,30 @@ const Swipe = () => {
     try {
       // Show confirmation dialog
       Alert.alert(
-        "Reset Swipe History",
-        "This will clear your liked and disliked users, allowing you to see them again. Are you sure?",
+        "Clear Disliked History",
+        "This will clear your disliked users history, allowing you to see them again. Your connections and liked users will remain unchanged.",
         [
           {
             text: "Cancel",
             style: "cancel"
           },
           {
-            text: "Reset",
+            text: "Clear History",
             style: "destructive",
             onPress: async () => {
               try {
-                // Update user document to clear liked and disliked arrays
+                // Update user document to clear only disliked users array
                 await updateUser(currentUserUID, {
-                  likedUsers: [],
                   dislikedUsers: []
                 });
-
-                // Delete all existing connections for this user
-                const connectionsRef = collection(db, "connections");
-                const q = query(
-                  connectionsRef,
-                  where("participants", "array-contains", currentUserUID),
-                  limit(50) // Add limit to prevent Bloom filter issues
-                );
-                
-                let lastDoc: any = null;
-                let hasMore = true;
-                
-                while (hasMore) {
-                  const querySnapshot = await getDocs(
-                    lastDoc ? query(q, startAfter(lastDoc)) : q
-                  );
-                  
-                  if (querySnapshot.empty) {
-                    hasMore = false;
-                    continue;
-                  }
-                  
-                  // Delete each connection
-                  const deletePromises = querySnapshot.docs.map((doc: any) => deleteDoc(doc.ref));
-                  await Promise.all(deletePromises);
-                  
-                  lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
-                  hasMore = querySnapshot.docs.length === 50;
-                }
-
-                // Delete all existing chats for this user
-                const chatsRef = collection(db, "chats");
-                const chatsQuery = query(
-                  chatsRef,
-                  where("participants", "array-contains", currentUserUID),
-                  limit(50) // Add limit to prevent Bloom filter issues
-                );
-                
-                lastDoc = null;
-                hasMore = true;
-                
-                while (hasMore) {
-                  const chatsSnapshot = await getDocs(
-                    lastDoc ? query(chatsQuery, startAfter(lastDoc)) : chatsQuery
-                  );
-                  
-                  if (chatsSnapshot.empty) {
-                    hasMore = false;
-                    continue;
-                  }
-                  
-                  // Delete each chat
-                  const deleteChatPromises = chatsSnapshot.docs.map((doc: any) => deleteDoc(doc.ref));
-                  await Promise.all(deleteChatPromises);
-                  
-                  lastDoc = chatsSnapshot.docs[chatsSnapshot.docs.length - 1];
-                  hasMore = chatsSnapshot.docs.length === 50;
-                }
                 
                 // Refresh the users list
                 await fetchUsers();
                 
-                Alert.alert("Success", "Your swipe history has been reset!");
+                Alert.alert("Success", "Your disliked history has been cleared!");
               } catch (error) {
-                console.error("Error resetting swipe history:", error);
-                Alert.alert("Error", "Failed to reset swipe history. Please try again.");
+                console.error("Error clearing history:", error);
+                Alert.alert("Error", "Failed to clear history. Please try again.");
               }
             }
           }
@@ -1053,15 +1500,7 @@ const Swipe = () => {
 
   /** Loading state */
   if (loading || isLoadingUsers) {
-    return (
-      <Animated.View 
-        entering={FadeIn.duration(300)}
-        exiting={FadeOut.duration(300)}
-        style={styles.loadingContainer}
-      >
-        <LoadingScreen message="Finding travelers near you..." />
-      </Animated.View>
-    );
+    return <LoadingScreen />;
   }
 
   /** Error state */
@@ -1072,134 +1511,83 @@ const Swipe = () => {
         exiting={FadeOut.duration(300)}
         style={styles.loadingContainer}
       >
-        <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <SafeAreaWrapper edges={["bottom"]}>
           <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-            <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
             <View style={styles.stateContainer}>
               <Text style={[styles.errorText, { color: theme === "light" ? "#FF3B30" : "#FF3B30" }]}>{error}</Text>
             </View>
           </LinearGradient>
-        </SafeAreaView>
-      </Animated.View>
-    );
-  }
-
-  /** No users available state */
-  if (!users.length) {
-    return (
-      <Animated.View 
-        entering={FadeIn.duration(300)}
-        exiting={FadeOut.duration(300)}
-        style={styles.loadingContainer}
-      >
-        <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-          <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
-            <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
-            <View style={[styles.stateContainer, { paddingHorizontal: 32, alignItems: 'center' }]}> 
-              <MaterialIcons name="person-off" size={64} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={{ marginBottom: 24 }} />
-              <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8", fontSize: 20, fontWeight: '700', marginBottom: 12, textAlign: 'center' }]}>No users found at {airportName || (currentUserData?.airportCode || "this airport")}.</Text>
-              <Text style={{ color: theme === "light" ? "#64748B" : "#CBD5E1", fontSize: 15, textAlign: 'center', marginBottom: 24 }}>
-                We couldn't find any travelers at this airport right now. Check back later!
-              </Text>
-            </View>
-          </LinearGradient>
-        </SafeAreaView>
+        </SafeAreaWrapper>
       </Animated.View>
     );
   }
 
   /** Main Swiper view */
   return (
-    <Animated.View 
-      style={[styles.loadingContainer, containerStyle]}
-    >
-      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1, marginBottom: -40 }}>
-          <TopBar onProfilePress={() => router.push(`profile/${currentUserUID}`)} />
-          <View style={{ flex: 1 }}>
-            {showSwiper ? (
+    <View style={{ flex: 1 }}>
+      <TopBar onProfilePress={() => router.push(`/profile/${currentUserUID}`)} notificationCount={notificationCount} />
+      <SafeAreaWrapper edges={["bottom"]}>
+        <LinearGradient colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+          <Animated.View style={[styles.cardsContainer, cardsContainerStyle]}>
+            {users.length > 0 && currentIndex.value < users.length ? (
               <>
-                <Animated.View style={[styles.cardsContainer, cardsContainerStyle]}>
-                  {users.length > 0 ? (
-                    <>
-                      <GestureDetector gesture={gesture}>
-                        <Animated.View 
-                          style={[
-                            styles.cardContainer, 
-                            cardStyle, 
-                            { 
-                              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                              borderColor: "#37a4c8",
-                            }
-                          ]}
-                        >
-                          {currentUser && renderCard(currentUser)}
-                          <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}>
-                            <View style={styles.labelContainer}>
-                              <MaterialIcons name="people" size={32} color="#4CD964" />
-                              <Text style={styles.likeText}>CONNECT</Text>
-                            </View>
-                          </Animated.View>
-                          <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}>
-                            <View style={styles.labelContainer}>
-                              <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
-                              <Text style={styles.nopeText}>NOPE</Text>
-                            </View>
-                          </Animated.View>
-                        </Animated.View>
-                      </GestureDetector>
-                      <View style={styles.navigationButtons}>
-                        <TouchableOpacity 
-                          style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
-                          onPress={() => router.back()}
-                        >
-                          <MaterialIcons name="arrow-back" size={24} color="#37a4c8" />
-                          <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Go Back</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
-                          onPress={() => currentUser && router.push(`/profile/${currentUser.id}`)}
-                        >
-                          <MaterialIcons name="person" size={24} color="#37a4c8" />
-                          <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Profile</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  ) : (
-                    <Animated.View 
-                      entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
-                      style={[
-                        styles.emptyStateContainer, 
-                        { 
-                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                          opacity: fadeAnim,
-                          transform: [{ scale: scaleAnim }]
-                        }
-                      ]}
-                    >
-                      <MaterialIcons name="person-off" size={64} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={{ marginBottom: 24 }} />
-                      <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>
-                        No more users at {airportName || (currentUserData?.airportCode || "this airport")}
-                      </Text>
-                      <Text style={{ color: theme === "light" ? "#64748B" : "#CBD5E1", fontSize: 15, textAlign: 'center', marginTop: 8 }}>
-                        Check back later for more travelers!
-                      </Text>
-                    </Animated.View>
-                  )}
-                </Animated.View>
+                <SwipeCard
+                  user={currentUser}
+                  gesture={gesture}
+                  cardStyle={cardStyle}
+                  likeStyle={likeStyle}
+                  nopeStyle={nopeStyle}
+                  theme={theme}
+                  isAnimating={showLoadingCard}
+                />
+                <MemoizedNavigationButtons
+                  onBack={() => router.back()}
+                  onProfile={() => currentUser && router.push(`/profile/${currentUser.id}`)}
+                  currentUser={currentUser}
+                  theme={theme}
+                />
               </>
             ) : (
               <Animated.View 
-                entering={FadeIn.duration(300)}
-                style={[styles.loadingContainer, cardsContainerStyle]}
+                entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
+                style={[
+                  styles.emptyStateContainer, 
+                  { 
+                    opacity: fadeAnim,
+                    transform: [{ scale: scaleAnim }]
+                  }
+                ]}
               >
-                <LoadingScreen message="Finding travelers near you..." />
+                <LinearGradient
+                  colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#000000", "#1a1a1a"]}
+                  style={styles.emptyStateGradient}
+                >
+                  <MaterialIcons name="person-off" size={64} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={{ marginBottom: 24 }} />
+                  <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8", fontSize: 20, fontWeight: '700', marginBottom: 12, textAlign: 'center' }]}>
+                    No more users at {airportName || (currentUserData?.airportCode || "this airport")}
+                  </Text>
+                  <Text style={{ color: theme === "light" ? "#64748B" : "#CBD5E1", fontSize: 15, textAlign: 'center', marginBottom: 24 }}>
+                    We couldn't find any more travelers at this airport right now. Check back later!
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.clearHistoryButton,
+                      { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }
+                    ]}
+                    onPress={resetSwipeHistory}
+                  >
+                    <MaterialIcons name="history" size={20} color="#37a4c8" />
+                    <Text style={[styles.clearHistoryButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                      Reset History
+                    </Text>
+                  </TouchableOpacity>
+                </LinearGradient>
               </Animated.View>
             )}
-          </View>
+          </Animated.View>
         </LinearGradient>
-      </SafeAreaView>
-    </Animated.View>
+      </SafeAreaWrapper>
+    </View>
   );
 };
 
@@ -1222,9 +1610,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 'auto',
     marginBottom: 21,
     backfaceVisibility: 'hidden',
-    backgroundColor: "#1a1a1a",
     borderWidth: 1,
     borderColor: "#38a5c9",
+    position: 'relative',
   },
   cardShadow: {
     shadowColor: "#38a5c9",
@@ -1247,7 +1635,12 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     width: '100%',
-    height: CARD_HEIGHT * 0.6,
+    height: IMAGE_HEIGHT,
+    position: 'relative',
+  },
+  profileImageContainer: {
+    width: '100%',
+    height: '100%',
     position: 'relative',
   },
   profileImage: {
@@ -1294,6 +1687,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     padding: 12,
+    backgroundColor: "#FFFFFF",
   },
   section: {
     marginBottom: 8,
@@ -1316,14 +1710,14 @@ const styles = StyleSheet.create({
     opacity: 0.2,
   },
   moodContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(56, 165, 201, 0.1)",
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 16,
     marginTop: 4,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
   },
   moodText: {
     fontSize: 13,
@@ -1394,7 +1788,7 @@ const styles = StyleSheet.create({
   messageOptionsContent: {
     width: '85%',
     maxHeight: '75%',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#38a5c9',
@@ -1410,7 +1804,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#38a5c9',
     position: 'relative',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#FFFFFF',
   },
   messageOptionsTitle: {
     fontSize: 20,
@@ -1431,7 +1825,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -1441,7 +1835,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   presetMessageButton: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#FFFFFF',
     padding: 12,
     borderRadius: 10,
     marginBottom: 8,
@@ -1550,7 +1944,19 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingDot: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#37a4c8',
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   emptyStateContainer: {
     flex: 1,
@@ -1558,8 +1964,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 32,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#37a4c8',
     marginHorizontal: 'auto',
     marginBottom: 70,
     width: CARD_WIDTH,
@@ -1569,6 +1973,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 5,
+    overflow: 'hidden',
+  },
+  emptyStateGradient: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
   },
   navigationButtons: {
     flexDirection: 'row',
@@ -1595,6 +2008,55 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   navButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dataToggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+  },
+  dataToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#37a4c8',
+    gap: 6,
+    minWidth: 120,
+    backgroundColor: '#FFFFFF',
+  },
+  dataToggleButtonActive: {
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+  },
+  dataToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  clearHistoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#37a4c8',
+    gap: 8,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    backgroundColor: '#FFFFFF',
+  },
+  clearHistoryButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },

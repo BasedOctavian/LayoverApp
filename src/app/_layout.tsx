@@ -2,6 +2,7 @@ import { Stack, usePathname } from "expo-router";
 import { TouchableOpacity, View, StyleSheet, StatusBar } from "react-native";
 import { AntDesign, MaterialIcons } from "@expo/vector-icons"; // Import the required icons
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import "../../global.css";
 import { ThemeProvider } from "../context/ThemeContext";
 import BottomNavBar from "../components/BottomNavBar";
@@ -11,9 +12,14 @@ import { ThemeContext } from "../context/ThemeContext";
 // Create a wrapper component that uses ThemeContext
 const ThemeAwareStatusBar = () => {
   const { theme } = useContext(ThemeContext);
+  const pathname = usePathname();
+  
+  // Force light-content (white) status bar for userOnboarding
+  const isUserOnboarding = pathname === '/userOnboarding';
+  
   return (
     <StatusBar
-      barStyle={theme === "light" ? "dark-content" : "light-content"}
+      barStyle={isUserOnboarding ? "light-content" : theme === "light" ? "dark-content" : "light-content"}
       backgroundColor="transparent"
       translucent
     />
@@ -27,7 +33,11 @@ const ThemeAwareStack = () => {
   
   // Define routes where bottom nav should be hidden
   const hideBottomNavRoutes = ['/login/login', '/userOnboarding'];
-  const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && !pathname.startsWith('/chat/');
+  const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
+    !pathname.startsWith('/chat/') && 
+    !pathname.startsWith('/event/eventChat/') && 
+    !pathname.includes('loading') ||
+    pathname === '/chat/chatInbox';
 
   return (
     <Stack
@@ -219,6 +229,14 @@ const ThemeAwareStack = () => {
           animation: 'none',
         }}
       />
+      {/* Notification Preferences Screen */}
+      <Stack.Screen
+        name="settings/notificationPreferences"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
       {/* Feedback Screen */}
       <Stack.Screen
         name="settings/feedback"
@@ -259,6 +277,27 @@ const ThemeAwareStack = () => {
           animation: 'none',
         }}
       />
+      {/* Admin Tools Screen */}
+      <Stack.Screen
+        name="settings/adminTools"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="settings/settingsTest"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="sandbox"
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 };
@@ -270,18 +309,22 @@ export default function RootLayout() {
   const hideBottomNavRoutes = ['/login/login', '/userOnboarding'];
   const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
     !pathname.startsWith('/chat/') && 
-    !pathname.includes('loading');
+    !pathname.startsWith('/event/eventChat/') && 
+    !pathname.includes('loading') ||
+    pathname === '/chat/chatInbox';
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <ThemeAwareStatusBar />
-        <View style={styles.container}>
-          <ThemeAwareStack />
-          {shouldShowBottomNav && <BottomNavBar />}
-        </View>
-      </ThemeProvider>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ThemeProvider>
+          <ThemeAwareStatusBar />
+          <View style={styles.container}>
+            <ThemeAwareStack />
+            {shouldShowBottomNav && <BottomNavBar />}
+          </View>
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

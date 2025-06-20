@@ -90,6 +90,17 @@ const TopBar: React.FC<TopBarProps> = ({
     }, 300);
   }, []);
 
+  const handleProfilePress = useCallback(() => {
+    if (isNavigating.current || !user?.uid) return;
+    
+    isNavigating.current = true;
+    router.push(`/profile/${user.uid}`);
+    
+    setTimeout(() => {
+      isNavigating.current = false;
+    }, 300);
+  }, [user?.uid]);
+
   return (
     <LinearGradient
       colors={theme === "light" ? ['#F8FAFC', '#FFFFFF'] : ['#000000', '#000000']}
@@ -141,10 +152,10 @@ const TopBar: React.FC<TopBarProps> = ({
               {notificationCount > 0 && (
                 <View style={[styles.notificationBadge, { 
                   borderColor: theme === "light" ? "#FFFFFF" : "#000000",
-                  backgroundColor: theme === "light" ? "#0F172A" : "#FF3B30"
+                  backgroundColor: "#37a4c8"
                 }]}>
                   <Text style={[styles.notificationText, { 
-                    color: theme === "light" ? "#FFFFFF" : "#FFFFFF" 
+                    color: "#FFFFFF" 
                   }]}>
                     {notificationCount > 99 ? '99+' : notificationCount}
                   </Text>
@@ -154,35 +165,24 @@ const TopBar: React.FC<TopBarProps> = ({
           </TouchableOpacity>
         )}
         
-        {onProfilePress && (
-          <TouchableOpacity 
-            onPress={onProfilePress} 
-            style={styles.profileButton}
-            activeOpacity={0.7}
-          >
-            <View style={styles.avatarContainer}>
-              {user?.profilePicture ? (
-                <Image
-                  source={{ uri: user.profilePicture }}
-                  style={[styles.profileImage, { 
-                    borderColor: theme === "light" ? "#E2E8F0" : "#38a5c9" 
-                  }]}
-                />
-              ) : (
-                <View style={[styles.profilePlaceholder, { 
-                  backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
-                  borderColor: theme === "light" ? "#E2E8F0" : "#38a5c9"
-                }]}>
-                  <Ionicons name="person" size={20} color={theme === "light" ? "#0F172A" : "#ffffff"} />
-                </View>
-              )}
-              <View style={[styles.statusIndicator, { 
-                borderColor: theme === "light" ? "#FFFFFF" : "#000000",
-                backgroundColor: theme === "light" ? "#0F172A" : "#4CAF50"
-              }]} />
+        <TouchableOpacity 
+          onPress={handleProfilePress} 
+          style={styles.profileButton}
+          activeOpacity={0.7}
+        >
+          <View style={styles.avatarContainer}>
+            <View style={[styles.profilePlaceholder, { 
+              backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
+              borderColor: theme === "light" ? "#E2E8F0" : "#38a5c9"
+            }]}>
+              <Ionicons name="person" size={20} color={theme === "light" ? "#0F172A" : "#ffffff"} />
             </View>
-          </TouchableOpacity>
-        )}
+            <View style={[styles.statusIndicator, { 
+              borderColor: theme === "light" ? "#FFFFFF" : "#000000",
+              backgroundColor: "#37a4c8"
+            }]} />
+          </View>
+        </TouchableOpacity>
       </Animated.View>
     </LinearGradient>
   );
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: "#4CAF50",
+    backgroundColor: "#37a4c8",
     borderWidth: 2,
   },
   notificationContainer: {

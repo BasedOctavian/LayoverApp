@@ -26,6 +26,8 @@ import TopBar from "../../components/TopBar";
 import * as Haptics from 'expo-haptics';
 import { doc, deleteDoc } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
+import * as LocalAuthentication from 'expo-local-authentication';
+import useNotificationCount from "../../hooks/useNotificationCount";
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -41,11 +43,15 @@ export default function Settings() {
   const profilePictureOpacity = useRef(new Animated.Value(0)).current;
   const loadingProgress = useRef(new Animated.Value(0)).current;
   const loadingLineOpacity = useRef(new Animated.Value(0)).current;
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
 
   // Access ThemeContext
   const { theme, toggleTheme } = React.useContext(ThemeContext);
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
+
+  // Get notification count
+  const notificationCount = useNotificationCount(userId);
 
   // Animation values
   const contentBounceAnim = useRef(new Animated.Value(0)).current;
@@ -265,6 +271,64 @@ export default function Settings() {
     }
   }, [isLoading, userData]);
 
+  // Check if biometric authentication is available
+  useEffect(() => {
+    const checkBiometricAvailability = async () => {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      console.log('Biometric check:', { compatible, enrolled });
+      setIsBiometricAvailable(compatible && enrolled);
+    };
+    checkBiometricAvailability();
+  }, []);
+
+  // Handle admin tools navigation with biometric authentication
+  const handleAdminToolsNavigation = async () => {
+    console.log('Admin tools navigation attempted, biometric available:', isBiometricAvailable);
+    if (!isBiometricAvailable) {
+      Alert.alert(
+        "Biometric Authentication Not Available",
+        "Please set up Face ID/Touch ID in your device settings to access admin tools.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    try {
+      console.log('Attempting biometric authentication...');
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Authenticate to access Admin Tools',
+        fallbackLabel: 'Use passcode',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+      console.log('Biometric authentication result:', result);
+
+      if (result.success) {
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        handleNavigation("settings/adminTools");
+      } else {
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+        Alert.alert(
+          "Authentication Failed",
+          "You must authenticate to access admin tools.",
+          [{ text: "OK" }]
+        );
+      }
+    } catch (error) {
+      console.error('Biometric authentication error:', error);
+      Alert.alert(
+        "Authentication Error",
+        "An error occurred during authentication. Please try again.",
+        [{ text: "OK" }]
+      );
+    }
+  };
+
   // Show black screen during auth check
   if (!userId) {
     return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#e6e6e6" : "#000000" }} />;
@@ -279,7 +343,7 @@ export default function Settings() {
 
   return (
     <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar onProfilePress={() => handleNavigation("profile/" + userId)} />
+      <TopBar onProfilePress={() => handleNavigation("profile/" + userId)} notificationCount={notificationCount} />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <Animated.View 
@@ -447,9 +511,9 @@ export default function Settings() {
                   backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
                   borderColor: "#37a4c8"
                 }]}
-                onPress={() => handleNavigation("locked/lockedScreen")}
+                onPress={() => handleNavigation("settings/notificationPreferences")}
                 accessibilityRole="button"
-                accessibilityLabel="Notification preferences coming soon"
+                accessibilityLabel="Notification preferences"
               >
                 <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
                   <Ionicons name="notifications" size={24} color="#37a4c8" />
@@ -545,6 +609,48 @@ export default function Settings() {
                 </View>
               </TouchableOpacity>
             </View>
+
+            {/* Admin Tools Section - Only visible to admin users */}
+            {(authUser?.uid === 'hDn74gYZCdZu0efr3jMGTIWGrRQ2' || authUser?.uid === 'WhNhj8WPUpbomevJQ7j69rnLbDp2') && (
+              <View style={styles.adminSection}>
+                <Text 
+                  style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
+                  accessibilityRole="header"
+                >
+                  Admin Access
+                </Text>
+                <TouchableOpacity
+                  style={[styles.adminItem, { 
+                    backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                    borderColor: "#37a4c8"
+                  }]}
+                  onPress={handleAdminToolsNavigation}
+                  accessibilityRole="button"
+                  accessibilityLabel="Admin Tools"
+                >
+                  <LinearGradient
+                    colors={theme === "light" 
+                      ? ["#37a4c8", "#2d8ba8"] 
+                      : ["#1a1a1a", "#0d0d0d"]}
+                    style={styles.adminGradient}
+                  >
+                    <View style={styles.adminContent}>
+                      <View style={styles.adminIconContainer}>
+                        <Ionicons name="shield" size={28} color="#ffffff" />
+                      </View>
+                      <View style={styles.adminTextContainer}>
+                        <Text style={styles.adminTitle}>Admin Tools</Text>
+                        <Text style={styles.adminSubtitle}>
+                          {isBiometricAvailable ? "Protected Access" : "Setup Required"}
+                        </Text>
+                      </View>
+                      <Feather name="chevron-right" size={24} color="#ffffff" style={styles.chevronIcon} />
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Delete Account Button */}
             <TouchableOpacity 
               style={[styles.deleteButton, { borderColor: "#ff4444" }]} 
@@ -557,6 +663,7 @@ export default function Settings() {
                 <Text style={styles.deleteText}>Delete Account</Text>
               </LinearGradient>
             </TouchableOpacity>
+
             {/* Logout Button */}
             <TouchableOpacity 
               style={[styles.logoutButton, { borderColor: "#37a4c8" }]} 
@@ -810,6 +917,50 @@ const styles = StyleSheet.create({
     height: 3,
     width: '100%',
     borderRadius: 1.5,
+  },
+  adminSection: {
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  adminItem: {
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    elevation: 8,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  adminGradient: {
+    padding: 16,
+  },
+  adminContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  adminIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  adminTextContainer: {
+    flex: 1,
+  },
+  adminTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#ffffff",
+    marginBottom: 4,
+  },
+  adminSubtitle: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.7)",
   },
 });
 

@@ -36,10 +36,13 @@ import useSportEvents from "../../hooks/useSportEvents";
 import useUsers from "../../hooks/useUsers";
 import { useNearestAirports } from "../../hooks/useNearestAirports";
 import { useFilteredEvents } from "../../hooks/useFilteredEvents";
+import useNotificationCount from "../../hooks/useNotificationCount";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Notifications from 'expo-notifications';
+import LoadingImage from "../../components/LoadingImage";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -53,6 +56,7 @@ type NearbyUser = {
   name: string;
   status: string;
   isInviteCard?: boolean;
+  isViewMoreCard?: boolean;
   profilePicture?: string;
   age?: string;
   bio?: string;
@@ -282,11 +286,17 @@ export default function Dashboard() {
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
   const { getSportEvents } = useSportEvents();
   const [allSportEvents, setAllSportEvents] = useState<any[]>([]);
+  const { getAirports } = useAirports();
+  const nearestAirports = useNearestAirports(userLocation, allAirports);
+  const { filteredRegularEvents, matchingSportEvents } = useFilteredEvents(selectedAirport, events, allSportEvents);
+  const allEvents = [...matchingSportEvents, ...filteredRegularEvents];
   const [showStatusSheet, setShowStatusSheet] = useState(false);
   const sheetAnim = useState(new Animated.Value(0))[0];
   const [customStatus, setCustomStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [eventsLoaded, setEventsLoaded] = useState(false);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   const [updatingMood, setUpdatingMood] = useState(false);
   const [searchHeaderHeight, setSearchHeaderHeight] = useState(0);
   const [defaultSearchHeight, setDefaultSearchHeight] = useState(0);
@@ -302,6 +312,18 @@ export default function Dashboard() {
     title: "",
     message: "",
     type: "success",
+  });
+  const hasShownProfilePopup = useRef(false);
+  const hasShownNotificationPopup = useRef(false);
+  const [profilePicturePopup, setProfilePicturePopup] = useState<{
+    visible: boolean;
+  }>({
+    visible: false
+  });
+  const [notificationsPopup, setNotificationsPopup] = useState<{
+    visible: boolean;
+  }>({
+    visible: false
   });
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [visibleAirportCount, setVisibleAirportCount] = useState(5);
@@ -325,7 +347,7 @@ export default function Dashboard() {
   const listOpacityAnim = useRef(new Animated.Value(0)).current;
   const listTranslateYAnim = useRef(new Animated.Value(20)).current;
 
-  const [notificationCount, setNotificationCount] = useState(0);
+  const notificationCount = useNotificationCount(userId);
 
   const showPopup = (title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
@@ -360,18 +382,6 @@ export default function Dashboard() {
   };
   
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setAuthUser(user);
-        setUserId(user.uid);
-      } else {
-        router.replace("login/login");
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
   // Fetch user location on mount
   useEffect(() => {
     (async () => {
@@ -399,6 +409,7 @@ export default function Dashboard() {
 
         if (eventsData) setEvents(eventsData);
         if (sportEventsData) setAllSportEvents(sportEventsData);
+        setEventsLoaded(true);
 
         // Load airports
         const fetchedAirports = await getAirports();
@@ -409,8 +420,6 @@ export default function Dashboard() {
       } catch (error) {
         console.error("Error initializing dashboard:", error);
         showPopup("Error", "Failed to load dashboard data", "error");
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -420,54 +429,9 @@ export default function Dashboard() {
   }, [userId]);
 
   useEffect(() => {
-    const loadEvents = async () => {
-      const eventsData = await getEvents();
-      if (eventsData) setEvents(eventsData);
-    };
-    loadEvents();
-  }, []);
-
-  useEffect(() => {
-    const loadSportEvents = async () => {
-      const eventsData = await getSportEvents();
-      if (eventsData) setAllSportEvents(eventsData);
-    };
-    loadSportEvents();
-  }, [getSportEvents]);
-
-  const { getAirports } = useAirports();
-  useEffect(() => {
-    const fetchAirports = async () => {
-      const fetchedAirports = await getAirports();
-      if (fetchedAirports) setAllAirports(fetchedAirports);
-    };
-    fetchAirports();
-  }, [getAirports]);
-
-  const nearestAirports = useNearestAirports(userLocation, allAirports);
-
-  useEffect(() => {
-    if (!selectedAirport && nearestAirports.closest) {
-      setSelectedAirport(nearestAirports.closest);
-    }
-  }, [nearestAirports.closest, selectedAirport]);
-
-  useEffect(() => {
-    if (userId && nearestAirports.closest && !hasUpdatedRef.current) {
-      hasUpdatedRef.current = true; // Mark as updated to prevent re-runs
-      updateUserLocationAndLogin(userId, nearestAirports.closest.airportCode);
-      console.log("Updated user location and login");
-    }
-  }, [userId, nearestAirports.closest, updateUserLocationAndLogin]);
-
-  const { filteredRegularEvents, matchingSportEvents } = useFilteredEvents(selectedAirport, events, allSportEvents);
-  const allEvents = [...matchingSportEvents, ...filteredRegularEvents];
-
-  useEffect(() => {
     const fetchNearbyUsers = async () => {
       if (!selectedAirport?.airportCode) return;
       
-      setLoading(true);
       try {
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
         const users = await getNearbyUsers(selectedAirport.airportCode, thirtyMinutesAgo) as UserData[];
@@ -492,7 +456,6 @@ export default function Dashboard() {
             !blockedUsers.includes(user.id) && // Exclude users blocked by current user
             !hasMeBlocked.includes(user.id) // Exclude users who blocked current user
           )
-          .slice(0, 3)
           .map(user => ({
             id: user.id,
             name: user.name || 'Anonymous',
@@ -510,35 +473,72 @@ export default function Dashboard() {
         // Generate a unique timestamp for this batch of invite cards
         const timestamp = Date.now();
         
-        // If we have fewer than 3 users, add "Invite Friends" cards with unique IDs
-        const inviteFriendsCards = Array(3 - formattedUsers.length)
-          .fill(null)
-          .map((_, index) => ({
-            id: `invite-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-            name: 'Invite Friends',
-            status: 'Click to invite',
-            isInviteCard: true,
-            profilePicture: undefined
-          }));
+        let finalUsers = [...formattedUsers];
+        
+        // If we have 3 or more users, add a "View More" card as the last item
+        if (formattedUsers.length >= 3) {
+          finalUsers = [
+            ...formattedUsers,
+            {
+              id: `view-more-${timestamp}`,
+              name: 'View More',
+              status: 'See all travelers',
+              profilePicture: undefined,
+              age: undefined,
+              bio: undefined,
+              languages: [],
+              interests: [], 
+              goals: [],
+              pronouns: undefined,
+              lastLogin: null
+            }
+          ];
+        } else {
+          // If we have fewer than 3 users, add "Invite Friends" cards
+          const inviteFriendsCards = Array(3 - formattedUsers.length)
+            .fill(null)
+            .map((_, index) => ({
+              id: `invite-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+              name: 'Invite Friends',
+              status: 'Click to invite',
+              isInviteCard: true,
+              profilePicture: undefined,
+              age: undefined,
+              bio: undefined,
+              languages: [],
+              interests: [],
+              goals: [],
+              pronouns: undefined,
+              lastLogin: null
+            }));
+          finalUsers = [...formattedUsers, ...inviteFriendsCards];
+        }
 
-        setNearbyUsers([...formattedUsers, ...inviteFriendsCards]);
+        setNearbyUsers(finalUsers);
+        setUsersLoaded(true);
       } catch (error) {
         console.error('Error fetching nearby users:', error);
         setNearbyUsers([]);
-      } finally {
-        setLoading(false);
+        setUsersLoaded(true);
       }
     };
 
     fetchNearbyUsers();
   }, [selectedAirport?.airportCode, userId]);
 
+  // Update loading state based on both events and users loading status
+  useEffect(() => {
+    if (eventsLoaded && usersLoaded) {
+      setLoading(false);
+    }
+  }, [eventsLoaded, usersLoaded]);
+
   const features: FeatureButton[] = [
     { 
       icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, 
-      title: "Nearby Users", 
+      title: "Connect", 
       screen: "swipe",
-      description: "Connect with travelers at your airport"
+      description: "Swipe to find the perfect match"
     },
     { 
       icon: <Feather name="plus" size={24} color="#38a5c9" />, 
@@ -893,30 +893,107 @@ export default function Dashboard() {
     }
   }, [loading, initialLoadComplete]);
 
-  useEffect(() => {
-    if (!userId) return;
+  
 
-    const userRef = doc(db, 'users', userId);
-    const unsubscribe = onSnapshot(userRef, (doc) => {
-      if (doc.exists()) {
-        const userData = doc.data();
-        const notifications = userData.notifications || [];
-        const unreadCount = notifications.filter((n: any) => !n.read).length;
-        setNotificationCount(unreadCount);
+  // Check notification permissions
+  const checkNotificationPermissions = async () => {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    return existingStatus === 'granted';
+  };
+
+  // Request notification permissions
+  const requestNotificationPermissions = async () => {
+    try {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status === 'granted') {
+        // Get the token if permissions are granted
+        const projectId = '61cfadd9-25bb-4566-abec-1e9679ef882b';
+        const token = await Notifications.getExpoPushTokenAsync({ projectId });
+        
+        // Update user document with token
+        if (userId) {
+          const userRef = doc(db, 'users', userId);
+          await updateDoc(userRef, {
+            expoPushToken: token.data,
+            notificationPreferences: {
+              announcements: true,
+              chats: true,
+              connections: true,
+              events: true,
+              notificationsEnabled: true
+            }
+          });
+
+          // Navigate to notification preferences screen
+          router.push('/settings/notificationPreferences');
+        }
+        return true;
       }
-    });
-
-    return () => unsubscribe();
-  }, [userId]);
+      return false;
+    } catch (error) {
+      console.error('Error requesting notification permissions:', error);
+      return false;
+    }
+  };
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     
     if (userId) {
       const userRef = doc(db, "users", userId);
-      unsubscribe = onSnapshot(userRef, (doc) => {
+      unsubscribe = onSnapshot(userRef, async (doc) => {
         if (doc.exists()) {
-          setUserData(doc.data() as UserData);
+          const data = doc.data() as UserData;
+          setUserData(data);
+          
+          try {
+            // Check both conditions
+            const hasNotifications = await checkNotificationPermissions();
+            const hasProfilePicture = !!data.profilePicture;
+            const randomChance = Math.random();
+            
+            console.log('Popup conditions:', {
+              hasNotifications,
+              hasProfilePicture,
+              randomChance,
+              hasShownNotifications: hasShownNotificationPopup.current,
+              hasShownProfile: hasShownProfilePopup.current
+            });
+
+            // If both conditions are true (need both notifications and profile pic)
+            if (!hasNotifications && !hasProfilePicture) {
+              if (randomChance < 0.2 && !hasShownNotificationPopup.current && !hasShownProfilePopup.current) {
+                // Randomly choose which popup to show
+                if (Math.random() < 0.5) {
+                  console.log('Showing notifications popup (both conditions true)');
+                  setNotificationsPopup({ visible: true });
+                  hasShownNotificationPopup.current = true;
+                } else {
+                  console.log('Showing profile popup (both conditions true)');
+                  setProfilePicturePopup({ visible: true });
+                  hasShownProfilePopup.current = true;
+                }
+              }
+            }
+            // If only notifications are needed
+            else if (!hasNotifications && !hasShownNotificationPopup.current) {
+              if (randomChance < 0.1) {
+                console.log('Showing notifications popup (only notifications needed)');
+                setNotificationsPopup({ visible: true });
+                hasShownNotificationPopup.current = true;
+              }
+            }
+            // If only profile picture is needed
+            else if (!hasProfilePicture && !hasShownProfilePopup.current) {
+              if (randomChance < 0.1) {
+                console.log('Showing profile popup (only profile needed)');
+                setProfilePicturePopup({ visible: true });
+                hasShownProfilePopup.current = true;
+              }
+            }
+          } catch (error) {
+            console.error('Error checking conditions:', error);
+          }
         }
       });
     }
@@ -927,6 +1004,20 @@ export default function Dashboard() {
       }
     };
   }, [userId]);
+
+  useEffect(() => {
+    if (!selectedAirport && nearestAirports.closest) {
+      setSelectedAirport(nearestAirports.closest);
+    }
+  }, [nearestAirports.closest, selectedAirport]);
+
+  useEffect(() => {
+    if (userId && nearestAirports.closest && !hasUpdatedRef.current) {
+      hasUpdatedRef.current = true; // Mark as updated to prevent re-runs
+      updateUserLocationAndLogin(userId, nearestAirports.closest.airportCode);
+      console.log("Updated user location and login");
+    }
+  }, [userId, nearestAirports.closest, updateUserLocationAndLogin]);
 
   // Show black screen during auth check
   if (!userId) {
@@ -942,8 +1033,8 @@ export default function Dashboard() {
   if (loading || !initialLoadComplete) {
     return (
       <LoadingScreen 
-        isEventsLoading={loading} 
-        isUsersLoading={!initialLoadComplete} 
+        isEventsLoading={!eventsLoaded} 
+        isUsersLoading={!usersLoaded} 
       />
     );
   }
@@ -957,6 +1048,140 @@ export default function Dashboard() {
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <Animated.View style={{ flex: 1, position: "relative", opacity: fadeAnim }}>
+            {/* Profile Picture Popup */}
+            {profilePicturePopup.visible && (
+              <View style={[styles.overlay, { backgroundColor: 'transparent', zIndex: 1000 }]}>
+                <View style={[styles.profilePicturePopup, { 
+                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                }]}>
+                  <Image
+                    source={require('../../../assets/adaptive-icon.png')}
+                    style={[
+                      styles.popupLogo,
+                      { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
+                    ]}
+                    resizeMode="contain"
+                  />
+                  <Text style={[styles.popupTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                    Add a Profile Picture
+                  </Text>
+                  <Text style={[styles.popupMessage, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                    Make your profile stand out by adding a profile picture. This helps other travelers recognize you!
+                  </Text>
+                  <View style={styles.popupButtons}>
+                    <TouchableOpacity 
+                      style={[styles.popupButton, { 
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        borderWidth: 1
+                      }]}
+                      onPress={() => setProfilePicturePopup({ visible: false })}
+                    >
+                      <Text style={[styles.popupButtonText, { 
+                        color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                      }]}>Maybe Later</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.popupButton, { 
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        borderWidth: 1,
+                        marginLeft: 8,
+                        shadowColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 4,
+                        elevation: 3
+                      }]}
+                      onPress={() => {
+                        setProfilePicturePopup({ visible: false });
+                        router.push(`profile/${userId}`);
+                      }}
+                    >
+                      <Text style={[styles.popupButtonText, { 
+                        color: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        fontWeight: '700'
+                      }]}>Add Picture</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Notifications Popup */}
+            {notificationsPopup.visible && (
+              <View style={[styles.overlay, { backgroundColor: 'transparent', zIndex: 1000 }]}>
+                <View style={[styles.profilePicturePopup, { 
+                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                }]}>
+                  <Image
+                    source={require('../../../assets/adaptive-icon.png')}
+                    style={[
+                      styles.popupLogo,
+                      { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
+                    ]}
+                    resizeMode="contain"
+                  />
+                  <Text style={[styles.popupTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                    Enable Notifications
+                  </Text>
+                  <Text style={[styles.popupMessage, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                    Stay connected with other travelers! Enable notifications to never miss a message or connection request.
+                  </Text>
+                  <View style={styles.popupButtons}>
+                    <TouchableOpacity 
+                      style={[styles.popupButton, { 
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        borderWidth: 1
+                      }]}
+                      onPress={() => setNotificationsPopup({ visible: false })}
+                    >
+                      <Text style={[styles.popupButtonText, { 
+                        color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                      }]}>Maybe Later</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.popupButton, { 
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
+                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        borderWidth: 1,
+                        marginLeft: 8,
+                        shadowColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 4,
+                        elevation: 3
+                      }]}
+                      onPress={async () => {
+                        const granted = await requestNotificationPermissions();
+                        setNotificationsPopup({ visible: false });
+                        if (granted) {
+                          showPopup(
+                            "Notifications Enabled",
+                            "You'll now receive notifications for messages, connections, and events.",
+                            "success"
+                          );
+                        } else {
+                          showPopup(
+                            "Permission Required",
+                            "Please enable notifications in your device settings to receive updates.",
+                            "error"
+                          );
+                        }
+                      }}
+                    >
+                      <Text style={[styles.popupButtonText, { 
+                        color: theme === "light" ? "#37a4c8" : "#38a5c9",
+                        fontWeight: '700'
+                      }]}>Enable Notifications</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
             <Animated.View 
               style={[
                 styles.searchHeaderContainer,
@@ -1065,7 +1290,7 @@ export default function Dashboard() {
                     >
                       {selectedAirport ? selectedAirport.name : "Select an airport"}
                     </Text>
-                    <Feather name="chevron-down" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.searchIcon} />
+                    
                   </View>
                   {selectedAirport && (
                     <TouchableOpacity
@@ -1151,54 +1376,64 @@ export default function Dashboard() {
                             keyExtractor={(user: NearbyUser) => user.id}
                             renderItem={({ item: user }: { item: NearbyUser }) => {
                               const handlePress = () => {
-                                  if (user.isInviteCard) {
-                                    const appStoreLink = 'https://apps.apple.com/us/app/wingman-connect-on-layovers/id6743148488';
-                                    const message = `Join me on Wingman! Connect with travelers during layovers: ${appStoreLink}`;
-                                    Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
-                                  } else {
-                                    router.push(`profile/${user.id}`);
-                                  }
+                                if (user.isInviteCard) {
+                                  const appStoreLink = 'https://apps.apple.com/us/app/wingman-connect-on-layovers/id6743148488';
+                                  const message = `Join me on Wingman! Connect with travelers during layovers: ${appStoreLink}`;
+                                  Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
+                                } else if (user.isViewMoreCard) {
+                                  router.push('/explore');
+                                } else {
+                                  router.push(`profile/${user.id}`);
+                                }
                               };
 
                               const renderUserCard = () => (
                                 <View style={styles.userInfo}>
-                                  <View style={[styles.avatar, { 
-                                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
-                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                  }]}>
-                                    {user.profilePicture ? (
-                                      <Image 
-                                        source={{ uri: user.profilePicture }} 
-                                        style={styles.avatarImage}
-                                      />
-                                    ) : (
-                                      <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                    )}
-                                  </View>
-                                  <View style={styles.nameRow}>
-                                    <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                      {user.name}
-                                    </Text>
-                                    {user.pronouns && (
-                                      <Text style={[styles.pronouns, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                        {user.pronouns}
+                                  <View style={styles.userSection}>
+                                    <View style={[styles.avatar, { 
+                                      backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                                      marginBottom: 4,
+                                    }]}>
+                                      {user.profilePicture ? (
+                                        <Image 
+                                          source={{ uri: user.profilePicture }} 
+                                          style={styles.avatarImage}
+                                        />
+                                      ) : (
+                                        <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                      )}
+                                    </View>
+                                    <View style={styles.nameRow}>
+                                      <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                        {user.name}
                                       </Text>
-                                    )}
+                                      {user.pronouns && (
+                                        <Text style={[styles.pronouns, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                          {user.pronouns}
+                                        </Text>
+                                      )}
+                                    </View>
                                   </View>
+
                                   {user.bio && (
                                     <Text 
-                                      style={[styles.userBio, { color: theme === "light" ? "#38a5c9" : "#38a5c9" }]}
+                                      style={[styles.userBio, { 
+                                        color: theme === "light" ? "#38a5c9" : "#38a5c9",
+                                      }]}
                                       numberOfLines={2}
+                                      ellipsizeMode="tail"
                                     >
-                                      {user.bio}
+                                      {user.bio.trim()}
                                     </Text>
                                   )}
+
                                   <View style={styles.userMetaContainer}>
                                     <View style={[styles.metaItem, { 
                                       backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
                                     }]}>
-                                      <Feather name="heart" size={14} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                      <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                      <Feather name="heart" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                      <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}>
                                         {user.status}
                                       </Text>
                                     </View>
@@ -1233,6 +1468,33 @@ export default function Dashboard() {
                                 </View>
                               );
 
+                              const renderViewMoreCard = () => (
+                                <View style={[styles.inviteCardGradient, { 
+                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
+                                }]}>
+                                  <View style={[styles.inviteAvatar, { 
+                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}>
+                                    <Feather name="users" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                  </View>
+                                  <Text style={[styles.inviteTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                    View More
+                                  </Text>
+                                  <Text style={[styles.inviteSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                    See all travelers
+                                  </Text>
+                                  <View style={[styles.inviteButton, { 
+                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+                                  }]}>
+                                    <Feather name="chevron-right" size={16} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                    <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                      Explore
+                                    </Text>
+                                  </View>
+                                </View>
+                              );
+
                               return (
                                 <TouchableOpacity
                                   style={[styles.userCard, { 
@@ -1243,7 +1505,9 @@ export default function Dashboard() {
                                   onPress={handlePress}
                                 >
                                   <View style={styles.userCardGradient}>
-                                    {user.isInviteCard ? renderInviteCard() : renderUserCard()}
+                                    {user.isInviteCard ? renderInviteCard() : 
+                                     user.isViewMoreCard ? renderViewMoreCard() : 
+                                     renderUserCard()}
                                   </View>
                                 </TouchableOpacity>
                               );
@@ -1267,11 +1531,34 @@ export default function Dashboard() {
                         {item.data.length > 0 ? (
                           <FlatList
                             horizontal
-                            data={[...item.data].sort((a, b) => {
-                              if (a.organizer && !b.organizer) return -1;
-                              if (!a.organizer && b.organizer) return 1;
-                              return 0;
-                            })}
+                            data={[...item.data]
+                              .filter(event => {
+                                // Only filter out events that have a start time and are more than 1 hour past
+                                if (!event.startTime) return true;
+                                const startTime = new Date(event.startTime);
+                                const now = new Date();
+                                const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+                                return startTime > oneHourAgo;
+                              })
+                              .sort((a, b) => {
+                                // First sort by whether user is attending
+                                const userIsAttendingA = a.attendees?.includes(authUser?.uid);
+                                const userIsAttendingB = b.attendees?.includes(authUser?.uid);
+                                if (userIsAttendingA && !userIsAttendingB) return -1;
+                                if (!userIsAttendingA && userIsAttendingB) return 1;
+                                
+                                // Then sort by whether user is organizer
+                                const userIsOrganizerA = a.organizer === authUser?.uid;
+                                const userIsOrganizerB = b.organizer === authUser?.uid;
+                                if (userIsOrganizerA && !userIsOrganizerB) return -1;
+                                if (!userIsOrganizerA && userIsOrganizerB) return 1;
+                                
+                                // Then sort by start time (events without start time go to the end)
+                                if (!a.startTime && !b.startTime) return 0;
+                                if (!a.startTime) return 1;
+                                if (!b.startTime) return -1;
+                                return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+                              })}
                             keyExtractor={(event) => `${event.type}-${event.id}`}
                             renderItem={({ item: event }) => (
                               <TouchableOpacity
@@ -1284,30 +1571,37 @@ export default function Dashboard() {
                               >
                                 <View style={styles.eventImageContainer}>
                                 {event.eventImage ? (
-                                  <Image 
+                                  <LoadingImage 
                                     source={{ uri: event.eventImage }} 
                                     style={styles.eventImage}
-                                      resizeMode="cover"
                                   />
-                                  ) : (
-                                    <View style={[styles.eventImagePlaceholder, {
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                    }]}>
-                                      <MaterialIcons 
-                                        name="event" 
-                                        size={32} 
-                                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
-                                      />
-                                    </View>
-                                  )}
-                                  {event.organizer && (
-                                    <View style={[styles.organizerBadge, {
-                                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                    }]}>
-                                      <Feather name="star" size={12} color="#FFFFFF" />
-                                      <Text style={styles.organizerText}>Organized by you</Text>
-                                    </View>
-                                  )}
+                                ) : (
+                                  <View style={[styles.eventImagePlaceholder, {
+                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                  }]}>
+                                    <MaterialIcons 
+                                      name="event" 
+                                      size={32} 
+                                      color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                                    />
+                                  </View>
+                                )}
+                                {event.organizer && event.organizer === authUser?.uid && (
+                                  <View style={[styles.organizerBadge, {
+                                    backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}>
+                                    <Feather name="star" size={12} color="#FFFFFF" />
+                                    <Text style={styles.organizerText}>Organized by you</Text>
+                                  </View>
+                                )}
+                                {event.attendees?.includes(authUser?.uid) && event.organizer !== authUser?.uid && (
+                                  <View style={[styles.attendingBadge, {
+                                    backgroundColor: theme === "light" ? "#4CAF50" : "#45a049"
+                                  }]}>
+                                    <Feather name="check" size={12} color="#FFFFFF" />
+                                    <Text style={styles.attendingText}>You're attending</Text>
+                                  </View>
+                                )}
                                 </View>
                                 <View style={styles.eventContent}>
                                   <View style={[styles.eventHeader, { 
@@ -1326,7 +1620,7 @@ export default function Dashboard() {
                                             color: theme === "light" ? "#37a4c8" : "#38a5c9"
                                           }]}>
                                             {event.category}
-                                      </Text>
+                                          </Text>
                                         </View>
                                       )}
                                     </View>
@@ -1592,60 +1886,58 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   userInfo: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  userSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(55, 164, 200, 0.1)',
+    paddingBottom: 8,
+    marginBottom: 8,
     width: '100%',
     alignItems: 'center',
-    padding: 12,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 8,
     gap: 6,
-    marginBottom: 6,
   },
   userName: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#e4fbfe",
-    letterSpacing: 0.1,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   pronouns: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  userBio: {
     fontSize: 12,
-    color: "#38a5c9",
+    lineHeight: 14,
     letterSpacing: 0.1,
-    fontWeight: "500",
+    textAlign: 'center',
+    marginVertical: 6,
+    paddingHorizontal: 4,
   },
   userMetaContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 8,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 4,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    paddingVertical: 4,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(56, 165, 201, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(56, 165, 201, 0.2)',
+    borderRadius: 12,
+    gap: 4,
   },
   metaText: {
     fontSize: 12,
-    color: "#38a5c9",
-    fontWeight: "600",
-    letterSpacing: 0.1,
-  },
-  userBio: {
-    fontSize: 12,
-    color: "#38a5c9",
-    marginBottom: 8,
-    letterSpacing: 0.1,
-    lineHeight: 16,
-    textAlign: 'center',
-    paddingHorizontal: 4,
+    fontWeight: '500',
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -1974,12 +2266,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   searchPlaceholder: {
-    flex: 1,
-    fontSize: 17,
+    fontSize: 16,
+    color: "#64748B",
     marginLeft: 14,
     letterSpacing: 0.3,
-    numberOfLines: 1,
-    ellipsizeMode: 'tail',
   },
   searchIcon: {
     marginLeft: 10,
@@ -2294,6 +2584,82 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: "#e4fbfe",
+  },
+  profilePicturePopup: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -175 }, { translateY: -180 }],
+    width: 350,
+    padding: 32,
+    paddingTop: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    alignItems: 'center',
+  },
+  popupLogo: {
+    width: 128,
+    height: 128,
+    marginBottom: 16,
+    marginTop: -16,
+  },
+  popupTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  popupMessage: {
+    fontSize: 16,
+    marginBottom: 28,
+    textAlign: 'center',
+    lineHeight: 24,
+    letterSpacing: -0.2,
+  },
+  popupButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+  },
+  popupButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    minWidth: 140,
+    alignItems: 'center',
+  },
+  popupButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  attendingBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  attendingText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });
 

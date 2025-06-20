@@ -1,0 +1,2311 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, ActivityIndicator, TextInput, Alert, Modal, Image } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ThemeContext } from '../../context/ThemeContext';
+import TopBar from '../../components/TopBar';
+import { MaterialIcons } from '@expo/vector-icons';
+import useUsers from '../../hooks/useUsers';
+import { collection, getDocs, doc, updateDoc, query, orderBy, Timestamp, deleteDoc, writeBatch, where } from 'firebase/firestore';
+import { db } from '../../../config/firebaseConfig';
+import { useRouter } from 'expo-router';
+
+interface NotificationPreferences {
+  announcements: boolean;
+  chats: boolean;
+  connections: boolean;
+  events: boolean;
+  notificationsEnabled: boolean;
+}
+
+interface User {
+  id: string;
+  expoPushToken?: string;
+  notificationPreferences?: NotificationPreferences;
+}
+
+interface CollapsibleSectionProps {
+  title: string;
+  children: React.ReactNode;
+  isExpanded: boolean;
+  onToggle: () => void;
+  textColor: string;
+  sectionBgColor: string;
+}
+
+const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
+  title,
+  children,
+  isExpanded,
+  onToggle,
+  textColor,
+  sectionBgColor,
+}) => {
+  const [animation] = useState(new Animated.Value(0));
+  const [contentHeight, setContentHeight] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isContentReady, setIsContentReady] = useState(false);
+
+  React.useEffect(() => {
+    if (isExpanded && !isContentReady) {
+      setIsLoading(true);
+      // Simulate content loading
+      setTimeout(() => {
+        setIsContentReady(true);
+        setIsLoading(false);
+      }, 500);
+    } else if (!isExpanded) {
+      setIsContentReady(false);
+    }
+  }, [isExpanded]);
+
+  React.useEffect(() => {
+    if (isExpanded && isContentReady) {
+      Animated.spring(animation, {
+        toValue: 1,
+        useNativeDriver: false,
+        tension: 65,
+        friction: 11,
+        restDisplacementThreshold: 0.001,
+        restSpeedThreshold: 0.001,
+      }).start();
+    } else if (!isExpanded) {
+      Animated.spring(animation, {
+        toValue: 0,
+        useNativeDriver: false,
+        tension: 65,
+        friction: 11,
+        restDisplacementThreshold: 0.001,
+        restSpeedThreshold: 0.001,
+      }).start();
+    }
+  }, [isExpanded, isContentReady]);
+
+  const maxHeight = animation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, contentHeight],
+  });
+
+  const contentOpacity = animation.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0, 1],
+  });
+
+  return (
+    <View style={[styles.section, { backgroundColor: sectionBgColor }]}>
+      <TouchableOpacity 
+        style={styles.sectionHeader} 
+        onPress={onToggle}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.sectionTitle, { color: textColor }]}>{title}</Text>
+        {isLoading ? (
+          <ActivityIndicator size="small" color={textColor} />
+        ) : (
+          <MaterialIcons 
+            name={isExpanded ? "remove" : "add"} 
+            size={24} 
+            color={textColor} 
+          />
+        )}
+      </TouchableOpacity>
+      <Animated.View 
+        style={{ 
+          maxHeight,
+          overflow: 'hidden',
+        }}
+      >
+        <Animated.View 
+          style={[
+            styles.sectionContent,
+            {
+              opacity: contentOpacity,
+            }
+          ]}
+          onLayout={(event) => {
+            const { height } = event.nativeEvent.layout;
+            setContentHeight(height);
+          }}
+        >
+          {children}
+        </Animated.View>
+      </Animated.View>
+    </View>
+  );
+};
+
+const NotificationForm = ({ textColor }: { textColor: string }) => {
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [eligibleUsers, setEligibleUsers] = useState<User[]>([]);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
+  const { getUsers } = useUsers();
+
+  const templates = [
+    {
+      id: 'maintenance',
+      title: 'Scheduled Maintenance',
+      message: 'We will be performing scheduled maintenance in the next 24 hours. The app may experience brief periods of downtime. We apologize for any inconvenience.',
+      icon: 'build' as const,
+      color: '#FF9500',
+    },
+    {
+      id: 'update',
+      title: 'New Feature Available',
+      message: 'We\'ve just released a new feature! Check out the latest update in the app. Your feedback helps us improve Layover.',
+      icon: 'update' as const,
+      color: '#34C759',
+    },
+    {
+      id: 'emergency',
+      title: 'Important Service Update',
+      message: 'We are currently experiencing technical difficulties. Our team is working to resolve the issue. Please check back later for updates.',
+      icon: 'warning' as const,
+      color: '#FF3B30',
+    },
+    {
+      id: 'survey',
+      title: 'Quick Survey',
+      message: 'We value your feedback! Please take a moment to complete our quick survey. Your input helps us improve Layover for everyone.',
+      icon: 'poll' as const,
+      color: '#5856D6',
+    },
+  ];
+
+  const applyTemplate = (template: typeof templates[0]) => {
+    setTitle(template.title);
+    setMessage(template.message);
+    setActiveTemplate(template.id);
+  };
+
+  useEffect(() => {
+    const fetchEligibleUsers = async () => {
+      const allUsers = await getUsers() as User[];
+      const eligible = allUsers.filter(user => 
+        user.expoPushToken && 
+        user.notificationPreferences?.announcements === true &&
+        user.notificationPreferences?.notificationsEnabled === true
+      );
+      setEligibleUsers(eligible);
+    };
+
+    fetchEligibleUsers();
+  }, []);
+
+  const sendMassNotification = async () => {
+    const trimmedTitle = title.trim();
+    const trimmedMessage = message.trim();
+    
+    if (!trimmedTitle || !trimmedMessage) return;
+    
+    setIsSubmitting(true);
+    try {
+      // Send to each eligible user
+      const notifications = eligibleUsers.map(user => 
+        fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Accept-encoding': 'gzip, deflate',
+          },
+          body: JSON.stringify({
+            to: user.expoPushToken,
+            title: trimmedTitle,
+            body: trimmedMessage,
+            sound: 'default',
+            priority: 'high',
+            data: { 
+              type: 'announcement',
+              timestamp: new Date().toISOString()
+            },
+          }),
+        })
+      );
+
+      // Wait for all notifications to be sent
+      const results = await Promise.allSettled(notifications);
+      
+      // Count successes and failures
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      Alert.alert(
+        'Notification Status',
+        `Successfully sent to ${successful} users.\nFailed to send to ${failed} users.`,
+        [{ text: 'OK' }]
+      );
+
+      // Reset form
+      setTitle('');
+      setMessage('');
+    } catch (error) {
+      console.error('Error sending mass notification:', error);
+      Alert.alert(
+        'Error',
+        'Failed to send notifications. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <View style={styles.formContainer}>
+      <View style={styles.formContent}>
+        <TouchableOpacity 
+          activeOpacity={0.7}
+          onPress={() => setIsExpanded(!isExpanded)}
+          style={[styles.eligibleUsersContainer, { borderColor: textColor }]}
+        >
+          <View style={styles.eligibleUsersHeader}>
+            <MaterialIcons name="notifications-active" size={20} color={textColor} />
+            <Text style={[styles.eligibleUsersText, { color: textColor }]}>
+              {eligibleUsers.length} users will receive this announcement
+            </Text>
+            <MaterialIcons 
+              name={isExpanded ? "expand-less" : "expand-more"} 
+              size={24} 
+              color={textColor} 
+            />
+          </View>
+          {isExpanded && (
+            <View style={styles.eligibleUsersDetails}>
+              <Text style={[styles.eligibleUsersDetailText, { color: textColor }]}>
+                These users have:
+              </Text>
+              <View style={styles.eligibleUsersList}>
+                <View style={styles.eligibleUsersListItem}>
+                  <MaterialIcons name="check-circle" size={16} color={textColor} />
+                  <Text style={[styles.eligibleUsersListItemText, { color: textColor }]}>
+                    Push notifications enabled
+                  </Text>
+                </View>
+                <View style={styles.eligibleUsersListItem}>
+                  <MaterialIcons name="check-circle" size={16} color={textColor} />
+                  <Text style={[styles.eligibleUsersListItemText, { color: textColor }]}>
+                    Announcements enabled in preferences
+                  </Text>
+                </View>
+                <View style={styles.eligibleUsersListItem}>
+                  <MaterialIcons name="check-circle" size={16} color={textColor} />
+                  <Text style={[styles.eligibleUsersListItemText, { color: textColor }]}>
+                    Valid push token registered
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.templateSection}>
+          <Text style={[styles.label, { color: textColor }]}>Quick Templates</Text>
+          <View style={styles.templateGrid}>
+            {templates.map((template) => (
+              <TouchableOpacity
+                key={template.id}
+                style={[
+                  styles.templateButton,
+                  { 
+                    borderColor: activeTemplate === template.id ? template.color : textColor,
+                    backgroundColor: activeTemplate === template.id 
+                      ? `${template.color}15` 
+                      : 'rgba(255, 255, 255, 0.05)',
+                  }
+                ]}
+                onPress={() => applyTemplate(template)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.templateIconContainer, { backgroundColor: `${template.color}20` }]}>
+                  <MaterialIcons 
+                    name={template.icon}
+                    size={20} 
+                    color={template.color} 
+                  />
+                </View>
+                <Text 
+                  style={[
+                    styles.templateButtonText, 
+                    { 
+                      color: textColor,
+                      fontWeight: activeTemplate === template.id ? '600' : '500',
+                    }
+                  ]}
+                >
+                  {template.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={[styles.label, { color: textColor }]}>Notification Title</Text>
+          <TextInput
+            style={[styles.input, { color: textColor, borderColor: textColor }]}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Enter notification title"
+            placeholderTextColor={`${textColor}80`}
+            maxLength={50}
+          />
+          <Text style={[styles.characterCount, { color: textColor }]}>
+            {title.length}/50
+          </Text>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={[styles.label, { color: textColor }]}>Message</Text>
+          <TextInput
+            style={[styles.textArea, { color: textColor, borderColor: textColor }]}
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Enter notification message"
+            placeholderTextColor={`${textColor}80`}
+            multiline
+            numberOfLines={4}
+            maxLength={200}
+          />
+          <Text style={[styles.characterCount, { color: textColor }]}>
+            {message.length}/200
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.submitButton,
+            (!title || !message || isSubmitting || eligibleUsers.length === 0) && styles.submitButtonDisabled
+          ]}
+          onPress={sendMassNotification}
+          disabled={!title || !message || isSubmitting || eligibleUsers.length === 0}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.submitButtonText}>Send Announcement</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+interface SystemStatus {
+  firebaseStatus: 'connected' | 'disconnected' | 'checking';
+  userCount: number;
+  eventCount: number;
+  sportEventCount: number;
+  feedbackCount: number;
+  reportCount: number;
+}
+
+const SystemStatusGrid: React.FC<{ textColor: string, sectionBgColor: string }> = ({ textColor, sectionBgColor }) => {
+  const [status, setStatus] = useState<SystemStatus>({
+    firebaseStatus: 'checking',
+    userCount: 0,
+    eventCount: 0,
+    sportEventCount: 0,
+    feedbackCount: 0,
+    reportCount: 0
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSystemStatus = async () => {
+      try {
+        // Check Firebase connection by attempting to fetch a document
+        const testDoc = await getDocs(collection(db, 'users'));
+        setStatus(prev => ({ ...prev, firebaseStatus: 'connected' }));
+
+        // Fetch counts for each collection
+        const [users, events, sportEvents, feedback, reports] = await Promise.all([
+          getDocs(collection(db, 'users')),
+          getDocs(collection(db, 'events')),
+          getDocs(collection(db, 'sportEvents')),
+          getDocs(collection(db, 'feedback')),
+          getDocs(collection(db, 'reports'))
+        ]);
+
+        setStatus({
+          firebaseStatus: 'connected',
+          userCount: users.size,
+          eventCount: events.size,
+          sportEventCount: sportEvents.size,
+          feedbackCount: feedback.size,
+          reportCount: reports.size
+        });
+      } catch (error) {
+        console.error('Error fetching system status:', error);
+        setStatus(prev => ({ ...prev, firebaseStatus: 'disconnected' }));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSystemStatus();
+  }, []);
+
+  const getStatusColor = (status: 'connected' | 'disconnected' | 'checking') => {
+    switch (status) {
+      case 'connected': return '#34C759';
+      case 'disconnected': return '#FF3B30';
+      case 'checking': return '#FF9500';
+    }
+  };
+
+  const statusItems = [
+    {
+      title: 'Firebase Status',
+      value: status.firebaseStatus.charAt(0).toUpperCase() + status.firebaseStatus.slice(1),
+      color: getStatusColor(status.firebaseStatus),
+      icon: 'cloud-done'
+    },
+    {
+      title: 'Total Users',
+      value: status.userCount.toString(),
+      color: '#007AFF',
+      icon: 'people'
+    },
+    {
+      title: 'Events',
+      value: status.eventCount.toString(),
+      color: '#5856D6',
+      icon: 'event'
+    },
+    {
+      title: 'Reports',
+      value: status.reportCount.toString(),
+      color: '#FF3B30',
+      icon: 'flag'
+    },
+    {
+      title: 'Feedback',
+      value: status.feedbackCount.toString(),
+      color: '#FF2D55',
+      icon: 'feedback'
+    }
+  ];
+
+  return (
+    <View style={[styles.statusGrid, { backgroundColor: sectionBgColor }]}>
+      {isLoading ? (
+        <ActivityIndicator size="large" color={textColor} style={styles.statusLoading} />
+      ) : (
+        <>
+          {statusItems.map((item, index) => (
+            <View key={index} style={styles.statusItem}>
+              <View style={[styles.statusIconContainer, { backgroundColor: `${item.color}15` }]}>
+                <MaterialIcons name={item.icon as any} size={24} color={item.color} />
+              </View>
+              <Text style={[styles.statusTitle, { color: textColor }]}>{item.title}</Text>
+              <Text style={[styles.statusValue, { color: item.color }]}>{item.value}</Text>
+            </View>
+          ))}
+        </>
+      )}
+    </View>
+  );
+};
+
+interface EventDetails {
+  airportCode: string;
+  attendees: number;
+  category: string;
+  createdAt: Timestamp;
+  description: string;
+  name: string;
+  organizer: string | null;
+  startTime: Timestamp | null;
+}
+
+interface Report {
+  id: string;
+  createdAt: Timestamp;
+  lastUpdated: Timestamp;
+  reportedBy: string;
+  reportedByUserName: string;
+  reportedUserId?: string;
+  reportedUserName?: string;
+  reportedUserProfile?: {
+    age: string;
+    bio: string;
+    createdAt: Timestamp;
+    goals: string[];
+    interests: string[];
+    languages: string[];
+    name: string;
+  };
+  reportedEventId?: string;
+  reportedEventName?: string;
+  reportedEvent?: EventDetails;
+  reviewDate: Timestamp | null;
+  reviewNotes: string | null;
+  reviewedBy: string | null;
+  status: 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+  type: 'user_report' | 'event_report';
+}
+
+const ReportsSection: React.FC<{ textColor: string, sectionBgColor: string }> = ({ textColor, sectionBgColor }) => {
+  const [reports, setReports] = useState<Report[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
+  const fetchReports = useCallback(async () => {
+    try {
+      const reportsQuery = query(collection(db, 'reports'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(reportsQuery);
+      const reportsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Report[];
+
+      // Clean up old resolved reports
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+      const cleanupPromises = reportsData
+        .filter(report => {
+          const reportDate = report.createdAt.toDate();
+          const isOld = reportDate < oneWeekAgo;
+          const isResolved = ['resolved', 'reviewed', 'dismissed'].includes(report.status);
+          return isOld && isResolved;
+        })
+        .map(async (report) => {
+          try {
+            const reportRef = doc(db, 'reports', report.id);
+            await deleteDoc(reportRef);
+            console.log(`Deleted old report: ${report.id}`);
+          } catch (error) {
+            console.error(`Error deleting report ${report.id}:`, error);
+          }
+        });
+
+      // Wait for all cleanup operations to complete
+      await Promise.all(cleanupPromises);
+
+      // Fetch fresh data after cleanup
+      const updatedSnapshot = await getDocs(reportsQuery);
+      const updatedReportsData = updatedSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Report[];
+
+      setReports(updatedReportsData);
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+      Alert.alert('Error', 'Failed to fetch reports');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  const handleReview = useCallback(async (report: Report, status: Report['status']) => {
+    try {
+      const reportRef = doc(db, 'reports', report.id);
+      const updateData = {
+        status,
+        reviewNotes,
+        reviewDate: Timestamp.now(),
+        reviewedBy: 'admin',
+        lastUpdated: Timestamp.now()
+      };
+
+      await updateDoc(reportRef, updateData);
+      
+      setReports(prevReports => 
+        prevReports.map(r => 
+          r.id === report.id 
+            ? { ...r, ...updateData }
+            : r
+        )
+      );
+      
+      setIsModalVisible(false);
+      setReviewNotes('');
+      Alert.alert('Success', 'Report status updated successfully');
+    } catch (error) {
+      console.error('Error updating report:', error);
+      Alert.alert('Error', 'Failed to update report status');
+    }
+  }, [reviewNotes]);
+
+  const handleOpenModal = useCallback((report: Report) => {
+    setSelectedReport(report);
+    setReviewNotes(report.reviewNotes || '');
+    setIsModalVisible(true);
+  }, []);
+
+  const formatDate = (timestamp: Timestamp) => {
+    return new Date(timestamp.toDate()).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      timeZoneName: 'short'
+    });
+  };
+
+  const getStatusColor = (status: Report['status']) => {
+    switch (status) {
+      case 'pending': return '#FF9500';
+      case 'reviewed': return '#5856D6';
+      case 'resolved': return '#34C759';
+      case 'dismissed': return '#FF3B30';
+    }
+  };
+
+  const renderUserReportDetails = (report: Report) => {
+    const profile = report.reportedUserProfile;
+    if (!profile) {
+      return (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Reported User</Text>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="person" size={16} color={textColor} />
+            <Text style={[styles.detailText, { color: textColor }]}>{report.reportedUserName || 'Unknown User'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="info" size={16} color={textColor} />
+            <Text style={[styles.detailText, { color: textColor }]}>Profile not available</Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: textColor }]}>Reported User</Text>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="person" size={16} color={textColor} />
+          <Text style={[styles.detailText, { color: textColor }]}>{profile.name}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="cake" size={16} color={textColor} />
+          <Text style={[styles.detailText, { color: textColor }]}>{profile.age} years old</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="translate" size={16} color={textColor} />
+          <Text style={[styles.detailText, { color: textColor }]}>{profile.languages.join(', ')}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="event" size={16} color={textColor} />
+          <Text style={[styles.detailText, { color: textColor }]}>Joined {formatDate(profile.createdAt)}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderEventReportDetails = (report: Report) => {
+    const event = report.reportedEvent;
+    if (!event) {
+      return (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Reported Event</Text>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="event" size={16} color="#666" />
+            <Text style={styles.detailText}>{report.reportedEventName || 'Unknown Event'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="info" size={16} color="#666" />
+            <Text style={styles.detailText}>Event details not available</Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Reported Event</Text>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="event" size={16} color="#666" />
+          <Text style={styles.detailText}>{event.name}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="flight" size={16} color="#666" />
+          <Text style={styles.detailText}>{event.airportCode}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="category" size={16} color="#666" />
+          <Text style={styles.detailText}>{event.category}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="group" size={16} color="#666" />
+          <Text style={styles.detailText}>{event.attendees} attendees</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <MaterialIcons name="schedule" size={16} color="#666" />
+          <Text style={styles.detailText}>
+            {event.startTime ? formatDate(event.startTime) : 'No start time set'}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderReportDetails = (report: Report) => {
+    return (
+      <ScrollView style={styles.modalContent}>
+        <View style={styles.section}>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="flag" size={16} color={textColor} />
+            <Text style={[styles.detailText, { color: textColor }]}>
+              {report.type === 'user_report' ? 'User Report' : 'Event Report'}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="schedule" size={16} color={textColor} />
+            <Text style={[styles.detailText, { color: textColor }]}>Reported {formatDate(report.createdAt)}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="update" size={16} color={textColor} />
+            <Text style={[styles.detailText, { color: textColor }]}>Last updated {formatDate(report.lastUpdated)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Reporter</Text>
+          <View style={styles.detailRow}>
+            <MaterialIcons name="person" size={16} color={textColor} />
+            <Text style={[styles.detailText, { color: textColor }]}>{report.reportedByUserName}</Text>
+          </View>
+        </View>
+
+        {report.type === 'user_report' ? renderUserReportDetails(report) : renderEventReportDetails(report)}
+
+        {report.reviewNotes && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Review Notes</Text>
+            <View style={styles.detailRow}>
+              <MaterialIcons name="note" size={16} color={textColor} />
+              <Text style={[styles.detailText, { color: textColor }]}>{report.reviewNotes}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <MaterialIcons name="person" size={16} color={textColor} />
+              <Text style={[styles.detailText, { color: textColor }]}>Reviewed by {report.reviewedBy}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <MaterialIcons name="schedule" size={16} color={textColor} />
+              <Text style={[styles.detailText, { color: textColor }]}>On {formatDate(report.reviewDate!)}</Text>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>Add Review Notes</Text>
+          <TextInput
+            style={[styles.reviewInput, { color: textColor, borderColor: textColor }]}
+            placeholder="Add review notes..."
+            placeholderTextColor={`${textColor}80`}
+            value={reviewNotes}
+            onChangeText={setReviewNotes}
+            multiline
+            numberOfLines={4}
+          />
+        </View>
+
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: sectionBgColor, borderColor: textColor }]}
+            onPress={() => handleReview(report, 'resolved')}
+          >
+            <Text style={[styles.actionButtonText, { color: textColor }]}>Resolve</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: sectionBgColor, borderColor: textColor }]}
+            onPress={() => handleReview(report, 'reviewed')}
+          >
+            <Text style={[styles.actionButtonText, { color: textColor }]}>Mark Reviewed</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: sectionBgColor, borderColor: textColor }]}
+            onPress={() => handleReview(report, 'dismissed')}
+          >
+            <Text style={[styles.actionButtonText, { color: textColor }]}>Dismiss</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  };
+
+  const renderReportModal = () => (
+    <Modal
+      visible={isModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setIsModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContainer, { backgroundColor: sectionBgColor }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: textColor }]}>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Report Details</Text>
+            <TouchableOpacity onPress={() => setIsModalVisible(false)}>
+              <MaterialIcons name="close" size={24} color={textColor} />
+            </TouchableOpacity>
+          </View>
+
+          {selectedReport && renderReportDetails(selectedReport)}
+        </View>
+      </View>
+    </Modal>
+  );
+
+  return (
+    <View style={[styles.reportsSection, { backgroundColor: sectionBgColor }]}>
+      <Text style={[styles.sectionTitle, { color: textColor }]}>User Reports</Text>
+      
+      {isLoading ? (
+        <ActivityIndicator size="large" color={textColor} style={styles.loadingIndicator} />
+      ) : reports.length === 0 ? (
+        <View style={styles.emptyState}>
+          <MaterialIcons name="assignment" size={48} color={textColor} style={{ opacity: 0.5 }} />
+          <Text style={[styles.emptyStateText, { color: textColor }]}>No reports found</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.reportsList}>
+          {reports.map((report) => (
+            <TouchableOpacity
+              key={report.id}
+              style={[styles.reportItem, { borderColor: getStatusColor(report.status) }]}
+              onPress={() => handleOpenModal(report)}
+            >
+              <View style={styles.reportHeader}>
+                <View style={styles.reportUserInfo}>
+                  <MaterialIcons name="person" size={20} color={textColor} />
+                  <Text style={[styles.reportUserName, { color: textColor }]}>
+                    {report.reportedUserName || 'Unknown User'}
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(report.status)}15` }]}>
+                  <Text style={[styles.statusText, { color: getStatusColor(report.status) }]}>
+                    {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.reportDetails}>
+                <Text style={[styles.reportType, { color: textColor }]}>{report.type || 'Unknown Type'}</Text>
+                <Text style={[styles.reportDate, { color: textColor }]}>
+                  {report.createdAt ? formatDate(report.createdAt) : 'Unknown Date'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {renderReportModal()}
+    </View>
+  );
+};
+
+interface Feedback {
+  id: string;
+  content: string;
+  createdAt: Timestamp;
+  status: 'pending' | 'resolved';
+  userId: string;
+}
+
+const FeedbackSection: React.FC<{ textColor: string, sectionBgColor: string }> = ({ textColor, sectionBgColor }) => {
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchFeedback = useCallback(async () => {
+    try {
+      const feedbackQuery = query(collection(db, 'feedback'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(feedbackQuery);
+      const feedbackData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Feedback[];
+      setFeedback(feedbackData);
+    } catch (error) {
+      console.error('Error fetching feedback:', error);
+      Alert.alert('Error', 'Failed to fetch feedback');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFeedback();
+  }, [fetchFeedback]);
+
+  const handleRemove = useCallback(async (feedbackId: string) => {
+    try {
+      const feedbackRef = doc(db, 'feedback', feedbackId);
+      await deleteDoc(feedbackRef);
+      
+      setFeedback(prevFeedback => prevFeedback.filter(item => item.id !== feedbackId));
+      Alert.alert('Success', 'Feedback removed successfully');
+    } catch (error) {
+      console.error('Error removing feedback:', error);
+      Alert.alert('Error', 'Failed to remove feedback');
+    }
+  }, []);
+
+  const formatDate = (timestamp: Timestamp) => {
+    return new Date(timestamp.toDate()).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      timeZoneName: 'short'
+    });
+  };
+
+  return (
+    <View style={[styles.feedbackSection, { backgroundColor: sectionBgColor }]}>
+      <Text style={[styles.sectionTitle, { color: textColor }]}>User Feedback</Text>
+      
+      {isLoading ? (
+        <ActivityIndicator size="large" color={textColor} style={styles.loadingIndicator} />
+      ) : feedback.length === 0 ? (
+        <View style={styles.emptyState}>
+          <MaterialIcons name="feedback" size={48} color={textColor} style={{ opacity: 0.5 }} />
+          <Text style={[styles.emptyStateText, { color: textColor }]}>No feedback found</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.feedbackList}>
+          {feedback.map((item) => (
+            <View 
+              key={item.id} 
+              style={[styles.feedbackItem, { borderColor: textColor }]}
+            >
+              <View style={styles.feedbackContent}>
+                <Text style={[styles.feedbackText, { color: textColor }]}>{item.content}</Text>
+                <Text style={[styles.feedbackDate, { color: textColor }]}>
+                  {formatDate(item.createdAt)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.removeButton, { borderColor: textColor }]}
+                onPress={() => handleRemove(item.id)}
+              >
+                <MaterialIcons name="delete" size={20} color={textColor} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+};
+
+// Add test user data interface
+interface TestUser {
+  name: string;
+  email: string;
+  age: number;
+  bio: string;
+  airportCode: string;
+  interests: string[];
+  goals: string[];
+  languages: string[];
+  profilePicture: string;
+}
+
+const testUsers: TestUser[] = [
+  {
+    name: "Sarah Johnson",
+    email: "sarah.j@test.com",
+    age: 28,
+    bio: "Adventure seeker and coffee enthusiast. Always planning my next trip!",
+    airportCode: "JFK",
+    interests: ["Photography", "Hiking", "Local Cuisine"],
+    goals: ["Japan", "New Zealand", "Iceland"],
+    languages: ["English", "Spanish"],
+    profilePicture: "https://randomuser.me/api/portraits/women/1.jpg"
+  },
+  {
+    name: "Michael Chen",
+    email: "michael.c@test.com",
+    age: 32,
+    bio: "Tech entrepreneur who loves exploring new cultures and meeting people.",
+    airportCode: "SFO",
+    interests: ["Technology", "Wine Tasting", "Museums"],
+    goals: ["France", "Italy", "Greece"],
+    languages: ["English", "Mandarin"],
+    profilePicture: "https://randomuser.me/api/portraits/men/2.jpg"
+  },
+  {
+    name: "Emma Rodriguez",
+    email: "emma.r@test.com",
+    age: 25,
+    bio: "Travel blogger and foodie. Always looking for the next hidden gem!",
+    airportCode: "MIA",
+    interests: ["Food", "Beach", "Art"],
+    goals: ["Thailand", "Vietnam", "Indonesia"],
+    languages: ["English", "Spanish", "French"],
+    profilePicture: "https://randomuser.me/api/portraits/women/3.jpg"
+  },
+  {
+    name: "David Kim",
+    email: "david.k@test.com",
+    age: 30,
+    bio: "Adventure photographer capturing moments around the world.",
+    airportCode: "LAX",
+    interests: ["Photography", "Hiking", "Surfing"],
+    goals: ["Australia", "Fiji", "Hawaii"],
+    languages: ["English", "Korean"],
+    profilePicture: "https://randomuser.me/api/portraits/men/4.jpg"
+  },
+  {
+    name: "Sophie Anderson",
+    email: "sophie.a@test.com",
+    age: 27,
+    bio: "Environmental scientist passionate about sustainable travel.",
+    airportCode: "SEA",
+    interests: ["Nature", "Camping", "Wildlife"],
+    goals: ["Costa Rica", "Galapagos", "Amazon"],
+    languages: ["English", "German"],
+    profilePicture: "https://randomuser.me/api/portraits/women/5.jpg"
+  },
+  {
+    name: "James Wilson",
+    email: "james.w@test.com",
+    age: 35,
+    bio: "Business consultant who loves exploring new cities and cultures.",
+    airportCode: "ORD",
+    interests: ["Architecture", "History", "Food"],
+    goals: ["Spain", "Portugal", "Morocco"],
+    languages: ["English", "French"],
+    profilePicture: "https://randomuser.me/api/portraits/men/6.jpg"
+  },
+  {
+    name: "Olivia Martinez",
+    email: "olivia.m@test.com",
+    age: 24,
+    bio: "Yoga instructor and wellness enthusiast. Always seeking new experiences.",
+    airportCode: "DEN",
+    interests: ["Yoga", "Meditation", "Healthy Food"],
+    goals: ["India", "Bali", "Thailand"],
+    languages: ["English", "Spanish"],
+    profilePicture: "https://randomuser.me/api/portraits/women/7.jpg"
+  },
+  {
+    name: "Alex Thompson",
+    email: "alex.t@test.com",
+    age: 29,
+    bio: "Music producer who loves discovering local music scenes.",
+    airportCode: "ATL",
+    interests: ["Music", "Nightlife", "Art"],
+    goals: ["Brazil", "Cuba", "Jamaica"],
+    languages: ["English", "Portuguese"],
+    profilePicture: "https://randomuser.me/api/portraits/men/8.jpg"
+  },
+  {
+    name: "Isabella Lee",
+    email: "isabella.l@test.com",
+    age: 26,
+    bio: "Fashion designer inspired by global styles and traditions.",
+    airportCode: "DFW",
+    interests: ["Fashion", "Shopping", "Art"],
+    goals: ["France", "Italy", "Japan"],
+    languages: ["English", "Chinese"],
+    profilePicture: "https://randomuser.me/api/portraits/women/9.jpg"
+  },
+  {
+    name: "Ryan Cooper",
+    email: "ryan.c@test.com",
+    age: 31,
+    bio: "Sports enthusiast and adventure seeker. Always up for a challenge!",
+    airportCode: "BOS",
+    interests: ["Sports", "Hiking", "Water Sports"],
+    goals: ["New Zealand", "Australia", "South Africa"],
+    languages: ["English"],
+    profilePicture: "https://randomuser.me/api/portraits/men/10.jpg"
+  }
+];
+
+const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> = ({ textColor, sectionBgColor }) => {
+  const router = useRouter();
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [userCount, setUserCount] = useState(1);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [existingTestUsers, setExistingTestUsers] = useState<Array<{ id: string } & TestUser>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchExistingTestUsers = useCallback(async () => {
+    try {
+      const testUsersQuery = query(
+        collection(db, 'users'),
+        where('testUser', '==', true)
+      );
+      const snapshot = await getDocs(testUsersQuery);
+      const users = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Array<{ id: string } & TestUser>;
+      setExistingTestUsers(users);
+    } catch (error) {
+      console.error('Error fetching test users:', error);
+      Alert.alert('Error', 'Failed to fetch existing test users');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchExistingTestUsers();
+  }, [fetchExistingTestUsers]);
+
+  const deleteTestUser = async (userId: string) => {
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+      setExistingTestUsers(prev => prev.filter(user => user.id !== userId));
+      Alert.alert('Success', 'Test user deleted successfully');
+    } catch (error) {
+      console.error('Error deleting test user:', error);
+      Alert.alert('Error', 'Failed to delete test user');
+    }
+  };
+
+  const deleteAllTestUsers = async () => {
+    Alert.alert(
+      'Delete All Test Users',
+      'Are you sure you want to delete all test users? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const batch = writeBatch(db);
+              existingTestUsers.forEach(user => {
+                const userRef = doc(db, 'users', user.id);
+                batch.delete(userRef);
+              });
+              await batch.commit();
+              setExistingTestUsers([]);
+              Alert.alert('Success', 'All test users deleted successfully');
+            } catch (error) {
+              console.error('Error deleting all test users:', error);
+              Alert.alert('Error', 'Failed to delete all test users');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const generateTestUsers = async () => {
+    if (userCount < 1 || userCount > 10) {
+      Alert.alert('Error', 'Please select between 1 and 10 users');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationStatus('Generating test users...');
+
+    try {
+      // First, delete all existing test users
+      if (existingTestUsers.length > 0) {
+        setGenerationStatus('Cleaning up existing test users...');
+        const deleteBatch = writeBatch(db);
+        existingTestUsers.forEach(user => {
+          const userRef = doc(db, 'users', user.id);
+          deleteBatch.delete(userRef);
+        });
+        await deleteBatch.commit();
+      }
+
+      // Then generate new test users
+      setGenerationStatus('Creating new test users...');
+      const selectedUsers = testUsers.slice(0, userCount);
+      const batch = writeBatch(db);
+
+      for (const user of selectedUsers) {
+        const userRef = doc(collection(db, 'users'));
+        const now = Timestamp.now();
+        const dateOfBirth = new Date();
+        dateOfBirth.setFullYear(dateOfBirth.getFullYear() - user.age);
+
+        const userData = {
+          ...user,
+          acceptedEula: true,
+          createdAt: now,
+          dateOfBirth: Timestamp.fromDate(dateOfBirth),
+          eulaAcceptedAt: now,
+          expoPushToken: `ExponentPushToken[test-${Math.random().toString(36).substring(7)}]`,
+          hasMeBlocked: [],
+          isAnonymous: false,
+          lastLogin: now,
+          likedUsers: [],
+          moodStatus: "neutral",
+          notificationPreferences: {
+            announcements: true,
+            chats: true,
+            connections: true,
+            events: true,
+            notificationsEnabled: true
+          },
+          notifications: [],
+          testUser: true,
+          travelHistory: [],
+          updatedAt: now
+        };
+
+        batch.set(userRef, userData);
+      }
+
+      await batch.commit();
+      setGenerationStatus(`Successfully generated ${userCount} test users!`);
+      fetchExistingTestUsers(); // Refresh the list after generating new users
+    } catch (error) {
+      console.error('Error generating test users:', error);
+      setGenerationStatus('Error generating test users. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleUserPress = (userId: string) => {
+    router.push(`/profile/${userId}`);
+  };
+
+  return (
+    <View style={[styles.testDataSection, { backgroundColor: sectionBgColor }]}>
+      <Text style={[styles.sectionTitle, { color: textColor }]}>Test Data Generation</Text>
+      
+      <View style={styles.testDataContent}>
+        <Text style={[styles.testDataDescription, { color: textColor }]}>
+          Generate test users with realistic data for development and testing purposes.
+        </Text>
+
+        <View style={styles.userCountContainer}>
+          <Text style={[styles.label, { color: textColor }]}>Number of Users:</Text>
+          <View style={styles.userCountControls}>
+            <TouchableOpacity
+              style={[styles.userCountButton, { borderColor: textColor }]}
+              onPress={() => setUserCount(Math.max(1, userCount - 1))}
+              disabled={userCount <= 1}
+            >
+              <MaterialIcons name="remove" size={20} color={textColor} />
+            </TouchableOpacity>
+            <Text style={[styles.userCount, { color: textColor }]}>{userCount}</Text>
+            <TouchableOpacity
+              style={[styles.userCountButton, { borderColor: textColor }]}
+              onPress={() => setUserCount(Math.min(10, userCount + 1))}
+              disabled={userCount >= 10}
+            >
+              <MaterialIcons name="add" size={20} color={textColor} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.generateButton,
+            isGenerating && styles.generateButtonDisabled
+          ]}
+          onPress={generateTestUsers}
+          disabled={isGenerating}
+        >
+          {isGenerating ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.generateButtonText}>Generate Test Users</Text>
+          )}
+        </TouchableOpacity>
+
+        {generationStatus && (
+          <Text style={[styles.generationStatus, { color: textColor }]}>
+            {generationStatus}
+          </Text>
+        )}
+
+        <View style={styles.existingUsersSection}>
+          <View style={styles.existingUsersHeader}>
+            <Text style={[styles.existingUsersTitle, { color: textColor }]}>
+              Existing Test Users ({existingTestUsers.length})
+            </Text>
+          </View>
+          {existingTestUsers.length > 0 && (
+            <View style={styles.deleteAllContainer}>
+              <TouchableOpacity
+                style={[styles.deleteAllButton, { borderColor: textColor }]}
+                onPress={deleteAllTestUsers}
+              >
+                <MaterialIcons name="delete-sweep" size={20} color={textColor} />
+                <Text style={[styles.deleteAllButtonText, { color: textColor }]}>
+                  Delete All
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isLoading ? (
+            <ActivityIndicator size="large" color={textColor} style={styles.loadingIndicator} />
+          ) : existingTestUsers.length === 0 ? (
+            <View style={styles.emptyState}>
+              <MaterialIcons name="people" size={48} color={textColor} style={{ opacity: 0.5 }} />
+              <Text style={[styles.emptyStateText, { color: textColor }]}>No test users found</Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.testUsersList}>
+              {existingTestUsers.map((user) => (
+                <View 
+                  key={user.id} 
+                  style={[styles.testUserItem, { borderColor: textColor }]}
+                >
+                  <TouchableOpacity
+                    style={styles.testUserInfo}
+                    onPress={() => handleUserPress(user.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Image 
+                      source={{ uri: user.profilePicture }} 
+                      style={styles.testUserAvatar}
+                    />
+                    <View style={styles.testUserDetails}>
+                      <Text style={[styles.testUserName, { color: textColor }]}>{user.name}</Text>
+                      <Text style={[styles.testUserEmail, { color: textColor }]}>{user.email}</Text>
+                      <Text style={[styles.testUserAirport, { color: textColor }]}>
+                        {user.airportCode}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.deleteButton, { borderColor: textColor }]}
+                    onPress={() => deleteTestUser(user.id)}
+                  >
+                    <MaterialIcons name="delete" size={20} color={textColor} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+};
+
+export default function AdminTools() {
+  const { theme } = React.useContext(ThemeContext);
+  const router = useRouter();
+  const textColor = theme === "light" ? "#0F172A" : "#e4fbfe";
+  const sectionBgColor = theme === "light" ? "rgba(255, 255, 255, 0.9)" : "rgba(26, 26, 26, 0.9)";
+  
+  const [expandedSections, setExpandedSections] = useState({
+    systemInfo: false,
+    permissions: false,
+    notifications: false,
+    platform: false,
+    massNotification: false,
+  });
+
+  const [expandedGroups, setExpandedGroups] = useState({
+    information: false,
+    notifications: false,
+    needsAction: false,
+    testData: false,
+  });
+
+  const [totalActionItems, setTotalActionItems] = useState(0);
+
+  useEffect(() => {
+    const fetchTotalCounts = async () => {
+      try {
+        const [reports, feedback] = await Promise.all([
+          getDocs(collection(db, 'reports')),
+          getDocs(collection(db, 'feedback'))
+        ]);
+        setTotalActionItems(reports.size + feedback.size);
+      } catch (error) {
+        console.error('Error fetching total counts:', error);
+      }
+    };
+
+    fetchTotalCounts();
+  }, []);
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  const toggleGroup = (group: keyof typeof expandedGroups) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [group]: !prev[group]
+    }));
+  };
+
+  return (
+    <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+      <TopBar />
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <ScrollView style={styles.container}>
+          <Text style={[styles.header, { color: textColor }]}>
+            Admin Tools
+          </Text>
+
+          <SystemStatusGrid textColor={textColor} sectionBgColor={sectionBgColor} />
+
+          <TouchableOpacity 
+            style={styles.groupHeader} 
+            onPress={() => toggleGroup('needsAction')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.groupTitleContainer}>
+              <Text style={[styles.sectionGroupTitle, { color: textColor }]}>Needs Action</Text>
+              {totalActionItems > 0 && (
+                <Text style={styles.actionCount}>{totalActionItems}</Text>
+              )}
+            </View>
+            <MaterialIcons 
+              name={expandedGroups.needsAction ? "remove" : "add"} 
+              size={24} 
+              color={textColor} 
+            />
+          </TouchableOpacity>
+
+          {expandedGroups.needsAction && (
+            <View style={[styles.actionContainer, { backgroundColor: sectionBgColor }]}>
+              <View style={[styles.actionHeader, { borderBottomColor: textColor }]}>
+                <MaterialIcons name="priority-high" size={24} color={textColor} />
+                <View style={styles.groupTitleContainer}>
+                  <Text style={[styles.actionTitle, { color: textColor }]}>Needs Action</Text>
+                  {totalActionItems > 0 && (
+                    <Text style={styles.actionCount}>{totalActionItems}</Text>
+                  )}
+                </View>
+              </View>
+              <View style={styles.actionContent}>
+                <ReportsSection textColor={textColor} sectionBgColor={sectionBgColor} />
+                <FeedbackSection textColor={textColor} sectionBgColor={sectionBgColor} />
+              </View>
+            </View>
+          )}
+
+          <TouchableOpacity 
+            style={[styles.groupHeader, { marginTop: 24 }]} 
+            onPress={() => toggleGroup('information')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sectionGroupTitle, { color: textColor }]}>Information</Text>
+            <MaterialIcons 
+              name={expandedGroups.information ? "remove" : "add"} 
+              size={24} 
+              color={textColor} 
+            />
+          </TouchableOpacity>
+
+          {expandedGroups.information && (
+            <>
+              <CollapsibleSection
+                title="System Information"
+                isExpanded={expandedSections.systemInfo}
+                onToggle={() => toggleSection('systemInfo')}
+                textColor={textColor}
+                sectionBgColor={sectionBgColor}
+              >
+                <View style={styles.sectionContent}>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.label, { color: textColor }]}>App Version:</Text>
+                    <Text style={[styles.value, { color: textColor }]}>1.1.0</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.label, { color: textColor }]}>Build Number:</Text>
+                    <Text style={[styles.value, { color: textColor }]}>23</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.label, { color: textColor }]}>Bundle ID:</Text>
+                    <Text style={[styles.value, { color: textColor }]}>com.octavian.layoverapp</Text>
+                  </View>
+                </View>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title="Active Permissions"
+                isExpanded={expandedSections.permissions}
+                onToggle={() => toggleSection('permissions')}
+                textColor={textColor}
+                sectionBgColor={sectionBgColor}
+              >
+                <View style={styles.sectionContent}>
+                  <View style={styles.permissionList}>
+                    <Text style={[styles.permissionItem, { color: textColor }]}>• Location Services</Text>
+                    <Text style={[styles.permissionItem, { color: textColor }]}>• Photo Library Access</Text>
+                    <Text style={[styles.permissionItem, { color: textColor }]}>• Push Notifications</Text>
+                    <Text style={[styles.permissionItem, { color: textColor }]}>• Background Processing</Text>
+                  </View>
+                </View>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title="Platform Configuration"
+                isExpanded={expandedSections.platform}
+                onToggle={() => toggleSection('platform')}
+                textColor={textColor}
+                sectionBgColor={sectionBgColor}
+              >
+                <View style={styles.sectionContent}>
+                  <View style={styles.platformSection}>
+                    <Text style={[styles.platformTitle, { color: textColor }]}>iOS</Text>
+                    <Text style={[styles.platformInfo, { color: textColor }]}>• Tablet Support: Disabled</Text>
+                    <Text style={[styles.platformInfo, { color: textColor }]}>• New Architecture: Enabled</Text>
+                  </View>
+                  <View style={styles.platformSection}>
+                    <Text style={[styles.platformTitle, { color: textColor }]}>Android</Text>
+                    <Text style={[styles.platformInfo, { color: textColor }]}>• New Architecture: Disabled</Text>
+                    <Text style={[styles.platformInfo, { color: textColor }]}>• Package: com.mattryan7201.Layover</Text>
+                  </View>
+                </View>
+              </CollapsibleSection>
+            </>
+          )}
+
+          <TouchableOpacity 
+            style={[styles.groupHeader, { marginTop: 24 }]} 
+            onPress={() => toggleGroup('notifications')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sectionGroupTitle, { color: textColor }]}>Notifications</Text>
+            <MaterialIcons 
+              name={expandedGroups.notifications ? "remove" : "add"} 
+              size={24} 
+              color={textColor} 
+            />
+          </TouchableOpacity>
+
+          {expandedGroups.notifications && (
+            <>
+              <CollapsibleSection
+                title="Notification Configuration"
+                isExpanded={expandedSections.notifications}
+                onToggle={() => toggleSection('notifications')}
+                textColor={textColor}
+                sectionBgColor={sectionBgColor}
+              >
+                <View style={styles.sectionContent}>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.label, { color: textColor }]}>Mode:</Text>
+                    <Text style={[styles.value, { color: textColor }]}>Production</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.label, { color: textColor }]}>Project ID:</Text>
+                    <Text style={[styles.value, { color: textColor }]}>61cfadd9-25bb-4566-abec-1e9679ef882b</Text>
+                  </View>
+                </View>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title="Mass Notification"
+                isExpanded={expandedSections.massNotification}
+                onToggle={() => toggleSection('massNotification')}
+                textColor={textColor}
+                sectionBgColor={sectionBgColor}
+              >
+                <View style={styles.sectionContent}>             
+                  <NotificationForm textColor={textColor} />
+                </View>
+              </CollapsibleSection>
+            </>
+          )}
+
+          <TouchableOpacity 
+            style={[styles.groupHeader, { marginTop: 24 }]} 
+            onPress={() => toggleGroup('testData')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sectionGroupTitle, { color: textColor }]}>Test Data</Text>
+            <MaterialIcons 
+              name={expandedGroups.testData ? "remove" : "add"} 
+              size={24} 
+              color={textColor} 
+            />
+          </TouchableOpacity>
+
+          {expandedGroups.testData && (
+            <TestDataSection textColor={textColor} sectionBgColor={sectionBgColor} />
+          )}
+
+          <TouchableOpacity 
+            style={[styles.sandboxButton, { backgroundColor: sectionBgColor, borderColor: textColor }]}
+            onPress={() => router.push('/sandbox')}
+          >
+            <MaterialIcons name="science" size={24} color={textColor} />
+            <Text style={[styles.sandboxButtonText, { color: textColor }]}>Sandbox</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    </LinearGradient>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+  },
+  header: {
+    fontSize: 28,
+    fontWeight: "bold",
+    marginBottom: 24,
+  },
+  section: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  sectionContent: {
+    padding: 16,
+    paddingTop: 0,
+  },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  value: {
+    fontSize: 16,
+  },
+  permissionList: {
+    marginTop: 8,
+  },
+  permissionItem: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  platformSection: {
+    marginTop: 12,
+  },
+  platformTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  platformInfo: {
+    fontSize: 16,
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  eligibleUsersContainer: {
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    borderRadius: 12,
+    marginBottom: 24,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  eligibleUsersContent: {
+    overflow: 'hidden',
+  },
+  eligibleUsersHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  eligibleUsersText: {
+    fontSize: 15,
+    fontWeight: '600',
+    flex: 1,
+    letterSpacing: 0.3,
+  },
+  eligibleUsersDetails: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  eligibleUsersDetailText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 12,
+    opacity: 0.8,
+  },
+  eligibleUsersList: {
+    gap: 8,
+  },
+  eligibleUsersListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  eligibleUsersListItemText: {
+    fontSize: 14,
+    opacity: 0.8,
+  },
+  formContainer: {
+    marginTop: 16,
+    paddingHorizontal: 8,
+  },
+  formContent: {
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  inputGroup: {
+    marginBottom: 24,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    height: 140,
+    textAlignVertical: 'top',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  characterCount: {
+    fontSize: 14,
+    textAlign: 'right',
+    marginTop: 8,
+    opacity: 0.7,
+  },
+  submitButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#007AFF80',
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    marginBottom: 24,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  templateSection: {
+    marginBottom: 24,
+  },
+  templateGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 12,
+  },
+  templateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    gap: 12,
+    flex: 1,
+    minWidth: '48%',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  templateIconContainer: {
+    padding: 8,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  templateButtonText: {
+    fontSize: 15,
+    flex: 1,
+    letterSpacing: 0.3,
+  },
+  sectionGroupTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  statusGrid: {
+    borderRadius: 12,
+    marginBottom: 24,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  statusLoading: {
+    marginTop: 16,
+  },
+  statusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statusIconContainer: {
+    padding: 8,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginLeft: 8,
+  },
+  statusValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginLeft: 8,
+  },
+  reportsSection: {
+    borderRadius: 12,
+    marginBottom: 24,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  loadingIndicator: {
+    marginTop: 16,
+  },
+  reportsList: {
+    maxHeight: 400,
+    width: '100%',
+  },
+  reportItem: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    minHeight: 80,
+    width: '100%',
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reportUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportUserName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  reportDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reportType: {
+    fontSize: 14,
+    opacity: 0.8,
+  },
+  reportDate: {
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '90%',
+    maxWidth: 600,
+    maxHeight: '80%',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalContent: {
+    padding: 16,
+  },
+  reviewInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    fontSize: 13,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    gap: 8,
+  },
+  actionButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    minHeight: 44,
+  },
+  actionButtonText: {
+    fontWeight: '600',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 12,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  detailText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    marginVertical: 24,
+  },
+  feedbackSection: {
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  feedbackList: {
+    maxHeight: 400,
+    width: '100%',
+  },
+  feedbackItem: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    minHeight: 80,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  feedbackContent: {
+    flex: 1,
+    marginRight: 12,
+    width: '100%',
+  },
+  feedbackText: {
+    fontSize: 14,
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  feedbackDate: {
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  removeButton: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 40,
+    height: 40,
+  },
+  actionContainer: {
+    borderRadius: 16,
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  actionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+    gap: 12,
+  },
+  actionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  actionContent: {
+    padding: 16,
+  },
+  groupTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionCount: {
+    color: '#FF3B30',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  testDataSection: {
+    borderRadius: 12,
+    marginBottom: 24,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  testDataContent: {
+    padding: 16,
+  },
+  testDataDescription: {
+    fontSize: 14,
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  userCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  userCountControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  userCountButton: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 40,
+    height: 40,
+  },
+  userCount: {
+    fontSize: 18,
+    fontWeight: '600',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  generateButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  generateButtonDisabled: {
+    backgroundColor: '#007AFF80',
+  },
+  generateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  generationStatus: {
+    marginTop: 16,
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  existingUsersSection: {
+    marginTop: 32,
+  },
+  existingUsersHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  existingUsersTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  deleteAllContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  deleteAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  deleteAllButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  testUsersList: {
+    maxHeight: 400,
+  },
+  testUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  testUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  testUserAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  testUserDetails: {
+    flex: 1,
+  },
+  testUserName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  testUserEmail: {
+    fontSize: 14,
+    opacity: 0.8,
+    marginBottom: 2,
+  },
+  testUserAirport: {
+    fontSize: 14,
+    opacity: 0.6,
+  },
+  deleteButton: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginLeft: 12,
+  },
+  sandboxButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 24,
+    marginBottom: 32,
+    borderWidth: 1,
+    gap: 8,
+  },
+  sandboxButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+}); 

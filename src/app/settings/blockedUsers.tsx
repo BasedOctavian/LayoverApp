@@ -82,7 +82,7 @@ export default function BlockedUsers() {
       const authUserData = authUserDoc.data();
       console.log('Auth user data:', authUserData);
 
-      // Explicitly check the blockedUsers array
+      // Handle case where blockedUsers array doesn't exist
       if (!authUserData?.blockedUsers) {
         console.warn('No blockedUsers array found in auth user document');
         setBlockedUsers([]);
@@ -144,7 +144,18 @@ export default function BlockedUsers() {
         }
       });
 
-      const users = (await Promise.all(blockedUsersPromises)).filter((user): user is BlockedUser => user !== null);
+      const users = (await Promise.all(blockedUsersPromises)).filter((user): user is { id: string; name: any; profilePicture: any; airportCode: any; } => {
+        if (!user) return false;
+        return (
+          typeof user === 'object' &&
+          'id' in user &&
+          'name' in user &&
+          typeof user.id === 'string' &&
+          typeof user.name === 'string' &&
+          (!('profilePicture' in user) || typeof user.profilePicture === 'string' || user.profilePicture === null) &&
+          (!('airportCode' in user) || typeof user.airportCode === 'string' || user.airportCode === null)
+        );
+      });
       console.log('Successfully processed blocked users:', users);
 
       setBlockedUsers(users);
@@ -240,7 +251,7 @@ export default function BlockedUsers() {
     <TouchableOpacity
       style={[styles.userCard, { 
         backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-        borderColor: "#37a4c8"
+        borderColor: theme === "light" ? "#dddddd" : "#37a4c8"
       }]}
     >
       <View style={styles.userCardContent}>
@@ -276,41 +287,52 @@ export default function BlockedUsers() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.container}>
+      <LinearGradient
+        colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]}
+        style={styles.container}
+      >
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
-          showBackButton={true} 
-          title="Blocked Users" 
-          onBackPress={() => router.back()}
+          showBackButton={false}
         />
-        <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          {blockedUsers.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="person-remove" size={64} color="#37a4c8" style={styles.emptyIcon} />
+        <View style={styles.content}>
+          {!loading && blockedUsers.length === 0 ? (
+            <View style={[styles.emptyState, { 
+              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+              borderColor: theme === "light" ? "#dddddd" : "#37a4c8"
+            }]}>
+              <View style={[styles.emptyIconContainer, { 
+                backgroundColor: theme === "light" ? "#ffffff" : "#000000",
+                borderColor: theme === "light" ? "#dddddd" : "#37a4c8"
+              }]}>
+                <Ionicons name="person-remove" size={48} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+              </View>
               <Text style={[styles.emptyText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                No blocked users
+                No Blocked Users
               </Text>
-              <Text style={[styles.emptySubtext, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                Users you block won't be able to see your profile or message you
+              <Text style={[styles.emptySubtext, { color: theme === "light" ? "#666666" : "#94A3B8" }]}>
+                Users you block won't be able to see your profile or message you. You can block users from their profile or chat.
               </Text>
             </View>
           ) : (
-            <FlatList
-              data={blockedUsers}
-              renderItem={renderBlockedUser}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.list}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  colors={["#37a4c8"]}
-                  tintColor={theme === "light" ? "#37a4c8" : "#e4fbfe"}
-                />
-              }
-            />
+            <Animated.View style={[styles.listContainer, { opacity: fadeAnim }]}>
+              <FlatList
+                data={blockedUsers}
+                renderItem={renderBlockedUser}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={["#37a4c8"]}
+                    tintColor={theme === "light" ? "#37a4c8" : "#38a5c9"}
+                  />
+                }
+              />
+            </Animated.View>
           )}
-        </Animated.View>
+        </View>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -324,69 +346,105 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  listContainer: {
+    flex: 1,
+  },
   list: {
     paddingBottom: 20,
   },
   userCard: {
-    borderRadius: 16,
+    borderRadius: 24,
     marginBottom: 16,
     borderWidth: 1,
     overflow: "hidden",
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
   userCardContent: {
-    padding: 16,
+    padding: 24,
   },
   userHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   profileImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 16,
+    borderWidth: 2,
+    borderColor: "#37a4c8",
   },
   userInfo: {
     flex: 1,
   },
   userName: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     marginBottom: 4,
+    letterSpacing: 0.5,
   },
   userLocation: {
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: "500",
+    letterSpacing: 0.3,
   },
   unblockButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 30,
     alignItems: "center",
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
   unblockButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
   emptyState: {
     flex: 1,
+    padding: 24,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    marginVertical: 24,
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
-  },
-  emptyIcon: {
-    marginBottom: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
   emptyText: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 8,
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 12,
     textAlign: "center",
+    letterSpacing: 0.5,
   },
   emptySubtext: {
     fontSize: 16,
     textAlign: "center",
     lineHeight: 24,
+    letterSpacing: 0.3,
   },
 }); 

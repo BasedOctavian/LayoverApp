@@ -97,64 +97,86 @@ export default function UpdatePassword() {
   };
 
   return (
-    <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+    <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff", "#f8f9fa"] : ["#000000", "#1a1a1a", "#000000"]} locations={[0, 0.5, 1]} style={{ flex: 1 }}>
       <TopBar />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-          <Text style={[styles.header, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
+          <Text style={[styles.header, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
             Update Password
           </Text>
           <View style={styles.form}>
-            <Animated.View style={[styles.inputContainer, { backgroundColor: backgroundColor }]}>
-              <Ionicons name="lock-closed" size={24} color="#37a4c8" style={styles.inputIcon} />
+            <Animated.View style={[styles.inputContainer, { 
+              backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+            }]}>
+              <Ionicons name="lock-closed" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.inputIcon} />
               <TextInput
                 placeholder="Current Password"
-                placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
+                placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
                 secureTextEntry
-                style={[styles.input, { color: theme === "light" ? "#000000" : "#ffffff" }]}
+                style={[styles.input, { color: theme === "light" ? "#1E293B" : "#e4fbfe" }]}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
               />
             </Animated.View>
-            <Animated.View style={[styles.inputContainer, { backgroundColor: backgroundColor }]}>
-              <Ionicons name="key" size={24} color="#37a4c8" style={styles.inputIcon} />
+            <Animated.View style={[styles.inputContainer, { 
+              backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+            }]}>
+              <Ionicons name="key" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.inputIcon} />
               <TextInput
                 placeholder="New Password"
-                placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
+                placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
                 secureTextEntry
-                style={[styles.input, { color: theme === "light" ? "#000000" : "#ffffff" }]}
+                style={[styles.input, { color: theme === "light" ? "#1E293B" : "#e4fbfe" }]}
                 value={newPassword}
                 onChangeText={setNewPassword}
               />
             </Animated.View>
-            <Animated.View style={[styles.inputContainer, { backgroundColor: backgroundColor }]}>
-              <Ionicons name="key" size={24} color="#37a4c8" style={styles.inputIcon} />
+            <Animated.View style={[styles.inputContainer, { 
+              backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+            }]}>
+              <Ionicons name="key" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.inputIcon} />
               <TextInput
                 placeholder="Confirm New Password"
-                placeholderTextColor={theme === "light" ? "#A0AEC0" : "#718096"}
+                placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
                 secureTextEntry
-                style={[styles.input, { color: theme === "light" ? "#000000" : "#ffffff" }]}
+                style={[styles.input, { color: theme === "light" ? "#1E293B" : "#e4fbfe" }]}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
               />
             </Animated.View>
             {error ? (
-              <View style={[styles.errorContainer, { backgroundColor: theme === "light" ? "#ffebee" : "#1a1a1a" }]}>
-                <Ionicons name="alert-circle" size={24} color="#ff5252" />
-                <Text style={[styles.errorText, { color: "#ff5252" }]}>{error}</Text>
+              <View style={[styles.errorContainer, { 
+                backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                borderColor: "#ff4444"
+              }]}>
+                <Ionicons name="alert-circle" size={24} color="#ff4444" />
+                <Text style={[styles.errorText, { color: "#ff4444" }]}>{error}</Text>
               </View>
             ) : null}
             <TouchableOpacity
-              style={[styles.button, { borderColor: "#37a4c8" }]}
+              style={[styles.button, { 
+                backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+                shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+              }]}
               onPress={handleUpdatePassword}
               disabled={loading}
             >
-              <LinearGradient colors={["#37a4c8", "#37a4c8"]} style={styles.buttonGradient}>
-                <Ionicons name="lock-closed" size={24} color={theme === "light" ? "#000000" : "#ffffff"} />
-                <Text style={[styles.buttonText, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
+              <View style={styles.buttonContent}>
+                <Ionicons 
+                  name="lock-closed" 
+                  size={24} 
+                  color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                />
+                <Text style={[styles.buttonText, { 
+                  color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                }]}>
                   {loading ? "Updating..." : "Update Password"}
                 </Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -166,12 +188,13 @@ export default function UpdatePassword() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    padding: 24,
   },
   header: {
     fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 20,
+    fontWeight: "700",
+    marginBottom: 24,
+    letterSpacing: 0.5,
   },
   form: {
     marginTop: 20,
@@ -183,7 +206,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#37a4c8",
   },
   inputIcon: {
     marginRight: 12,
@@ -196,30 +218,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#ff5252",
   },
   errorText: {
     marginLeft: 8,
     fontSize: 14,
     flex: 1,
+    fontWeight: "500",
   },
   button: {
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-  },
-  buttonGradient: {
-    flexDirection: "row",
+    borderRadius: 30,
+    padding: 18,
     alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
+    marginVertical: 24,
+    borderWidth: 1,
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   buttonText: {
-    fontSize: 16,
-    marginLeft: 12,
-    fontWeight: "600",
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
 });

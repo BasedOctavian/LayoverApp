@@ -14,12 +14,13 @@ import {
   Alert,
   StatusBar,
   Animated,
+  Easing,
 } from "react-native";
 import React, { useEffect, useRef, useState } from "react";
 import useUsers from "../../hooks/useUsers";
 import useChats from "../../hooks/useChats";
 import useAuth from "../../hooks/auth";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useRouter } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from "../../../config/firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
@@ -29,11 +30,10 @@ import { Ionicons } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
-import * as ExpoNotifications from 'expo-notifications';
 import { containsFilteredContent, getFilteredContentCategory } from "../../utils/contentFilter";
 
 interface Chat {
-  id: string;
+  id: string; 
   participants: string[];
   connectionId?: string;
   connectionType?: string;
@@ -71,6 +71,256 @@ interface Partner {
   moodStatus?: string;
   bio?: string;
 }
+
+// Cache for user profiles
+const userProfileCache = new Map<string, any>();
+
+interface MessageItemProps {
+  item: Message;
+  isCurrentUser: boolean;
+  theme: string;
+}
+
+// Format timestamp for display
+const formatTimestamp = (dateObj: { seconds: number; nanoseconds: number } | Date) => {
+  if (!dateObj) return "";
+  const date = 'seconds' in dateObj ? new Date(dateObj.seconds * 1000) : new Date(dateObj);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme }) => {
+  const [userProfile, setUserProfile] = useState<any>(userProfileCache.get(item.sender) || null);
+  const router = useRouter();
+  const loadingProgress = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const [isLoading, setIsLoading] = useState(!userProfileCache.has(item.sender));
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Add loading progress animation with pulse
+  useEffect(() => {
+    if (isLoading) {
+      // Main loading line animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(loadingProgress, {
+            toValue: 1,
+            duration: 1200,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.cubic),
+          }),
+          Animated.timing(loadingProgress, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      // Pulse animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.cubic),
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.cubic),
+          }),
+        ])
+      ).start();
+    } else {
+      loadingProgress.setValue(0);
+      pulseAnim.setValue(0);
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!isCurrentUser && !userProfileCache.has(item.sender)) {
+        setIsLoading(true);
+        const startTime = Date.now();
+        
+        const userDoc = await getDoc(doc(db, 'users', item.sender));
+        if (userDoc.exists()) {
+          const profileData = userDoc.data();
+          setUserProfile(profileData);
+          userProfileCache.set(item.sender, profileData);
+        }
+
+        // Ensure loading state lasts at least 1 second
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime < 1000) {
+          await new Promise(resolve => setTimeout(resolve, 1000 - elapsedTime));
+        }
+        
+        // Fade in the content with a slight bounce
+        Animated.sequence([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+            easing: Easing.out(Easing.cubic),
+          }),
+          Animated.spring(fadeAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 40,
+            useNativeDriver: true,
+          })
+        ]).start();
+        
+        setIsLoading(false);
+      } else if (!isLoading) {
+        fadeAnim.setValue(1);
+      }
+    };
+    fetchUserProfile();
+  }, [item.sender, isCurrentUser]);
+
+  return (
+    <View style={[
+      styles.messageContainer,
+      isCurrentUser ? styles.currentUserContainer : styles.otherUserContainer
+    ]}>
+      {!isCurrentUser && (
+        <TouchableOpacity 
+          onPress={() => router.push(`/profile/${item.sender}`)}
+          style={styles.profileImageContainer}
+        >
+          {isLoading ? (
+            <View style={[styles.profileImage, { backgroundColor: theme === "light" ? "#f8f9fa" : "#1a1a1a" }]}>
+              <Animated.View 
+                style={[
+                  styles.loadingLine,
+                  {
+                    backgroundColor: theme === "light" ? "#37a4c8" : "#4db8d4",
+                    transform: [{
+                      translateX: loadingProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-100, 100]
+                      })
+                    }],
+                    opacity: pulseAnim.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0.3, 0.8, 0.3]
+                    })
+                  }
+                ]}
+              />
+            </View>
+          ) : (
+            <Animated.View style={{ opacity: fadeAnim }}>
+              {userProfile?.profilePicture ? (
+                <Image
+                  source={{ uri: userProfile.profilePicture }}
+                  style={styles.profileImage}
+                />
+              ) : (
+                <View style={[styles.profileImage, styles.defaultAvatar]} />
+              )}
+            </Animated.View>
+          )}
+        </TouchableOpacity>
+      )}
+      <View style={[
+        styles.messageBubble, 
+        isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble,
+        { 
+          backgroundColor: isCurrentUser 
+            ? '#37a4c8' 
+            : theme === "light" 
+              ? "#f5f5f5" 
+              : "#2a2a2a",
+          borderColor: isCurrentUser 
+            ? '#37a4c8' 
+            : theme === "light" 
+              ? "#e0e0e0" 
+              : "#3a3a3a"
+        }
+      ]}>
+        {!isCurrentUser && (
+          <View style={styles.userNameContainer}>
+            {isLoading ? (
+              <View style={[styles.userNamePlaceholder, { backgroundColor: theme === "light" ? "#e6e6e6" : "#2a2a2a" }]} />
+            ) : (
+              <Animated.Text style={[
+                styles.messageUser, 
+                { 
+                  color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                  fontWeight: "600",
+                  opacity: fadeAnim
+                }
+              ]}>
+                {userProfile?.name || userProfile?.displayName || 'Anonymous'}
+              </Animated.Text>
+            )}
+            <Animated.View 
+              style={[
+                styles.loadingLine,
+                {
+                  backgroundColor: theme === "light" ? "#37a4c8" : "#4db8d4",
+                  transform: [{
+                    translateX: loadingProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-100, 100]
+                    })
+                  }],
+                  opacity: isLoading ? pulseAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.3, 0.8, 0.3]
+                  }) : 0
+                }
+              ]}
+            />
+          </View>
+        )}
+        <Text style={[styles.messageText, { 
+          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#1a1a1a" : "#ffffff",
+          fontWeight: "500"
+        }]}>
+          {item.text}
+        </Text>
+        <View style={styles.messageFooter}>
+          <Text style={[styles.messageTimestamp, { 
+            color: isCurrentUser ? "#ffffff" : theme === "light" ? "#666666" : "#a0a0a0",
+            opacity: 0.8
+          }]}>
+            {formatTimestamp(item.date)}
+          </Text>
+          {isCurrentUser && (
+            <View style={styles.messageStatus}>
+              {item.status === 'read' ? (
+                <Ionicons 
+                  name="checkmark-done" 
+                  size={18} 
+                  color="#ffffff"
+                />
+              ) : item.status === 'delivered' ? (
+                <Ionicons 
+                  name="checkmark-done" 
+                  size={18} 
+                  color="#ffffff"
+                />
+              ) : (
+                <Ionicons 
+                  name="checkmark" 
+                  size={18} 
+                  color="#ffffff"
+                />
+              )}
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+};
 
 export default function Chat() {
   // Get chat ID from params
@@ -221,66 +471,6 @@ export default function Chat() {
     };
   }, []);
 
-  // Format timestamp for display
-  const formatTimestamp = (dateObj: { seconds: number; nanoseconds: number } | Date) => {
-    if (!dateObj) return "";
-    const date = 'seconds' in dateObj ? new Date(dateObj.seconds * 1000) : new Date(dateObj);
-    if (isNaN(date.getTime())) return "";
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const sendPushNotification = async (receiverId: string, message: string) => {
-    try {
-      // Get receiver's push token
-      const receiverDoc = await getDoc(doc(db, 'users', receiverId));
-      if (!receiverDoc.exists()) {
-        console.log('Receiver document not found');
-        return;
-      }
-
-      const receiverData = receiverDoc.data();
-      const pushToken = receiverData?.expoPushToken;
-
-      if (!pushToken) {
-        console.log('No push token found for receiver');
-        return;
-      }
-
-      // Get sender's name from Firestore
-      const senderDoc = await getDoc(doc(db, 'users', authUser?.uid || ''));
-      const senderName = senderDoc.exists() ? senderDoc.data()?.displayName : null;
-
-      // Send push notification using Expo's push notification service
-      const messageData = {
-        to: pushToken,
-        sound: 'default',
-        title: senderName ? `Message from ${senderName}` : 'New Message',
-        body: message,
-        data: {
-          type: 'chat',
-          chatId: chatId,
-          receiverId: receiverId,
-          senderId: authUser?.uid,
-          senderName: senderName
-        },
-      };
-
-      console.log('Sending push notification:', messageData);
-
-      await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(messageData),
-      });
-    } catch (error) {
-      console.error('Error sending push notification:', error);
-    }
-  };
-
   const handleSendMessage = async () => {
     if (newMessage.trim() === "" || !authUser || !partner) return;
     
@@ -320,7 +510,83 @@ export default function Chat() {
       const senderData = senderDoc.exists() ? senderDoc.data() : null;
       const senderName = senderData?.name || 'Unknown User';
 
-      // Create notification for the receiver
+      // Get receiver's data to check notification preferences and push token
+      const receiverDoc = await getDoc(doc(db, 'users', partner.id));
+      const receiverData = receiverDoc.exists() ? receiverDoc.data() : null;
+
+      // Check if receiver has notifications enabled and has a push token
+      const hasPushToken = !!receiverData?.expoPushToken;
+      const hasNotificationsEnabled = !!receiverData?.notificationPreferences?.notificationsEnabled;
+      const hasChatsEnabled = !!receiverData?.notificationPreferences?.chats;
+
+      console.log('📱 Push notification conditions:', {
+        hasPushToken,
+        hasNotificationsEnabled,
+        hasChatsEnabled,
+        receiverId: partner.id,
+        token: receiverData?.expoPushToken,
+        fullPreferences: receiverData?.notificationPreferences
+      });
+
+      if (hasPushToken && hasNotificationsEnabled && hasChatsEnabled) {
+        console.log('✅ All conditions met, sending push notification to:', {
+          token: receiverData.expoPushToken,
+          name: senderName,
+          message: newMessage
+        });
+
+        // Send push notification
+        try {
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+            },
+            body: JSON.stringify({
+              to: receiverData.expoPushToken,
+              title: `Message from ${senderName}`,
+              body: newMessage,
+              sound: 'default',
+              priority: 'high',
+              data: { 
+                type: 'chat',
+                chatId: chatId,
+                matchedUserId: authUser.uid,
+                matchedUserName: senderName
+              },
+            }),
+          });
+
+          const responseData = await response.json();
+          
+          if (!response.ok) {
+            console.error('Failed to send push notification:', {
+              status: response.status,
+              statusText: response.statusText,
+              data: responseData
+            });
+          } else {
+            console.log('Push notification sent successfully:', responseData);
+          }
+        } catch (error) {
+          console.error('Error sending push notification:', {
+            error,
+            receiverId: partner.id,
+            token: receiverData.expoPushToken
+          });
+        }
+      } else {
+        console.log('Push notification not sent because:', {
+          hasToken: !!receiverData?.expoPushToken,
+          notificationsEnabled: receiverData?.notificationPreferences?.notificationsEnabled,
+          chatsEnabled: receiverData?.notificationPreferences?.chats,
+          receiverId: partner.id
+        });
+      }
+
+      // Add notification to receiver's user document
       const notification = {
         id: Date.now().toString(),
         title: `Message from ${senderName}`,
@@ -336,18 +602,13 @@ export default function Chat() {
       };
 
       // Add notification to receiver's user document
-      const receiverRef = doc(db, 'users', partner.id);
-      const receiverDoc = await getDoc(receiverRef);
       if (receiverDoc.exists()) {
-        const receiverData = receiverDoc.data();
-        const notifications = receiverData.notifications || [];
-        await updateDoc(receiverRef, {
+        const notifications = receiverData?.notifications || [];
+        await updateDoc(doc(db, 'users', partner.id), {
           notifications: [...notifications, notification]
         });
       }
 
-      // Send push notification to the receiver
-      await sendPushNotification(partner.id, newMessage);
       setNewMessage("");
       scrollToBottom();
     } catch (error) {
@@ -370,9 +631,16 @@ export default function Chat() {
     ]);
   };
 
+  // Add cleanup for cache when component unmounts
+  useEffect(() => {
+    return () => {
+      userProfileCache.clear();
+    };
+  }, []);
+
   if (isInitialLoading) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <LoadingScreen message="Loading chat..." />
       </LinearGradient>
@@ -381,7 +649,7 @@ export default function Chat() {
 
   if (usersError || chatError) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>Error: {usersError || chatError}</Text>
@@ -398,7 +666,7 @@ export default function Chat() {
 
   if (!chat || !partner || !authUser) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>Chat not found</Text>
@@ -415,11 +683,10 @@ export default function Chat() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
           showBackButton={true}
-          title="Chat"
           showNotifications={true}
           onProfilePress={() => router.push(`/profile/${authUser.uid}`)}
         />
@@ -513,68 +780,14 @@ export default function Chat() {
                 showsVerticalScrollIndicator={false}
               >
                 {messages.map((message) => {
-                  const isSender = message.sender === authUser.uid;
+                  const isCurrentUser = message.sender === authUser.uid;
                   return (
-                    <TouchableOpacity
-                      key={message.id}
-                      onLongPress={() => handleLongPressMessage(message)}
-                      onPress={() => Keyboard.dismiss()}
-                      activeOpacity={0.7}
-                    >
-                      <View
-                        style={[
-                          isSender ? styles.messageBubbleRight : styles.messageBubbleLeft,
-                          !isSender && { 
-                            backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
-                            borderColor: theme === "light" ? "#e0e0e0" : "#3a3a3a"
-                          }
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.messageText,
-                            isSender ? styles.rightMessageText : { 
-                              color: theme === "light" ? "#1a1a1a" : "#ffffff",
-                              fontWeight: "500"
-                            }
-                          ]}
-                        >
-                          {message.text}
-                        </Text>
-                        <View style={styles.messageFooter}>
-                          <Text style={[styles.timestamp, { 
-                            color: isSender 
-                              ? "#ffffff"
-                              : (theme === "light" ? "#1a1a1a" : "#ffffff")
-                          }]}>
-                            {formatTimestamp(message.date)}
-                          </Text>
-                          {isSender && (
-                            <View style={styles.messageStatus}>
-                              {message.status === 'read' ? (
-                                <Ionicons 
-                                  name="checkmark-done" 
-                                  size={18} 
-                                  color="#ffffff"
-                                />
-                              ) : message.status === 'delivered' ? (
-                                <Ionicons 
-                                  name="checkmark-done" 
-                                  size={18} 
-                                  color="#ffffff"
-                                />
-                              ) : (
-                                <Ionicons 
-                                  name="checkmark" 
-                                  size={18} 
-                                  color="#ffffff"
-                                />
-                              )}
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    </TouchableOpacity>
+                    <MessageItem 
+                      key={message.id} 
+                      item={message} 
+                      isCurrentUser={isCurrentUser} 
+                      theme={theme || 'light'} 
+                    />
                   );
                 })}
               </ScrollView>
@@ -602,6 +815,7 @@ export default function Chat() {
                   }}
                   multiline
                   maxLength={1000}
+                  keyboardAppearance={theme === "light" ? "light" : "dark"}
                 />
                 <TouchableOpacity
                   style={[styles.sendButton, messageError && styles.sendButtonDisabled]}
@@ -641,7 +855,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    marginTop: 5,
     borderBottomWidth: 1,
   },
   avatar: {
@@ -668,42 +881,29 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'flex-end',
   },
-  messageBubbleLeft: {
-    alignSelf: "flex-start",
-    borderRadius: 20,
+  messageBubble: {
     padding: 12,
-    marginVertical: 4,
-    marginLeft: 8,
-    maxWidth: "80%",
+    borderRadius: 20,
+    maxWidth: '80%',
+    minWidth: '30%',
+    borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 2,
     elevation: 1,
-    borderWidth: 1,
-    borderTopLeftRadius: 4,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    borderTopRightRadius: 20,
   },
-  messageBubbleRight: {
-    alignSelf: "flex-end",
-    backgroundColor: "#37a4c8",
-    borderRadius: 20,
-    padding: 12,
-    marginVertical: 4,
-    marginRight: 8,
-    maxWidth: "80%",
-    minWidth: "30%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  currentUserBubble: {
     borderTopRightRadius: 4,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     borderTopLeftRadius: 20,
+  },
+  otherUserBubble: {
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    borderTopRightRadius: 20,
   },
   messageText: {
     fontSize: 15,
@@ -864,5 +1064,62 @@ const styles = StyleSheet.create({
   },
   sendButtonTextDisabled: {
     color: "#666666",
+  },
+  messageContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginVertical: 4,
+    paddingHorizontal: 4,
+  },
+  currentUserContainer: {
+    justifyContent: 'flex-end',
+  },
+  otherUserContainer: {
+    justifyContent: 'flex-start',
+  },
+  profileImageContainer: {
+    marginRight: 8,
+    marginBottom: 4,
+    marginLeft: 0,
+  },
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  defaultAvatar: {
+    backgroundColor: '#000000',
+  },
+  userNameContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  userNamePlaceholder: {
+    height: 16,
+    width: '60%',
+    borderRadius: 4,
+  },
+  loadingLine: {
+    position: 'absolute',
+    bottom: -4,
+    left: 0,
+    right: 0,
+    height: 2,
+    width: '100%',
+    borderRadius: 1,
+  },
+  messageUser: {
+    fontSize: 13,
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  messageTimestamp: {
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: "right",
+    fontWeight: "500",
   },
 });

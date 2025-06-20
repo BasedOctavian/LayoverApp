@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView, Keyboard, Platform, Animated, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView, Keyboard, Platform, Animated, Alert, Image, Easing } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -8,7 +8,7 @@ import useChat from '../../../hooks/useChat';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import TopBar from '../../../components/TopBar';
 import LoadingScreen from '../../../components/LoadingScreen';
-import { Timestamp, doc, getDoc } from 'firebase/firestore';
+import { Timestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../../config/firebaseConfig';
 import { ThemeContext } from '../../../context/ThemeContext';
 import * as ExpoNotifications from 'expo-notifications';
@@ -21,6 +21,223 @@ interface Message {
   userName: string;
   timestamp: Timestamp;
 }
+
+const formatTimestamp = (timestamp: Timestamp): string => {
+  if (!timestamp) return '';
+  const date = timestamp.toDate();
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+// Cache for user profiles
+const userProfileCache = new Map<string, any>();
+
+const MessageItem = ({ item, isCurrentUser, theme }: { item: Message; isCurrentUser: boolean; theme: string }) => {
+  const [userProfile, setUserProfile] = useState<any>(userProfileCache.get(item.userId) || null);
+  const router = useRouter();
+  const loadingProgress = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const [isLoading, setIsLoading] = useState(!userProfileCache.has(item.userId));
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Add loading progress animation with pulse
+  useEffect(() => {
+    if (isLoading) {
+      // Main loading line animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(loadingProgress, {
+            toValue: 1,
+            duration: 1200,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.cubic),
+          }),
+          Animated.timing(loadingProgress, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      // Pulse animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.cubic),
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.cubic),
+          }),
+        ])
+      ).start();
+    } else {
+      loadingProgress.setValue(0);
+      pulseAnim.setValue(0);
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!isCurrentUser && !userProfileCache.has(item.userId)) {
+        setIsLoading(true);
+        const startTime = Date.now();
+        
+        const userDoc = await getDoc(doc(db, 'users', item.userId));
+        if (userDoc.exists()) {
+          const profileData = userDoc.data();
+          setUserProfile(profileData);
+          userProfileCache.set(item.userId, profileData);
+        }
+
+        // Ensure loading state lasts at least 1 second
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime < 1000) {
+          await new Promise(resolve => setTimeout(resolve, 1000 - elapsedTime));
+        }
+        
+        // Fade in the content with a slight bounce
+        Animated.sequence([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+            easing: Easing.out(Easing.cubic),
+          }),
+          Animated.spring(fadeAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 40,
+            useNativeDriver: true,
+          })
+        ]).start();
+        
+        setIsLoading(false);
+      } else if (!isLoading) {
+        fadeAnim.setValue(1);
+      }
+    };
+    fetchUserProfile();
+  }, [item.userId, isCurrentUser]);
+
+  return (
+    <View style={[
+      styles.messageContainer,
+      isCurrentUser ? styles.currentUserContainer : styles.otherUserContainer
+    ]}>
+      {!isCurrentUser && (
+        <TouchableOpacity 
+          onPress={() => router.push(`/profile/${item.userId}`)}
+          style={styles.profileImageContainer}
+        >
+          {isLoading ? (
+            <View style={[styles.profileImage, { backgroundColor: theme === "light" ? "#f8f9fa" : "#1a1a1a" }]}>
+              <Animated.View 
+                style={[
+                  styles.loadingLine,
+                  {
+                    backgroundColor: theme === "light" ? "#37a4c8" : "#4db8d4",
+                    transform: [{
+                      translateX: loadingProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-100, 100]
+                      })
+                    }],
+                    opacity: pulseAnim.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0.3, 0.8, 0.3]
+                    })
+                  }
+                ]}
+              />
+            </View>
+          ) : (
+            <Animated.View style={{ opacity: fadeAnim }}>
+              {userProfile?.profilePicture ? (
+                <Image
+                  source={{ uri: userProfile.profilePicture }}
+                  style={styles.profileImage}
+                />
+              ) : (
+                <View style={[styles.profileImage, styles.defaultAvatar]} />
+              )}
+            </Animated.View>
+          )}
+        </TouchableOpacity>
+      )}
+      <View style={[
+        styles.messageBubble, 
+        isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble,
+        { 
+          backgroundColor: isCurrentUser 
+            ? '#37a4c8' 
+            : theme === "light" 
+              ? "#f5f5f5" 
+              : "#2a2a2a",
+          borderColor: isCurrentUser 
+            ? '#37a4c8' 
+            : theme === "light" 
+              ? "#e0e0e0" 
+              : "#3a3a3a"
+        }
+      ]}>
+        {!isCurrentUser && (
+          <View style={styles.userNameContainer}>
+            {isLoading ? (
+              <View style={[styles.userNamePlaceholder, { backgroundColor: theme === "light" ? "#e6e6e6" : "#2a2a2a" }]} />
+            ) : (
+              <Animated.Text style={[
+                styles.messageUser, 
+                { 
+                  color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                  fontWeight: "600",
+                  opacity: fadeAnim
+                }
+              ]}>
+                {userProfile?.name || userProfile?.displayName || 'Anonymous'}
+              </Animated.Text>
+            )}
+            <Animated.View 
+              style={[
+                styles.loadingLine,
+                {
+                  backgroundColor: theme === "light" ? "#37a4c8" : "#4db8d4",
+                  transform: [{
+                    translateX: loadingProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-100, 100]
+                    })
+                  }],
+                  opacity: isLoading ? pulseAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.3, 0.8, 0.3]
+                  }) : 0
+                }
+              ]}
+            />
+          </View>
+        )}
+        <Text style={[styles.messageText, { 
+          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#1a1a1a" : "#ffffff",
+          fontWeight: "500"
+        }]}>
+          {item.text}
+        </Text>
+        <Text style={[styles.messageTimestamp, { 
+          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#666666" : "#a0a0a0",
+          opacity: 0.8
+        }]}>
+          {formatTimestamp(item.timestamp)}
+        </Text>
+      </View>
+    </View>
+  );
+};
 
 export default function EventChat() {
   const { id } = useLocalSearchParams();
@@ -36,6 +253,22 @@ export default function EventChat() {
   const flatListRef = useRef<FlatList>(null);
   const { theme } = React.useContext(ThemeContext);
   const [messageError, setMessageError] = useState(false);
+  const [eventDetails, setEventDetails] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchEventDetails = async () => {
+      try {
+        const eventDoc = await getDoc(doc(db, 'events', id as string));
+        if (eventDoc.exists()) {
+          setEventDetails(eventDoc.data());
+        }
+      } catch (error) {
+        console.error('Error fetching event details:', error);
+      }
+    };
+
+    fetchEventDetails();
+  }, [id]);
 
   useEffect(() => {
     // Simulate initial loading
@@ -84,51 +317,122 @@ export default function EventChat() {
 
   const sendPushNotification = async (receiverId: string, messageText: string, eventId: string) => {
     try {
-      // Get receiver's push token
+      // Get sender's data to get their name
+      const senderDoc = await getDoc(doc(db, 'users', user?.uid || ''));
+      const senderData = senderDoc.exists() ? senderDoc.data() : null;
+      const senderName = senderData?.name || senderData?.displayName || 'Someone';
+
+      // Get event data to get event name
+      const eventDoc = await getDoc(doc(db, 'events', eventId));
+      const eventData = eventDoc.exists() ? eventDoc.data() : null;
+      const eventName = eventData?.name || 'Event';
+
+      // Get receiver's data to check notification preferences and push token
       const receiverDoc = await getDoc(doc(db, 'users', receiverId));
       if (!receiverDoc.exists()) {
-        console.log('Receiver document not found');
+        console.log('Receiver document not found:', receiverId);
         return;
       }
 
       const receiverData = receiverDoc.data();
-      const pushToken = receiverData?.expoPushToken;
 
-      if (!pushToken) {
-        console.log('No push token found for receiver');
-        return;
+      // Check if receiver has notifications enabled and has a push token
+      if (receiverData?.expoPushToken && 
+          receiverData?.notificationPreferences?.notificationsEnabled && 
+          receiverData?.notificationPreferences?.events &&
+          receiverData?.notificationPreferences?.chats) {
+        
+        console.log('Sending push notification to:', {
+          token: receiverData.expoPushToken,
+          name: senderName,
+          message: messageText,
+          senderId: user?.uid
+        });
+
+        // Send push notification
+        try {
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+            },
+            body: JSON.stringify({
+              to: receiverData.expoPushToken,
+              title: eventName,
+              body: `${senderName}: ${messageText}`,
+              sound: 'default',
+              priority: 'high',
+              data: {
+                type: 'eventChat',
+                eventId: eventId,
+                chatId: id,
+                receiverId: receiverId,
+                senderId: user?.uid,
+                senderName: senderName
+              },
+            }),
+          });
+
+          const responseData = await response.json();
+          
+          if (!response.ok) {
+            console.error('Failed to send push notification:', {
+              status: response.status,
+              statusText: response.statusText,
+              data: responseData
+            });
+          } else {
+            console.log('Push notification sent successfully:', responseData);
+          }
+        } catch (error) {
+          console.error('Error sending push notification:', {
+            error,
+            receiverId: receiverId,
+            token: receiverData.expoPushToken
+          });
+        }
+      } else {
+        console.log('Push notification not sent because:', {
+          hasToken: !!receiverData?.expoPushToken,
+          notificationsEnabled: receiverData?.notificationPreferences?.notificationsEnabled,
+          eventsEnabled: receiverData?.notificationPreferences?.events,
+          chatsEnabled: receiverData?.notificationPreferences?.chats,
+          receiverId: receiverId
+        });
       }
 
-      // Send push notification using Expo's push notification service
-      const notificationPayload = {
-        to: pushToken,
-        sound: 'default',
-        title: `Event Message from ${user?.displayName || 'Someone'}`,
-        body: messageText,
+      // Add notification to receiver's user document
+      const notification = {
+        id: Date.now().toString(),
+        title: eventName,
+        body: `${senderName}: ${messageText}`,
         data: {
           type: 'eventChat',
           eventId: eventId,
           chatId: id,
           receiverId: receiverId,
-          senderId: user?.uid
+          senderId: user?.uid,
+          senderName: senderName
         },
+        timestamp: new Date(),
+        read: false
       };
 
-      await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(notificationPayload),
-      });
+      // Add notification to receiver's user document
+      if (receiverDoc.exists()) {
+        const notifications = receiverData?.notifications || [];
+        await updateDoc(doc(db, 'users', receiverId), {
+          notifications: [...notifications, notification]
+        });
+      }
     } catch (error) {
-      console.error('Error sending push notification:', error);
+      console.error('Error in sendPushNotification:', error);
     }
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!newMessage.trim() || !user) return;
     
     // Check for inappropriate content
@@ -143,81 +447,63 @@ export default function EventChat() {
     }
     
     setMessageError(false);
+
+    // Get sender's data to get their name
+    const senderDoc = await getDoc(doc(db, 'users', user.uid));
+    const senderData = senderDoc.exists() ? senderDoc.data() : null;
+    const senderName = senderData?.name || senderData?.displayName || 'Anonymous';
+
     const messageData = {
       text: newMessage,
       userId: user.uid,
-      userName: user.displayName || 'Anonymous',
+      userName: senderName,
     };
     
-    sendMessage(messageData);
-    
-    // Send push notification to other participants
-    if (messages.length > 0) {
-      const otherParticipants = messages
-        .map(msg => msg.userId)
-        .filter(id => id !== user.uid);
+    try {
+      await sendMessage(messageData);
       
-      otherParticipants.forEach(participantId => {
-        sendPushNotification(participantId, newMessage, id as string);
-      });
-    }
-    
-    setNewMessage('');
-    flatListRef.current?.scrollToEnd({ animated: true });
-  };
+      // Get event document to access attendees
+      const eventDoc = await getDoc(doc(db, 'events', id as string));
+      if (!eventDoc.exists()) {
+        console.error('Event document not found');
+        return;
+      }
 
-  const formatTimestamp = (timestamp: Timestamp): string => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate();
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const eventData = eventDoc.data();
+      const attendees = eventData?.attendees || [];
+      
+      // Send notifications to all attendees except the sender
+      await Promise.all(
+        attendees
+          .filter((attendeeId: string) => attendeeId !== user.uid) // Exclude sender
+          .map((attendeeId: string) => 
+            sendPushNotification(attendeeId, newMessage, id as string)
+          )
+      );
+      
+      setNewMessage('');
+      flatListRef.current?.scrollToEnd({ animated: true });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isCurrentUser = item.userId === user?.uid;
-    return (
-      <View style={[
-        styles.messageBubble, 
-        isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble,
-        { 
-          backgroundColor: isCurrentUser 
-            ? '#37a4c8' 
-            : theme === "light" 
-              ? "#f5f5f5" 
-              : "#2a2a2a",
-          borderColor: isCurrentUser 
-            ? '#37a4c8' 
-            : theme === "light" 
-              ? "#e0e0e0" 
-              : "#3a3a3a"
-        }
-      ]}>
-        {!isCurrentUser && (
-          <Text style={[styles.messageUser, { 
-            color: theme === "light" ? "#1a1a1a" : "#ffffff",
-            fontWeight: "600"
-          }]}>
-            {item.userName}
-          </Text>
-        )}
-        <Text style={[styles.messageText, { 
-          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#1a1a1a" : "#ffffff",
-          fontWeight: "500"
-        }]}>
-          {item.text}
-        </Text>
-        <Text style={[styles.messageTimestamp, { 
-          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#666666" : "#a0a0a0",
-          opacity: 0.8
-        }]}>
-          {formatTimestamp(item.timestamp)}
-        </Text>
-      </View>
-    );
+    return <MessageItem item={item} isCurrentUser={isCurrentUser} theme={theme || 'light'} />;
   };
+
+  // Clear cache when component unmounts
+  useEffect(() => {
+    return () => {
+      userProfileCache.clear();
+    };
+  }, []);
 
   if (isInitialLoading) {
     return (
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <LoadingScreen message="Loading chat..." />
       </LinearGradient>
@@ -226,14 +512,59 @@ export default function EventChat() {
 
   return (
     <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
           showBackButton={true}
-          title="Event Chat"
           showNotifications={true}
           onProfilePress={() => router.push(`/profile/${user?.uid}`)}
         />
+
+        {/* Event Header */}
+        <TouchableOpacity 
+          style={[styles.eventHeader, { 
+            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+            borderBottomColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
+          }]}
+          onPress={() => router.push(`/event/${id}`)}
+        >
+          <View style={styles.headerTextContainer}>
+            <View style={styles.nameRow}>
+              <Text style={[styles.eventName, { 
+                color: theme === "light" ? "#1a1a1a" : "#ffffff",
+              }]}>
+                {eventDetails?.name || "Loading..."}
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              {eventDetails?.airportCode && (
+                <View style={[styles.infoBadge, { 
+                  backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
+                }]}>
+                  <Ionicons name="airplane" size={14} color="#37a4c8" />
+                  <Text style={[styles.infoText, { 
+                    color: theme === "light" ? "#666666" : "#a0a0a0"
+                  }]}>
+                    {eventDetails.airportCode}
+                  </Text>
+                </View>
+              )}
+              {eventDetails?.category && (
+                <View style={[styles.infoBadge, { 
+                  backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
+                }]}>
+                  <Ionicons name="people" size={14} color="#37a4c8" />
+                  <Text style={[styles.infoText, { 
+                    color: theme === "light" ? "#666666" : "#a0a0a0"
+                  }]}>
+                    {eventDetails.category}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+
         {error ? (
           <View style={styles.centerContainer}>
             <Text style={[styles.errorText, { color: theme === "light" ? "#FF3B30" : "#FF3B30" }]}>{error}</Text>
@@ -282,6 +613,7 @@ export default function EventChat() {
                 placeholderTextColor={messageError ? "#ff4444" : theme === "light" ? "#666666" : "#a0a0a0"}
                 multiline
                 maxLength={1000}
+                keyboardAppearance={theme === "light" ? "light" : "dark"}
               />
               <TouchableOpacity
                 onPress={handleSendMessage}
@@ -318,10 +650,36 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingVertical: 16,
   },
+  messageContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginVertical: 4,
+    paddingHorizontal: 4,
+  },
+  currentUserContainer: {
+    justifyContent: 'flex-end',
+  },
+  otherUserContainer: {
+    justifyContent: 'flex-start',
+  },
+  profileImageContainer: {
+    marginRight: 8,
+    marginBottom: 4,
+    marginLeft: 0,
+  },
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  defaultAvatar: {
+    backgroundColor: '#000000',
+  },
   messageBubble: {
     padding: 12,
     borderRadius: 20,
-    marginVertical: 4,
     maxWidth: '80%',
     minWidth: '30%',
     borderWidth: 1,
@@ -332,14 +690,12 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   currentUserBubble: {
-    alignSelf: 'flex-end',
     borderTopRightRadius: 4,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     borderTopLeftRadius: 20,
   },
   otherUserBubble: {
-    alignSelf: 'flex-start',
     borderTopLeftRadius: 4,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
@@ -417,5 +773,70 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: "#cccccc",
     opacity: 0.7,
+  },
+  userNameContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  userNamePlaceholder: {
+    height: 16,
+    width: '60%',
+    borderRadius: 4,
+  },
+  loadingLine: {
+    position: 'absolute',
+    bottom: -4,
+    left: 0,
+    right: 0,
+    height: 2,
+    width: '100%',
+    borderRadius: 1,
+  },
+  eventHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderBottomWidth: 1,
+  },
+  headerTextContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  eventName: {
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+    marginBottom: 2,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  infoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  infoText: {
+    fontSize: 13,
+    fontWeight: "500",
   },
 });

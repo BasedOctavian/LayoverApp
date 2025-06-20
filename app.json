@@ -3,7 +3,7 @@
     "name": "Wingman",
     "slug": "Layover",
     "scheme": "mylayover",
-    "version": "1.0.0",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,9 +17,12 @@
       "supportsTablet": false,
       "newArchEnabled": true,
       "infoPlist": {
-      "NSLocationWhenInUseUsageDescription": "Wingman uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests.",
-      "NSPhotoLibraryUsageDescription": "Wingman allows you to upload a profile photo or share pictures with fellow travelers during layovers.",
-      "ITSAppUsesNonExemptEncryption": false
+        "NSLocationWhenInUseUsageDescription": "Wingman uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests.",
+        "NSPhotoLibraryUsageDescription": "Wingman allows you to upload a profile photo or share pictures with fellow travelers during layovers.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"],
+        "NSUserNotificationUsageDescription": "Wingman sends you notifications about new messages, events, and updates during your layover.",
+        "NSFaceIDUsageDescription": "Wingman uses Face ID to securely authenticate admin access to protect sensitive administrative features."
       },
       "googleServicesFile": "./GoogleService-Info.plist",
       "bundleIdentifier": "com.octavian.layoverapp",
@@ -36,7 +39,10 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "package": "com.mattryan7201.Layover",
       "googleServicesFile": "./google-services.json"
@@ -59,7 +65,15 @@
           "cameraPermission": "Wingman allows you to upload a profile photo or share pictures with fellow travelers during layovers."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "mode": "production"
+        }
+      ]
     ],
     "extra": {
       "router": {

@@ -12,9 +12,12 @@ import {
   Easing,
   ActivityIndicator,
   Alert,
+  Dimensions,
+  RefreshControl,
+  Platform,
 } from "react-native";
 import useAuth from "../../hooks/auth";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import useUsers from "../../hooks/useUsers";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -31,13 +34,14 @@ import {
 import { db } from "../../../config/firebaseConfig";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../../context/ThemeContext";
 import BottomNavBar from "../../components/BottomNavBar";
 import useChats from "../../hooks/useChats";
+import useNotificationCount from "../../hooks/useNotificationCount";
 
 interface Chat {
   id: string;
@@ -49,117 +53,28 @@ interface Chat {
   lastMessage: string | null;
 }
 
+interface AppUser {
+  id: string;
+  name: string;
+  age: number;
+  airportCode: string;
+  bio?: string;
+  interests?: string[];
+  moodStatus?: string;
+  profilePicture?: string;
+}
+
 interface UserCardProps {
-  item: any;
+  item: AppUser;
   onPress: () => void;
 }
 
 const UserCard = ({ item, onPress }: UserCardProps) => {
   const { user } = useAuth();
-  const { getExistingChat, addChat } = useChats();
   const { theme } = React.useContext(ThemeContext);
-  const [connectionStatus, setConnectionStatus] = useState<'none' | 'pending' | 'active'>('none');
-  const [isLoading, setIsLoading] = useState(false);
-  const [pendingConnectionId, setPendingConnectionId] = useState<string | null>(null);
 
-  // Check connection status when item changes
-  useEffect(() => {
-    const checkConnectionStatus = async () => {
-      if (!user) return;
-      
-      try {
-        // Check connections collection first
-        const connectionsQuery = query(
-          collection(db, 'connections'),
-          where('participants', 'array-contains', user.uid)
-        );
-        const connectionsSnapshot = await getDocs(connectionsQuery);
-        
-        // Check if there's a pending connection with this user
-        const pendingConnection = connectionsSnapshot.docs.find(doc => {
-          const data = doc.data();
-          return data.participants.includes(item.id) && data.status === 'pending';
-        });
-
-        if (pendingConnection) {
-          setConnectionStatus('pending');
-          setPendingConnectionId(pendingConnection.id);
-          return;
-        }
-
-        // If no pending connection, check existing chats
-        const existingChat = await getExistingChat(user.uid, item.id);
-        if (existingChat) {
-          if ((existingChat as Chat).status === 'pending') {
-            setConnectionStatus('pending');
-          } else if ((existingChat as Chat).status === 'active') {
-            setConnectionStatus('active');
-          }
-        } else {
-          setConnectionStatus('none');
-        }
-      } catch (error) {
-        console.error('Error checking connection status:', error);
-        setConnectionStatus('none');
-      }
-    };
-
-    checkConnectionStatus();
-  }, [item.id, user]);
-
-  const handleRemovePending = async () => {
-    if (!pendingConnectionId || isLoading) return;
-    
-    setIsLoading(true);
-    try {
-      // Delete the connection document
-      await deleteDoc(doc(db, 'connections', pendingConnectionId));
-      setConnectionStatus('none');
-      setPendingConnectionId(null);
-    } catch (error) {
-      console.error('Error removing pending connection:', error);
-      Alert.alert('Error', 'Failed to remove pending connection. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleConnect = async () => {
-    if (!user || isLoading) return;
-    
-    setIsLoading(true);
-    try {
-      // Create a new connection document with exact structure
-      const connectionData = {
-        connectionType: null,
-        createdAt: new Date(),
-        initiator: user.uid,
-        lastMessage: null,
-        participants: [user.uid, item.id],
-        status: 'pending'
-      };
-      
-      // Create ONLY the connection document
-      const docRef = await addDoc(collection(db, 'connections'), connectionData);
-      setConnectionStatus('pending');
-      setPendingConnectionId(docRef.id);
-    } catch (error) {
-      console.error('Error creating connection:', error);
-      Alert.alert('Error', 'Failed to create connection. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCardPress = async () => {
-    if (connectionStatus === 'active') {
-      const existingChat = await getExistingChat(user?.uid || '', item.id);
-      if (existingChat) {
-        router.push("/chat/" + existingChat.id);
-      }
-    } else if (connectionStatus === 'none') {
-      handleConnect();
-    }
+  const handleCardPress = () => {
+    router.push(`/profile/${item.id}`);
   };
 
   return (
@@ -208,47 +123,12 @@ const UserCard = ({ item, onPress }: UserCardProps) => {
           </Text>
         </View>
 
-        {connectionStatus === 'none' && (
-          <TouchableOpacity
-            style={[styles.connectButton, { backgroundColor: '#37a4c8' }]}
-            onPress={handleConnect}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.connectButtonText}>Connect</Text>
-            )}
-          </TouchableOpacity>
-        )}
-
-        {connectionStatus === 'pending' && (
-          <TouchableOpacity
-            style={[styles.statusContainer, { backgroundColor: '#FFA500' }]}
-            onPress={handleRemovePending}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.statusText}>Remove Pending</Text>
-            )}
-          </TouchableOpacity>
-        )}
-
-        {connectionStatus === 'active' && (
-          <TouchableOpacity
-            style={[styles.connectButton, { backgroundColor: '#4CAF50' }]}
-            onPress={async () => {
-              const existingChat = await getExistingChat(user?.uid || '', item.id);
-              if (existingChat) {
-                router.push("/chat/" + existingChat.id);
-              }
-            }}
-          >
-            <Text style={styles.connectButtonText}>Open Chat</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[styles.connectButton, { backgroundColor: '#37a4c8' }]}
+          onPress={handleCardPress}
+        >
+          <Text style={styles.connectButtonText}>View Profile</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -257,64 +137,78 @@ const UserCard = ({ item, onPress }: UserCardProps) => {
 const ModernLoadingIndicator = ({ color }: { color: string }) => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const shadowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Start fade in animation
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-      easing: Easing.out(Easing.ease),
-    }).start();
-
+    // Complex animation sequence
     const pulseAnimation = Animated.sequence([
+      // First phase: grow and fade in
       Animated.parallel([
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 1000,
+          duration: 800,
           useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
         }),
         Animated.timing(scaleAnim, {
-          toValue: 1.2,
-          duration: 1000,
+          toValue: 1.3,
+          duration: 800,
           useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+        Animated.timing(shadowAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
         }),
       ]),
+      // Second phase: shrink and fade out
       Animated.parallel([
         Animated.timing(pulseAnim, {
           toValue: 0,
-          duration: 1000,
+          duration: 800,
           useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
         }),
         Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 1000,
+          toValue: 0.9,
+          duration: 800,
           useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+        }),
+        Animated.timing(shadowAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
         }),
       ]),
     ]);
 
+    // Continuous rotation animation
+    const rotationAnimation = Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    );
+
+    // Start both animations
     Animated.loop(pulseAnimation).start();
+    rotationAnimation.start();
   }, []);
 
+  const spin = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
   return (
-    <Animated.View 
-      style={[
-        styles.loadingIndicatorContainer,
-        {
-          opacity: fadeAnim,
-          transform: [{ scale: fadeAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0.9, 1]
-          })}]
-        }
-      ]}
-    >
+    <View style={styles.loadingIndicatorContainer}>
       <Animated.View
         style={[
           styles.loadingCircle,
@@ -322,30 +216,53 @@ const ModernLoadingIndicator = ({ color }: { color: string }) => {
             backgroundColor: color,
             opacity: pulseAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [0.3, 0.7],
+              outputRange: [0.3, 0.8],
             }),
-            transform: [{ scale: scaleAnim }],
+            transform: [
+              { scale: scaleAnim },
+              { rotate: spin }
+            ],
+            shadowOpacity: shadowAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.2, 0.5],
+            }),
+            shadowRadius: shadowAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [4, 8],
+            }),
           },
         ]}
       />
-    </Animated.View>
+    </View>
   );
 };
 
 export default function ChatExplore() {
-  const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { getUsers, loading: usersLoading, error: usersError } = useUsers();
-  const [users, setUsers] = useState<any[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const { getUsers } = useUsers();
+  const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filteredUsers, setFilteredUsers] = useState<AppUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   // Auth-related states
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [isThemeChanging, setIsThemeChanging] = useState(false);
+  const loadingStartTime = useRef<number | null>(null);
 
   // States to manage chat fetching and creation
   const [chatLoading, setChatLoading] = useState<boolean>(false);
@@ -353,7 +270,6 @@ export default function ChatExplore() {
   const [chatPartnerIds, setChatPartnerIds] = useState<string[]>([]);
 
   // Add fade animation
-  const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateYAnim = useRef(new Animated.Value(20)).current;
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
   const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
@@ -430,6 +346,9 @@ export default function ChatExplore() {
     const fetchUsers = async () => {
       if (user) {
         try {
+          setUsersLoading(true);
+          setUsersError(null);
+          loadingStartTime.current = Date.now();
           // Get current user's blocked lists
           const currentUserDoc = await getDoc(doc(db, "users", user.uid));
           const currentUserData = currentUserDoc.data();
@@ -437,7 +356,7 @@ export default function ChatExplore() {
           const hasMeBlocked = currentUserData?.hasMeBlocked || [];
 
           // Get all users
-          const allUsers = await getUsers();
+          const allUsers = await getUsers() as AppUser[];
           
           // Get all users' documents to check their blocked lists
           const userDocs = await Promise.all(
@@ -445,7 +364,7 @@ export default function ChatExplore() {
           );
 
           // Filter users based on blocking status and other criteria
-          const otherUsers = allUsers.filter((u: any, index: number) => {
+          const otherUsers = allUsers.filter((u: AppUser, index: number) => {
             const userDoc = userDocs[index];
             const userData = userDoc.data();
             
@@ -462,10 +381,29 @@ export default function ChatExplore() {
                    !currentUserHasBlockedThem; // Current user has not blocked them
           });
 
-          setUsers(otherUsers);
+          // Sort users: those with profile pictures first
+          const sortedUsers = otherUsers.sort((a, b) => {
+            const aHasProfilePic = Boolean(a.profilePicture);
+            const bHasProfilePic = Boolean(b.profilePicture);
+            if (aHasProfilePic === bHasProfilePic) return 0;
+            return aHasProfilePic ? -1 : 1;
+          });
+
+          setUsers(sortedUsers);
         } catch (error) {
           console.error("Error fetching users:", error);
+          setUsersError("Failed to load users. Please try again.");
         } finally {
+          setUsersLoading(false);
+          // Ensure minimum loading time of 2 seconds
+          const elapsed = Date.now() - (loadingStartTime.current || 0);
+          const minDuration = 2000; // 2 seconds
+          const remaining = Math.max(0, minDuration - elapsed);
+          
+          if (remaining > 0) {
+            await new Promise(resolve => setTimeout(resolve, remaining));
+          }
+          
           setInitialLoadComplete(true);
         }
       }
@@ -474,22 +412,8 @@ export default function ChatExplore() {
   }, [user]);
 
   // Fetch chats and extract chat partner IDs
-  useEffect(() => {
-    if (user) {
-      const fetchUserChats = async () => {
-        const chats = await getUserChats(user.uid);
-        if (chats) {
-          const partners = chats.reduce<string[]>((acc, chat) => {
-            const partnerIds = chat.participants.filter((p: string) => p !== user.uid);
-            return [...acc, ...partnerIds];
-          }, []);
-          setChatPartnerIds(Array.from(new Set(partners)));
-        }
-      };
-      fetchUserChats();
-    }
-  }, [user]);
-
+  
+    
   // Filter users list to only show those you haven't chatted with yet
   useEffect(() => {
     let updatedFilteredUsers = users.filter((u) => !chatPartnerIds.includes(u.id));
@@ -549,6 +473,7 @@ export default function ChatExplore() {
           showBackButton={false} 
           title=""
           onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          notificationCount={notificationCount}
         />
         <Animated.View 
           style={[
@@ -764,14 +689,19 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   loadingIndicatorContainer: {
-    width: 40,
-    height: 40,
+    width: 60,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });

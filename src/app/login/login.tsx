@@ -138,7 +138,7 @@ const Login = () => {
   };
 
   if (isAuthLoading || isLoggingIn || isRefreshing) {
-    return <LoadingScreen message="Signing you in..." />;
+    return <LoadingScreen message="Signing you in..." forceDarkMode={true} />;
   }
 
   return (

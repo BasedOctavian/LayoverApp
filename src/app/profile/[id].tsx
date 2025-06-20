@@ -13,10 +13,11 @@ import {
   Alert,
   Linking,
   Modal,
+  Easing,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
-import { doc, getDoc, updateDoc, arrayUnion, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, deleteDoc, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../../../config/firebaseConfig";
 import { db } from "../../../config/firebaseConfig";
@@ -33,6 +34,7 @@ import useChats from "../../hooks/useChats";
 import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
 import { DocumentData } from "firebase/firestore";
 import { ThemeContext } from "../../context/ThemeContext";
+import useNotificationCount from "../../hooks/useNotificationCount";
 
 interface UserData {
   name: string;
@@ -83,6 +85,59 @@ const convertToUserData = (data: DocumentData): UserData => {
   };
 };
 
+const ADMIN_IDS = ['hDn74gYZCdZu0efr3jMGTIWGrRQ2', 'WhNhj8WPUpbomevJQ7j69rnLbDp2'];
+
+const sendPushNotification = async (expoPushToken: string, reportedUserName: string) => {
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+      },
+      body: JSON.stringify({
+        to: expoPushToken,
+        title: 'New User Report',
+        body: `User ${reportedUserName} has been reported`,
+        sound: 'default',
+        priority: 'high',
+        data: { 
+          type: 'user_report',
+          timestamp: new Date().toISOString()
+        },
+      }),
+    });
+  } catch (error) {
+    console.error('Error sending push notification:', error);
+  }
+};
+
+const notifyAdmins = async (reportedUserName: string) => {
+  try {
+    // Get push tokens for admin users
+    const adminTokens = await Promise.all(
+      ADMIN_IDS.map(async (adminId) => {
+        const adminDoc = await getDoc(doc(db, 'users', adminId));
+        if (adminDoc.exists()) {
+          const adminData = adminDoc.data();
+          return adminData.expoPushToken;
+        }
+        return null;
+      })
+    );
+
+    // Send notifications to admins with valid push tokens
+    const notificationPromises = adminTokens
+      .filter(token => token) // Filter out null tokens
+      .map(token => sendPushNotification(token!, reportedUserName));
+
+    await Promise.all(notificationPromises);
+  } catch (error) {
+    console.error('Error notifying admins:', error);
+  }
+};
+
 const Profile = () => {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -127,6 +182,34 @@ const Profile = () => {
   const [showConnectionsModal, setShowConnectionsModal] = useState(false);
   const modalScaleAnim = useRef(new Animated.Value(0.9)).current;
   const modalOpacityAnim = useRef(new Animated.Value(0)).current;
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
+  const buttonOpacityAnim = useRef(new Animated.Value(1)).current;
+  const loadingRotationAnim = useRef(new Animated.Value(0)).current;
+
+  // Add dynamic font size calculation
+  const getDynamicFontSize = (text: string, baseSize: number = 12) => {
+    const connectionCount = connections.length;
+    const textLength = text.length;
+    
+    // For connection count-based sizing
+    if (connectionCount >= 1000) return baseSize - 6; // 6px
+    if (connectionCount >= 500) return baseSize - 5;  // 7px
+    if (connectionCount >= 100) return baseSize - 4;  // 8px
+    if (connectionCount >= 50) return baseSize - 3;   // 9px
+    if (connectionCount >= 20) return baseSize - 2;   // 10px
+    if (connectionCount >= 10) return baseSize - 1;   // 11px
+    
+    // For text length-based sizing (for connect button states)
+    if (textLength >= 10) return baseSize - 2; // "Connecting..." = 12 chars
+    if (textLength >= 9) return baseSize - 1;  // "Connected" = 9 chars
+    
+    return baseSize; // 12px
+  };
+
+  const dynamicFontSize = getDynamicFontSize(`${connections.length} ${connections.length === 1 ? 'Connection' : 'Connections'}`);
+
+  // Get notification count
+  const notificationCount = useNotificationCount(userId);
 
   // Define TripGallery component inside Profile
   const TripGallery = ({ trip, onPhotoPress, theme }: { 
@@ -621,16 +704,20 @@ const Profile = () => {
               }]}>
                 <Text style={[styles.cardTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>Travel History</Text>
                 <View style={styles.tagsContainer}>
-                  {userData.travelHistory.map((country, index) => (
-                    <View key={index} style={[styles.tag, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                      shadowOpacity: theme === "light" ? 0.1 : 0,
-                    }]}>
-                      <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{country}</Text>
-                    </View>
-                  ))}
+                  {userData.travelHistory.map((country, index) => {
+                    // Handle both string and object formats
+                    const countryName = typeof country === 'string' ? country : country?.name || 'Unknown';
+                    return (
+                      <View key={index} style={[styles.tag, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.1 : 0,
+                      }]}>
+                        <Text style={[styles.tagText, { color: theme === "light" ? "#333333" : "#ffffff" }]}>{countryName}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
             )}
@@ -665,12 +752,13 @@ const Profile = () => {
                   {userData.socialMedia?.linkedin && (
                     <TouchableOpacity 
                       style={[styles.socialLink, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
                         shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.1 : 0,
+                        shadowOpacity: theme === "light" ? 0.15 : 0,
                       }]}
                       onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
+                      activeOpacity={0.8}
                     >
                       <MaterialIcons name="work" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
                       <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>LinkedIn Profile</Text>
@@ -679,12 +767,13 @@ const Profile = () => {
                   {userData.socialMedia?.twitter && (
                     <TouchableOpacity 
                       style={[styles.socialLink, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
                         shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.1 : 0,
+                        shadowOpacity: theme === "light" ? 0.15 : 0,
                       }]}
                       onPress={() => Linking.openURL(`https://twitter.com/${userData.socialMedia?.twitter}`)}
+                      activeOpacity={0.8}
                     >
                       <MaterialIcons name="chat" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
                       <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>@{userData.socialMedia.twitter}</Text>
@@ -823,12 +912,70 @@ const Profile = () => {
     }
   };
 
-  // Add connection handler
+  // Add loading animation function
+  const startLoadingAnimation = () => {
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(buttonScaleAnim, {
+          toValue: 0.95,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(buttonScaleAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.timing(buttonOpacityAnim, {
+        toValue: 0.7,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    Animated.loop(
+      Animated.timing(loadingRotationAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    ).start();
+  };
+
+  // Add stop loading animation function
+  const stopLoadingAnimation = () => {
+    Animated.parallel([
+      Animated.timing(buttonScaleAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(buttonOpacityAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    loadingRotationAnim.setValue(0);
+  };
+
+  // Update handleConnect to use animations
   const handleConnect = async () => {
     if (!authUser || !id || isProcessing) return;
     setIsProcessing(true);
+    startLoadingAnimation();
 
     try {
+      console.log('Starting connection process for user:', id);
+      
+      // Get current user data for the notification
+      const currentUserRef = doc(db, 'users', authUser.uid);
+      const currentUserDoc = await getDoc(currentUserRef);
+      const currentUserData = currentUserDoc.data();
+      
       // Create a new connection document with exact structure matching chatExplore
       const connectionData = {
         connectionType: null,
@@ -839,14 +986,154 @@ const Profile = () => {
         status: 'pending'
       };
       
+      console.log('Creating connection document with data:', connectionData);
       // Create ONLY the connection document
       await addDoc(collection(db, 'connections'), connectionData);
+      
+      // Get current user document to check if likedUsers exists
+      const userRef = doc(db, 'users', authUser.uid);
+      console.log('Fetching user document for:', authUser.uid);
+      const userDoc = await getDoc(userRef);
+      const userData = userDoc.data();
+      
+      console.log('Current user data:', userData);
+      console.log('Current likedUsers array:', userData?.likedUsers);
+      
+      // Remove from dislikedUsers if present
+      const currentDislikedUsers = userData?.dislikedUsers || [];
+      if (currentDislikedUsers.includes(id)) {
+        console.log('Removing user from dislikedUsers array:', id);
+        await updateDoc(userRef, {
+          dislikedUsers: arrayRemove(id)
+        });
+      }
+      
+      // Always create/update the likedUsers array
+      const currentLikedUsers = userData?.likedUsers || [];
+      if (!currentLikedUsers.includes(id)) {
+        console.log('Adding user to likedUsers array:', id);
+        await updateDoc(userRef, {
+          likedUsers: [...currentLikedUsers, id]
+        });
+      }
+
+      // Create notification for the target user
+      const targetUserRef = doc(db, 'users', id);
+      const targetUserDoc = await getDoc(targetUserRef);
+      const targetUserData = targetUserDoc.data();
+      
+      const notification = {
+        id: Date.now().toString(),
+        title: "New Connection Request",
+        body: `${userData?.name || 'Someone'} wants to connect with you!`,
+        data: {
+          type: 'match',
+          matchedUserId: authUser.uid,
+          matchedUserName: userData?.name
+        },
+        timestamp: new Date(),
+        read: false
+      };
+
+      // Add notification to target user's notifications array
+      const targetNotifications = targetUserData?.notifications || [];
+      await updateDoc(targetUserRef, {
+        notifications: [...targetNotifications, notification]
+      });
+
+      // Send push notification if target user has token and notifications enabled
+      if (targetUserData?.expoPushToken && 
+          targetUserData?.notificationPreferences?.notificationsEnabled && 
+          targetUserData?.notificationPreferences?.connections) {
+        
+        console.log('📱 Push notification conditions met:', {
+          hasToken: true,
+          token: targetUserData.expoPushToken,
+          notificationsEnabled: true,
+          connectionsEnabled: true
+        });
+
+        try {
+          const pushPayload = {
+            to: targetUserData.expoPushToken,
+            title: "New Connection Request",
+            body: `${userData?.name || 'Someone'} wants to connect with you!`,
+            sound: 'default',
+            priority: 'high',
+            data: {
+              type: 'match',
+              matchedUserId: authUser.uid,
+              matchedUserName: userData?.name
+            },
+          };
+
+          console.log('📦 Push notification payload:', pushPayload);
+
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+            },
+            body: JSON.stringify(pushPayload),
+          });
+
+          const responseData = await response.json();
+          
+          if (!response.ok) {
+            console.error('❌ Push notification failed:', {
+              status: response.status,
+              statusText: response.statusText,
+              data: responseData,
+              requestPayload: pushPayload
+            });
+          } else {
+            console.log('✅ Push notification sent successfully:', {
+              responseData,
+              receiverId: id,
+              senderName: userData?.name
+            });
+          }
+        } catch (error: any) {
+          console.error('❌ Error sending push notification:', {
+            error,
+            errorMessage: error.message,
+            errorStack: error.stack,
+            receiverId: id,
+            token: targetUserData.expoPushToken,
+            senderName: userData?.name
+          });
+        }
+      } else {
+        console.log('ℹ️ Push notification not sent. Reason:', {
+          hasToken: !!targetUserData?.expoPushToken,
+          token: targetUserData?.expoPushToken,
+          notificationsEnabled: targetUserData?.notificationPreferences?.notificationsEnabled,
+          connectionsEnabled: targetUserData?.notificationPreferences?.connections,
+          receiverId: id,
+          receiverName: targetUserData?.name,
+          fullPreferences: targetUserData?.notificationPreferences
+        });
+      }
+      
+      // Verify the update
+      const updatedUserDoc = await getDoc(userRef);
+      const updatedUserData = updatedUserDoc.data();
+      console.log('Updated user data:', updatedUserData);
+      console.log('Updated likedUsers array:', updatedUserData?.likedUsers);
+      
       setIsConnected("pending");
     } catch (error) {
       console.error("Error creating connection:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message);
+        console.error("Error stack:", error.stack);
+      }
       Alert.alert("Error", "Failed to create connection. Please try again.");
     } finally {
       setIsProcessing(false);
+      stopLoadingAnimation();
     }
   };
 
@@ -870,6 +1157,8 @@ const Profile = () => {
             style: "destructive",
             onPress: async () => {
               try {
+                console.log('Starting connection removal process for user:', id);
+                
                 // Find and delete the connection document
                 const connectionsRef = collection(db, "connections");
                 const q = query(
@@ -883,6 +1172,7 @@ const Profile = () => {
                   const data = doc.data();
                   if (data.participants.includes(id)) {
                     connectionId = doc.id;
+                    console.log('Found connection document to delete:', connectionId);
                     await deleteDoc(doc.ref);
                     break;
                   }
@@ -890,6 +1180,7 @@ const Profile = () => {
 
                 // If we found a connection, also delete associated chat
                 if (connectionId) {
+                  console.log('Deleting associated chat documents for connection:', connectionId);
                   const chatsRef = collection(db, "chats");
                   const chatsQuery = query(
                     chatsRef,
@@ -902,9 +1193,48 @@ const Profile = () => {
                   }
                 }
 
+                // Get current user document to check if likedUsers exists
+                const userRef = doc(db, 'users', authUser.uid);
+                console.log('Fetching user document for removal:', authUser.uid);
+                const userDoc = await getDoc(userRef);
+                const userData = userDoc.data();
+                
+                console.log('Current user data before removal:', userData);
+                console.log('Current likedUsers array before removal:', userData?.likedUsers);
+                
+                // Only attempt to remove from likedUsers if the array exists
+                if (userData?.likedUsers) {
+                  console.log('Removing user from likedUsers array:', id);
+                  await updateDoc(userRef, {
+                    likedUsers: arrayRemove(id)
+                  });
+                }
+
+                // Remove the notification from target user's document
+                const targetUserRef = doc(db, 'users', id);
+                const targetUserDoc = await getDoc(targetUserRef);
+                const targetUserData = targetUserDoc.data();
+                
+                if (targetUserData?.notifications) {
+                  console.log('Removing notification from target user');
+                  const updatedNotifications = targetUserData.notifications.filter(
+                    (notification: any) => 
+                      !(notification.data?.type === 'match' && 
+                        notification.data?.matchedUserId === authUser.uid)
+                  );
+                  
+                  await updateDoc(targetUserRef, {
+                    notifications: updatedNotifications
+                  });
+                }
+
                 setIsConnected("not_connected");
               } catch (error) {
                 console.error("Error removing connection:", error);
+                if (error instanceof Error) {
+                  console.error("Error details:", error.message);
+                  console.error("Error stack:", error.stack);
+                }
                 Alert.alert("Error", "Failed to remove connection. Please try again.");
               }
             }
@@ -913,6 +1243,10 @@ const Profile = () => {
       );
     } catch (error) {
       console.error("Error in remove confirmation:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message);
+        console.error("Error stack:", error.stack);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -1011,45 +1345,44 @@ const Profile = () => {
           style: "destructive",
           onPress: async () => {
             try {
-              // Create a new report document with detailed information
               const reportData = {
+                reportedBy: user?.uid,
+                reportedByUserName: userData?.name || 'Unknown User',
                 reportedUserId: id,
-                reportedBy: authUser?.uid,
                 reportedUserName: userData?.name || 'Unknown User',
-                reportedByUserName: authUser?.displayName || 'Anonymous',
-                createdAt: new Date(),
-                status: "pending",
-                type: "user_report",
-                lastUpdated: new Date(),
-                reviewedBy: null,
-                reviewNotes: null,
-                reviewDate: null,
-                // Add any additional metadata that might be helpful
                 reportedUserProfile: {
-                  name: userData?.name || 'Unknown User',
-                  ...(userData?.age && { age: userData.age }),
-                  ...(userData?.pronouns && { pronouns: userData.pronouns }),
-                  ...(userData?.bio && { bio: userData.bio }),
-                  ...(userData?.languages && { languages: userData.languages }),
-                  ...(userData?.interests && { interests: userData.interests }),
-                  ...(userData?.goals && { goals: userData.goals }),
-                  ...(userData?.createdAt && { createdAt: userData.createdAt }),
-                }
+                  age: userData?.age,
+                  bio: userData?.bio,
+                  createdAt: userData?.createdAt,
+                  goals: userData?.goals,
+                  interests: userData?.interests,
+                  languages: userData?.languages,
+                  name: userData?.name
+                },
+                createdAt: serverTimestamp(),
+                lastUpdated: serverTimestamp(),
+                status: 'pending',
+                type: 'user_report',
+                reviewDate: null,
+                reviewNotes: null,
+                reviewedBy: null
               };
+
+              await addDoc(collection(db, 'reports'), reportData);
               
-              // Add the report to the reports collection
-              await addDoc(collection(db, "reports"), reportData);
-              
+              // Notify admins about the report
+              await notifyAdmins(userData?.name || 'Unknown User');
+
               Alert.alert(
                 "Report Submitted",
-                "Thank you for your report. Our team will review it and take appropriate action.",
+                "Thank you for your report. Our team will review it shortly.",
                 [{ text: "OK" }]
               );
             } catch (error) {
-              console.error("Error reporting user:", error);
+              console.error("Error submitting report:", error);
               Alert.alert(
                 "Error",
-                "Failed to submit report. Please try again later.",
+                "Failed to submit report. Please try again.",
                 [{ text: "OK" }]
               );
             }
@@ -1165,7 +1498,7 @@ const Profile = () => {
             borderBottomColor: "#37a4c8",
           }
         ]}>
-          <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
+          <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} notificationCount={notificationCount} />
         </Animated.View>
 
         {isLoadingContent ? (
@@ -1239,6 +1572,30 @@ const Profile = () => {
                     </Animated.Text>
                   </Animated.Text>
                 </View>
+                
+                {/* Subtle visual separator */}
+                <Animated.View 
+                  style={[
+                    styles.nameSeparator, 
+                    { 
+                      marginBottom: 20,
+                      marginTop: 4,
+                      opacity: headerFadeAnim,
+                      transform: [{ scale: scaleAnim }]
+                    }
+                  ]} 
+                >
+                  <LinearGradient
+                    colors={theme === "light" 
+                      ? ["rgba(55, 164, 200, 0.1)", "rgba(55, 164, 200, 0.3)", "rgba(55, 164, 200, 0.1)"]
+                      : ["rgba(55, 164, 200, 0.2)", "rgba(55, 164, 200, 0.4)", "rgba(55, 164, 200, 0.2)"]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.separatorGradient}
+                  />
+                </Animated.View>
+                
                 <View style={styles.badgeContainer}>
                   <TouchableOpacity 
                     style={[styles.statusButton, { 
@@ -1248,55 +1605,90 @@ const Profile = () => {
                     onPress={() => handleModalVisibility(true)}
                   >
                     <MaterialIcons name="people" size={16} color="#37a4c8" />
-                    <Text style={[styles.statusButtonText, { color: "#37a4c8" }]}>
+                    <Text style={[styles.statusButtonText, { 
+                      color: "#37a4c8",
+                      fontSize: dynamicFontSize
+                    }]}>
                       {connections.length} {connections.length === 1 ? 'Connection' : 'Connections'}
                     </Text>
                   </TouchableOpacity>
                   {id !== authUser?.uid && (
-                    <TouchableOpacity 
-                      onPress={isConnected === "not_connected" ? handleConnect : handleRemoveConnection}
-                      disabled={isProcessing}
-                      style={[styles.statusButton, { 
-                        backgroundColor: isConnected === "connected" 
-                          ? (theme === "light" ? "rgba(76, 217, 100, 0.1)" : "rgba(76, 217, 100, 0.2)")
-                          : isConnected === "pending"
-                          ? (theme === "light" ? "rgba(255, 149, 0, 0.1)" : "rgba(255, 149, 0, 0.2)")
-                          : (theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)"),
-                        borderColor: isConnected === "connected" 
-                          ? "#4CD964" 
-                          : isConnected === "pending"
-                          ? "#FF9500"
-                          : "#37a4c8",
-                        opacity: isProcessing ? 0.5 : 1
-                      }]}
-                    >
-                      <MaterialIcons 
-                        name={isConnected === "connected" 
-                          ? "people" 
-                          : isConnected === "pending"
-                          ? "hourglass-empty"
-                          : "person-add"} 
-                        size={16} 
-                        color={isConnected === "connected" 
-                          ? "#4CD964" 
-                          : isConnected === "pending"
-                          ? "#FF9500"
-                          : "#37a4c8"} 
-                      />
-                      <Text style={[styles.statusButtonText, { 
-                        color: isConnected === "connected" 
-                          ? "#4CD964" 
-                          : isConnected === "pending"
-                          ? "#FF9500"
-                          : "#37a4c8"
-                      }]}>
-                        {isConnected === "connected" 
-                          ? "Connected" 
-                          : isConnected === "pending"
-                          ? "Pending"
-                          : "Connect"}
-                      </Text>
-                    </TouchableOpacity>
+                    <Animated.View style={{
+                      transform: [{ scale: buttonScaleAnim }],
+                      opacity: buttonOpacityAnim,
+                    }}>
+                      <TouchableOpacity 
+                        onPress={isConnected === "not_connected" ? handleConnect : handleRemoveConnection}
+                        disabled={isProcessing}
+                        style={[
+                          styles.statusButton,
+                          {
+                            backgroundColor: isConnected === "connected" 
+                              ? (theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(55, 164, 200, 0.25)")
+                              : isConnected === "pending"
+                              ? (theme === "light" ? "rgba(255, 149, 0, 0.15)" : "rgba(255, 149, 0, 0.25)")
+                              : (theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(55, 164, 200, 0.25)"),
+                            borderColor: isConnected === "connected" 
+                              ? "#37a4c8" 
+                              : isConnected === "pending"
+                              ? "#FF9500"
+                              : "#37a4c8",
+                          }
+                        ]}
+                        activeOpacity={0.8}
+                      >
+                        {isProcessing ? (
+                          <Animated.View style={{
+                            transform: [{
+                              rotate: loadingRotationAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0deg', '360deg']
+                              })
+                            }]
+                          }}>
+                            <MaterialIcons 
+                              name="sync" 
+                              size={20} 
+                              color={isConnected === "connected" 
+                                ? "#37a4c8" 
+                                : isConnected === "pending"
+                                ? "#FF9500"
+                                : "#37a4c8"} 
+                            />
+                          </Animated.View>
+                        ) : (
+                          <MaterialIcons 
+                            name={isConnected === "connected" 
+                              ? "people" 
+                              : isConnected === "pending"
+                              ? "hourglass-empty"
+                              : "person-add"} 
+                            size={20} 
+                            color={isConnected === "connected" 
+                              ? "#37a4c8" 
+                              : isConnected === "pending"
+                              ? "#FF9500"
+                              : "#37a4c8"} 
+                          />
+                        )}
+                        <Text style={[styles.statusButtonText, { 
+                          color: isConnected === "connected" 
+                            ? "#37a4c8" 
+                            : isConnected === "pending"
+                            ? "#FF9500"
+                            : "#37a4c8",
+                          fontSize: dynamicFontSize
+                        }]}>
+                          {isProcessing 
+                            ? "Connecting..." 
+                            : isConnected === "connected" 
+                              ? "Connected" 
+                              : isConnected === "pending"
+                              ? "Pending"
+                              : "Connect"}
+                        </Text>
+                      </TouchableOpacity>
+                    </Animated.View>
                   )}
                 </View>
                 <View style={styles.infoContainer}>
@@ -1457,7 +1849,11 @@ const Profile = () => {
           images={currentImages.map((uri) => ({ uri }))}
           imageIndex={initialIndex}
           visible={isModalVisible}
-          onRequestClose={() => setIsModalVisible(false)}
+          onRequestClose={() => {
+            setIsModalVisible(false);
+          }}
+          swipeToCloseEnabled={true}
+          doubleTapToZoomEnabled={true}
         />
 
         {/* Connections Modal */}
@@ -1618,17 +2014,17 @@ const styles = StyleSheet.create({
   profileHeader: {
     alignItems: 'center',
     marginBottom: 32,
-    paddingTop: 60,
+    paddingTop: 80,
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 16,
+    marginBottom: 10,
     shadowColor: '#38a5c9',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-    marginTop: 30,
+    marginTop: 10,
   },
   profileImage: {
     width: 128,
@@ -1644,19 +2040,19 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: "#4CAF50",
+    backgroundColor: "#37a4c8",
     borderWidth: 2,
     borderColor: "#070707",
   },
   nameContainer: {
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 10,
     width: '100%',
   },
   nameText: {
     fontSize: 32,
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: 4,
     letterSpacing: -0.5,
     textAlign: 'center',
   },
@@ -1934,17 +2330,22 @@ const styles = StyleSheet.create({
   socialLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    marginBottom: 12,
     shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+    transform: [{ scale: 1 }],
   },
   socialLinkText: {
-    marginLeft: 12,
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
+    letterSpacing: 0.2,
   },
   loadingContainer: {
     flex: 1,
@@ -2098,31 +2499,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 20,
     flexWrap: 'wrap',
+    paddingHorizontal: 8,
+    width: '100%',
   },
   statusButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    width: 160,
-    height: 36,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    minWidth: 140,
+    height: 44,
   },
   statusButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
+    fontWeight: '700',
+    marginLeft: 8,
     textAlign: 'center',
-    flex: 1,
+    letterSpacing: 0.3,
+    fontSize: 12,
+    flexShrink: 1,
   },
   connectionsContainer: {
     gap: 16,
@@ -2274,6 +2678,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    flexWrap: 'wrap',
+  },
+  verifiedBadgeContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    marginTop: 2,
   },
   actionButtonsContainer: {
     alignItems: 'center',
@@ -2316,6 +2727,49 @@ const styles = StyleSheet.create({
   blockButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  nameSeparator: {
+    width: '60%',
+    height: 2,
+    borderRadius: 1,
+    marginBottom: 20,
+    marginTop: 4,
+    alignSelf: 'center',
+  },
+  separatorGradient: {
+    flex: 1,
+    height: 2,
+    borderRadius: 1,
+  },
+  connectionsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    minWidth: 180,
+    height: 44,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    minWidth: 180,
+    height: 44,
   },
 });
 

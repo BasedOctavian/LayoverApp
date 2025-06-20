@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Platform, FlatList, Alert } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Platform, FlatList, Alert, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,11 +43,18 @@ export default function Notifications() {
   const responseListener = useRef<ExpoNotifications.Subscription | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    registerForPushNotificationsAsync();
     setupNotificationListeners();
     setupNotificationsListener();
+
+    // Start fade-in animation
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
 
     return () => {
       if (notificationListener.current) {
@@ -89,7 +96,13 @@ export default function Notifications() {
       if (doc.exists()) {
         const userData = doc.data();
         const notificationList = userData.notifications || [];
-        setNotifications(notificationList);
+        // Sort notifications by timestamp in descending order (newest first)
+        const sortedNotifications = [...notificationList].sort((a, b) => {
+          const timeA = a.timestamp?.seconds || 0;
+          const timeB = b.timestamp?.seconds || 0;
+          return timeB - timeA;
+        });
+        setNotifications(sortedNotifications);
         setLoading(false);
       }
     });
@@ -219,7 +232,7 @@ export default function Notifications() {
           colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]}
           style={styles.gradient}
         >
-          <View style={styles.content}>
+          <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
             {notifications.length === 0 ? (
               <>
                 <Ionicons name="notifications-off" size={64} color="#37a4c8" />
@@ -252,53 +265,11 @@ export default function Notifications() {
                 />
               </>
             )}
-          </View>
+          </Animated.View>
         </LinearGradient>
       </SafeAreaView>
     </>
   );
-}
-
-async function registerForPushNotificationsAsync() {
-  let token;
-
-  if (Platform.OS === 'android') {
-    await ExpoNotifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: ExpoNotifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#37a4c8',
-    });
-  }
-
-  const { status: existingStatus } = await ExpoNotifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  
-  if (existingStatus !== 'granted') {
-    const { status } = await ExpoNotifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  
-  if (finalStatus !== 'granted') {
-    console.log('Failed to get push token for push notification!');
-    return;
-  }
-
-  token = (await ExpoNotifications.getExpoPushTokenAsync()).data;
-  
-  // Save the token to Firestore if user is logged in
-  if (auth.currentUser) {
-    try {
-      await setDoc(doc(db, 'users', auth.currentUser.uid), {
-        expoPushToken: token,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    } catch (error) {
-      console.error('Error saving push token:', error);
-    }
-  }
-
-  return token;
 }
 
 const styles = StyleSheet.create({

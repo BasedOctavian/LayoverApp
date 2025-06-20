@@ -10,10 +10,12 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  StatusBar,
+  SafeAreaView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, Feather } from "@expo/vector-icons";
 import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../../config/firebaseConfig";
@@ -25,6 +27,7 @@ import { useRouter } from "expo-router";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { containsFilteredContent, getFilteredContentCategory } from "../../utils/contentFilter";
+import { ThemeContext } from "../../context/ThemeContext";
 
 interface Trip {
   id: string;
@@ -77,6 +80,7 @@ const EditProfile = () => {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const router = useRouter();
   const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
+  const { theme } = React.useContext(ThemeContext);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -359,288 +363,402 @@ const EditProfile = () => {
   }
 
   return (
-    <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
+    <View style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
       <TopBar />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Animated.View style={{ opacity: fadeAnim }}>
-          {/* Profile Header */}
-          <View style={styles.profileHeader}>
-            <TouchableOpacity onPress={handleSelectPhoto}>
-              <Image
-                source={{
-                  uri:
-                    formData.profilePicture ||
-                    "https://via.placeholder.com/150",
+      <LinearGradient 
+        colors={theme === "light" 
+          ? ["#f8f9fa", "#ffffff", "#f8f9fa"] 
+          : ["#000000", "#1a1a1a", "#000000"]} 
+        locations={[0, 0.5, 1]}
+        style={styles.flex}
+      >
+        <ScrollView 
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <Animated.View style={{ opacity: fadeAnim }}>
+            {/* Profile Header */}
+            <View style={styles.profileHeader}>
+              <TouchableOpacity onPress={handleSelectPhoto} style={styles.profileImageContainer}>
+                <Image
+                  source={{
+                    uri: formData.profilePicture || "https://via.placeholder.com/150",
+                  }}
+                  style={styles.profileImage}
+                />
+                <View style={[styles.changePhotoOverlay, { backgroundColor: theme === "light" ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.5)" }]}>
+                  <MaterialIcons name="photo-camera" size={24} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
+              <Text style={[styles.changePhotoText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                Change Photo
+              </Text>
+            </View>
+
+            {/* Basic Info Section */}
+            <View style={[styles.card, { 
+              backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+            }]}>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                Basic Information
+              </Text>
+              <Text style={[styles.fieldLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                Your Full Name
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  { 
+                    backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                    borderColor: fieldErrors['name'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8",
+                    color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                  }
+                ]}
+                placeholder="Name"
+                value={formData.name}
+                onChangeText={(text) => {
+                  if (containsFilteredContent(text)) {
+                    setFieldErrors(prev => ({ ...prev, name: true }));
+                  } else {
+                    setFieldErrors(prev => ({ ...prev, name: false }));
+                  }
+                  setFormData({ ...formData, name: text });
                 }}
-                style={styles.profileImage}
+                placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
               />
-              <Text style={styles.changePhotoText}>Change Photo</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={[styles.fieldLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                Your Current Mood
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  { 
+                    backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                    borderColor: fieldErrors['moodStatus'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8",
+                    color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                  }
+                ]}
+                placeholder="Mood Status"
+                value={formData.moodStatus}
+                onChangeText={(text) => {
+                  if (containsFilteredContent(text)) {
+                    setFieldErrors(prev => ({ ...prev, moodStatus: true }));
+                  } else {
+                    setFieldErrors(prev => ({ ...prev, moodStatus: false }));
+                  }
+                  setFormData({ ...formData, moodStatus: text });
+                }}
+                placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+              />
+              <Text style={[styles.fieldLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                Tell us about yourself
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.multilineInput,
+                  { 
+                    backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                    borderColor: fieldErrors['bio'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8",
+                    color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                  }
+                ]}
+                placeholder="Bio"
+                value={formData.bio}
+                onChangeText={(text) => {
+                  if (containsFilteredContent(text)) {
+                    setFieldErrors(prev => ({ ...prev, bio: true }));
+                  } else {
+                    setFieldErrors(prev => ({ ...prev, bio: false }));
+                  }
+                  setFormData({ ...formData, bio: text });
+                }}
+                multiline
+                placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+              />
+            </View>
 
-          {/* Basic Info Section */}
-          <View style={[styles.card, styles.sectionCard]}>
-            <Text style={styles.cardTitle}>Basic Information</Text>
-            <Text style={styles.fieldLabel}>Your Full Name</Text>
-            <TextInput
-              style={[
-                styles.input,
-                fieldErrors['name'] && styles.inputError
-              ]}
-              placeholder="Name"
-              value={formData.name}
-              onChangeText={(text) => {
-                if (containsFilteredContent(text)) {
-                  setFieldErrors(prev => ({ ...prev, name: true }));
-                } else {
-                  setFieldErrors(prev => ({ ...prev, name: false }));
-                }
-                setFormData({ ...formData, name: text });
-              }}
-              placeholderTextColor={fieldErrors['name'] ? "#ff4444" : "#e4fbfe80"}
-            />
-            <Text style={styles.fieldLabel}>Your Current Mood</Text>
-            <TextInput
-              style={[
-                styles.input,
-                fieldErrors['moodStatus'] && styles.inputError
-              ]}
-              placeholder="Mood Status"
-              value={formData.moodStatus}
-              onChangeText={(text) => {
-                if (containsFilteredContent(text)) {
-                  setFieldErrors(prev => ({ ...prev, moodStatus: true }));
-                } else {
-                  setFieldErrors(prev => ({ ...prev, moodStatus: false }));
-                }
-                setFormData({ ...formData, moodStatus: text });
-              }}
-              placeholderTextColor={fieldErrors['moodStatus'] ? "#ff4444" : "#e4fbfe80"}
-            />
-            <Text style={styles.fieldLabel}>Tell us about yourself</Text>
-            <TextInput
-              style={[
-                styles.input,
-                styles.multilineInput,
-                fieldErrors['bio'] && styles.inputError
-              ]}
-              placeholder="Bio"
-              value={formData.bio}
-              onChangeText={(text) => {
-                if (containsFilteredContent(text)) {
-                  setFieldErrors(prev => ({ ...prev, bio: true }));
-                } else {
-                  setFieldErrors(prev => ({ ...prev, bio: false }));
-                }
-                setFormData({ ...formData, bio: text });
-              }}
-              multiline
-              placeholderTextColor={fieldErrors['bio'] ? "#ff4444" : "#e4fbfe80"}
-            />
-          </View>
-
-          {/* Dynamic Fields Section */}
-          {(["languages", "interests", "goals"] as ProfileArrayField[]).map(
-            (field) => (
-              <View key={field} style={[styles.card, styles.sectionCard]}>
-                <Text style={styles.cardTitle}>
-                  {field.charAt(0).toUpperCase() + field.slice(1)}
-                </Text>
-                <Text style={styles.fieldLabel}>
-                  {field === "languages" 
-                    ? "Languages you speak" 
-                    : field === "interests" 
-                    ? "Your interests and hobbies"
-                    : "Your travel goals"}
-                </Text>
-                {formData[field].map((value, index) => (
-                  <View key={index} style={styles.fieldRow}>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        styles.flexInput,
-                        fieldErrors[`${field}_${index}`] && styles.inputError
-                      ]}
-                      value={value}
-                      onChangeText={(text) =>
-                        handleFieldChange(field, index, text)
-                      }
-                      placeholder={`Enter ${field.slice(0, -1)}`}
-                      placeholderTextColor={fieldErrors[`${field}_${index}`] ? "#ff4444" : "#e4fbfe80"}
-                    />
-                    <TouchableOpacity
-                      onPress={() => handleRemoveField(field, index)}
-                      style={styles.removeButton}
-                    >
-                      <MaterialIcons
-                        name="remove-circle"
-                        size={24}
-                        color="#ff4444"
-                      />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                <TouchableOpacity
-                  style={styles.addButton}
-                  onPress={() => handleAddField(field)}
-                >
-                  <Text style={styles.addButtonText}>
-                    <MaterialIcons
-                      name="add-circle"
-                      size={18}
-                      color="#38a5c9"
-                    />{" "}
-                    Add {field.slice(0, -1)}
+            {/* Dynamic Fields Section */}
+            {(["languages", "interests", "goals"] as ProfileArrayField[]).map(
+              (field) => (
+                <View key={field} style={[styles.card, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+                  shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+                }]}>
+                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    {field.charAt(0).toUpperCase() + field.slice(1)}
                   </Text>
-                </TouchableOpacity>
-              </View>
-            )
-          )}
+                  <Text style={[styles.fieldLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                    {field === "languages" 
+                      ? "Languages you speak" 
+                      : field === "interests" 
+                      ? "Your interests and hobbies"
+                      : "Your travel goals"}
+                  </Text>
+                  {formData[field].map((value, index) => (
+                    <View key={index} style={styles.fieldRow}>
+                      <TextInput
+                        style={[
+                          styles.input,
+                          styles.flexInput,
+                          { 
+                            backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                            borderColor: fieldErrors[`${field}_${index}`] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8",
+                            color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                          }
+                        ]}
+                        value={value}
+                        onChangeText={(text) => handleFieldChange(field, index, text)}
+                        placeholder={`Enter ${field.slice(0, -1)}`}
+                        placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                      />
+                      <TouchableOpacity
+                        onPress={() => handleRemoveField(field, index)}
+                        style={styles.removeButton}
+                      >
+                        <MaterialIcons
+                          name="remove-circle"
+                          size={24}
+                          color="#ff4444"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity
+                    style={[styles.addButton, {
+                      backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                      borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+                    }]}
+                    onPress={() => handleAddField(field)}
+                  >
+                    <Text style={[styles.addButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                      <MaterialIcons
+                        name="add-circle"
+                        size={18}
+                        color={theme === "light" ? "#37a4c8" : "#38a5c9"}
+                      />{" "}
+                      Add {field.slice(0, -1)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )
+            )}
 
-          {/* Travel History Section */}
-          <View style={[styles.card, styles.sectionCard]}>
-            <Text style={styles.cardTitle}>Travel History</Text>
-            <Text style={styles.fieldLabel}>Places you've visited</Text>
-            {formData.travelHistory.map((trip, index) => (
-              <View key={trip.id} style={styles.tripContainer}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    fieldErrors[`trip_${index}`] && styles.inputError
-                  ]}
-                  placeholder="Trip Name"
-                  value={trip.name}
-                  onChangeText={(text) => {
-                    if (containsFilteredContent(text)) {
-                      setFieldErrors(prev => ({ ...prev, [`trip_${index}`]: true }));
-                    } else {
-                      setFieldErrors(prev => ({ ...prev, [`trip_${index}`]: false }));
-                    }
-                    handleTripNameChange(index, text);
-                  }}
-                  placeholderTextColor={fieldErrors[`trip_${index}`] ? "#ff4444" : "#e4fbfe80"}
-                />
-                <TouchableOpacity onPress={() => handleRemoveTrip(index)}>
-                  <MaterialIcons
-                    name="remove-circle"
-                    size={24}
-                    color="#ff4444"
+            {/* Travel History Section */}
+            <View style={[styles.card, { 
+              backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+            }]}>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                Travel History
+              </Text>
+              <Text style={[styles.fieldLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                Places you've visited
+              </Text>
+              {formData.travelHistory.map((trip, index) => (
+                <View key={trip.id} style={[styles.tripContainer, {
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                  borderColor: fieldErrors[`trip_${index}`] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8"
+                }]}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      { 
+                        backgroundColor: 'transparent',
+                        borderWidth: 0,
+                        color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                      }
+                    ]}
+                    placeholder="Trip Name"
+                    value={trip.name}
+                    onChangeText={(text) => {
+                      if (containsFilteredContent(text)) {
+                        setFieldErrors(prev => ({ ...prev, [`trip_${index}`]: true }));
+                      } else {
+                        setFieldErrors(prev => ({ ...prev, [`trip_${index}`]: false }));
+                      }
+                      handleTripNameChange(index, text);
+                    }}
+                    placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
                   />
-                </TouchableOpacity>
-              </View>
-            ))}
-            <TouchableOpacity onPress={handleAddTrip}>
-              <Text style={styles.addButtonText}>Add Trip</Text>
-            </TouchableOpacity>
-          </View>
+                  <TouchableOpacity onPress={() => handleRemoveTrip(index)}>
+                    <MaterialIcons
+                      name="remove-circle"
+                      size={24}
+                      color="#ff4444"
+                    />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity 
+                style={[styles.addButton, {
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                  borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+                }]}
+                onPress={handleAddTrip}
+              >
+                <Text style={[styles.addButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                  Add Trip
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-          {/* Social Media Section */}
-          <View style={[styles.card, styles.sectionCard]}>
-            <Text style={styles.cardTitle}>Social Media</Text>
-            <Text style={styles.fieldLabel}>Connect your social media accounts</Text>
-            <View style={styles.socialMediaContainer}>
-              <View style={[
-                styles.socialMediaInput,
-                fieldErrors['instagram'] && styles.inputError
-              ]}>
-                <MaterialIcons name="photo-camera" size={24} color={fieldErrors['instagram'] ? "#ff4444" : "#38a5c9"} style={styles.socialIcon} />
-                <TextInput
-                  style={[styles.input, styles.socialInput]}
-                  placeholder="Instagram Username"
-                  value={extractUsername(formData.socialMedia.instagram || '', 'instagram')}
-                  onChangeText={(text) => {
-                    if (containsFilteredContent(text)) {
-                      setFieldErrors(prev => ({ ...prev, instagram: true }));
-                    } else {
-                      setFieldErrors(prev => ({ ...prev, instagram: false }));
-                    }
-                    setFormData((prev) => ({
-                      ...prev,
-                      socialMedia: { ...prev.socialMedia, instagram: text },
-                    }));
-                  }}
-                  placeholderTextColor={fieldErrors['instagram'] ? "#ff4444" : "#e4fbfe80"}
-                />
-              </View>
-              <View style={[
-                styles.socialMediaInput,
-                fieldErrors['linkedin'] && styles.inputError
-              ]}>
-                <MaterialIcons name="work" size={24} color={fieldErrors['linkedin'] ? "#ff4444" : "#38a5c9"} style={styles.socialIcon} />
-                <TextInput
-                  style={[styles.input, styles.socialInput]}
-                  placeholder="LinkedIn Username"
-                  value={extractUsername(formData.socialMedia.linkedin || '', 'linkedin')}
-                  onChangeText={(text) => {
-                    if (containsFilteredContent(text)) {
-                      setFieldErrors(prev => ({ ...prev, linkedin: true }));
-                    } else {
-                      setFieldErrors(prev => ({ ...prev, linkedin: false }));
-                    }
-                    setFormData((prev) => ({
-                      ...prev,
-                      socialMedia: { ...prev.socialMedia, linkedin: text },
-                    }));
-                  }}
-                  placeholderTextColor={fieldErrors['linkedin'] ? "#ff4444" : "#e4fbfe80"}
-                />
-              </View>
-              <View style={[
-                styles.socialMediaInput,
-                fieldErrors['twitter'] && styles.inputError
-              ]}>
-                <MaterialIcons name="chat" size={24} color={fieldErrors['twitter'] ? "#ff4444" : "#38a5c9"} style={styles.socialIcon} />
-                <TextInput
-                  style={[styles.input, styles.socialInput]}
-                  placeholder="Twitter Username"
-                  value={extractUsername(formData.socialMedia.twitter || '', 'twitter')}
-                  onChangeText={(text) => {
-                    if (containsFilteredContent(text)) {
-                      setFieldErrors(prev => ({ ...prev, twitter: true }));
-                    } else {
-                      setFieldErrors(prev => ({ ...prev, twitter: false }));
-                    }
-                    setFormData((prev) => ({
-                      ...prev,
-                      socialMedia: { ...prev.socialMedia, twitter: text },
-                    }));
-                  }}
-                  placeholderTextColor={fieldErrors['twitter'] ? "#ff4444" : "#e4fbfe80"}
-                />
+            {/* Social Media Section */}
+            <View style={[styles.card, { 
+              backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+            }]}>
+              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                Social Media
+              </Text>
+              <Text style={[styles.fieldLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                Connect your social media accounts
+              </Text>
+              <View style={styles.socialMediaContainer}>
+                <View style={[styles.socialMediaInput, {
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                  borderColor: fieldErrors['instagram'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8"
+                }]}>
+                  <MaterialIcons 
+                    name="photo-camera" 
+                    size={24} 
+                    color={fieldErrors['instagram'] ? "#ff4444" : theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                    style={styles.socialIcon} 
+                  />
+                  <TextInput
+                    style={[styles.input, styles.socialInput, {
+                      color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                    }]}
+                    placeholder="Instagram Username"
+                    value={extractUsername(formData.socialMedia.instagram || '', 'instagram')}
+                    onChangeText={(text) => {
+                      if (containsFilteredContent(text)) {
+                        setFieldErrors(prev => ({ ...prev, instagram: true }));
+                      } else {
+                        setFieldErrors(prev => ({ ...prev, instagram: false }));
+                      }
+                      setFormData((prev) => ({
+                        ...prev,
+                        socialMedia: { ...prev.socialMedia, instagram: text },
+                      }));
+                    }}
+                    placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                  />
+                </View>
+                <View style={[styles.socialMediaInput, {
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                  borderColor: fieldErrors['linkedin'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8"
+                }]}>
+                  <MaterialIcons 
+                    name="work" 
+                    size={24} 
+                    color={fieldErrors['linkedin'] ? "#ff4444" : theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                    style={styles.socialIcon} 
+                  />
+                  <TextInput
+                    style={[styles.input, styles.socialInput, {
+                      color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                    }]}
+                    placeholder="LinkedIn Username"
+                    value={extractUsername(formData.socialMedia.linkedin || '', 'linkedin')}
+                    onChangeText={(text) => {
+                      if (containsFilteredContent(text)) {
+                        setFieldErrors(prev => ({ ...prev, linkedin: true }));
+                      } else {
+                        setFieldErrors(prev => ({ ...prev, linkedin: false }));
+                      }
+                      setFormData((prev) => ({
+                        ...prev,
+                        socialMedia: { ...prev.socialMedia, linkedin: text },
+                      }));
+                    }}
+                    placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                  />
+                </View>
+                <View style={[styles.socialMediaInput, {
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                  borderColor: fieldErrors['twitter'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8"
+                }]}>
+                  <MaterialIcons 
+                    name="chat" 
+                    size={24} 
+                    color={fieldErrors['twitter'] ? "#ff4444" : theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                    style={styles.socialIcon} 
+                  />
+                  <TextInput
+                    style={[styles.input, styles.socialInput, {
+                      color: theme === "light" ? "#1E293B" : "#e4fbfe"
+                    }]}
+                    placeholder="Twitter Username"
+                    value={extractUsername(formData.socialMedia.twitter || '', 'twitter')}
+                    onChangeText={(text) => {
+                      if (containsFilteredContent(text)) {
+                        setFieldErrors(prev => ({ ...prev, twitter: true }));
+                      } else {
+                        setFieldErrors(prev => ({ ...prev, twitter: false }));
+                      }
+                      setFormData((prev) => ({
+                        ...prev,
+                        socialMedia: { ...prev.socialMedia, twitter: text },
+                      }));
+                    }}
+                    placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                  />
+                </View>
               </View>
             </View>
-          </View>
 
-          {/* Save Button */}
-          <TouchableOpacity
-            style={[
-              styles.saveButton,
-              (updating || Object.values(fieldErrors).some(error => error)) && styles.saveButtonDisabled
-            ]}
-            onPress={handleUpdateProfile}
-            disabled={updating || Object.values(fieldErrors).some(error => error)}
-          >
-            {updating ? (
-              <View style={styles.saveButtonContent}>
-                <ActivityIndicator color="#e4fbfe" />
-                <Text style={[styles.saveButtonText, styles.saveButtonTextLoading]}>
-                  Saving... {saveProgress}%
+            {/* Save Button */}
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                {
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+                  shadowColor: theme === "light" ? "#0F172A" : "#38a5c9",
+                  opacity: (updating || Object.values(fieldErrors).some(error => error)) ? 0.7 : 1
+                }
+              ]}
+              onPress={handleUpdateProfile}
+              disabled={updating || Object.values(fieldErrors).some(error => error)}
+            >
+              {updating ? (
+                <View style={styles.saveButtonContent}>
+                  <ActivityIndicator color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                  <Text style={[styles.saveButtonText, styles.saveButtonTextLoading, {
+                    color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                  }]}>
+                    Saving... {saveProgress}%
+                  </Text>
+                </View>
+              ) : (
+                <Text style={[styles.saveButtonText, {
+                  color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                }]}>
+                  Save Changes
                 </Text>
-              </View>
-            ) : (
-              <Text style={styles.saveButtonText}>Save Changes</Text>
-            )}
-          </TouchableOpacity>
-        </Animated.View>
-      </ScrollView>
-    </LinearGradient>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+        </ScrollView>
+      </LinearGradient>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  gradient: {
+  flex: {
     flex: 1,
-    backgroundColor: "#000000",
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
     padding: 24,
@@ -651,44 +769,56 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 40,
   },
-  profileImage: {
+  profileImageContainer: {
+    position: 'relative',
     width: 140,
     height: 140,
     borderRadius: 70,
+    overflow: 'hidden',
     borderWidth: 3,
-    borderColor: "#38a5c9",
+    borderColor: "#37a4c8",
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+  },
+  changePhotoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    opacity: 0,
   },
   changePhotoText: {
     marginTop: 12,
     fontSize: 15,
-    color: "#38a5c9",
     fontWeight: "600",
     letterSpacing: 0.5,
     textAlign: "center",
   },
   card: {
-    backgroundColor: "#1a1a1a",
     borderRadius: 24,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#38a5c9",
     marginBottom: 24,
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
-  sectionCard: {},
   cardTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#e4fbfe",
     marginBottom: 16,
     letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     padding: 16,
-    color: "#e4fbfe",
     borderWidth: 1,
-    borderColor: "#38a5c9",
     marginBottom: 12,
     fontSize: 16,
   },
@@ -713,34 +843,24 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: "rgba(56, 165, 201, 0.1)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#38a5c9",
   },
   addButtonText: {
-    color: "#38a5c9",
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: 0.3,
   },
   saveButton: {
-    backgroundColor: "#1a1a1a",
     borderRadius: 30,
     padding: 18,
     alignItems: "center",
     marginVertical: 24,
     borderWidth: 1,
-    borderColor: "#38a5c9",
-    shadowColor: "#38a5c9",
+    elevation: 4,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 4,
-  },
-  saveButtonDisabled: {
-    opacity: 0.7,
-    borderColor: "#38a5c980",
   },
   saveButtonContent: {
     flexDirection: 'row',
@@ -748,7 +868,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   saveButtonText: {
-    color: "#e4fbfe",
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: 0.5,
@@ -759,10 +878,8 @@ const styles = StyleSheet.create({
   tripContainer: {
     marginBottom: 24,
     padding: 16,
-    backgroundColor: "#1a1a1a",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#38a5c9",
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -773,12 +890,10 @@ const styles = StyleSheet.create({
   socialMediaInput: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#38a5c9',
   },
   socialIcon: {
     marginRight: 12,
@@ -790,15 +905,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   fieldLabel: {
-    color: '#e4fbfe',
     fontSize: 14,
     marginBottom: 8,
     fontWeight: '500',
     letterSpacing: 0.3,
-  },
-  inputError: {
-    borderColor: "#ff4444",
-    backgroundColor: "rgba(255, 68, 68, 0.1)",
   },
 });
 

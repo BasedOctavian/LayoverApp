@@ -1,5 +1,5 @@
 import React, { useContext, useRef, useEffect, useCallback } from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform, Text, Animated, Easing } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform, Text, Animated, Easing, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, usePathname } from 'expo-router';
 import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
@@ -17,9 +17,18 @@ const BottomNavBar = () => {
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
   const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
 
+  // Helper function to check if device is iPhone 15 or larger
+  const isIPhone15OrLarger = () => {
+    const { width, height } = Dimensions.get('window');
+    const screenHeight = Math.max(width, height);
+    
+    // iPhone 15 screen height is 844pt, iPhone 15 Plus is 926pt
+    // We'll use 844 as the threshold for iPhone 15 and larger
+    return Platform.OS === 'ios' && screenHeight >= 844;
+  };
+
   // Animate when theme changes
   useEffect(() => {
-    // Update animation values for new theme
     backgroundAnim.setValue(theme === "light" ? 0 : 1);
     textAnim.setValue(theme === "light" ? 0 : 1);
   }, [theme]);
@@ -47,7 +56,6 @@ const BottomNavBar = () => {
     isNavigating.current = true;
     router.push(path);
     
-    // Reset navigation lock after animation completes
     setTimeout(() => {
       isNavigating.current = false;
     }, 300);
@@ -57,51 +65,56 @@ const BottomNavBar = () => {
     {
       icon: (active: boolean) => (
         <Ionicons 
-          name={active ? "home" : "home-outline"} 
-          size={28} 
+          name={active ? "home-sharp" : "home-outline"} 
+          size={24} 
           color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
+      label: "Home",
       path: "/home/dashboard"
     },
     {
       icon: (active: boolean) => (
         <Feather 
           name="compass" 
-          size={26} 
+          size={22} 
           color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
+      label: "Explore",
       path: "/explore"
     },
     {
       icon: (active: boolean) => (
-        <FontAwesome5 
-          name="user-friends" 
-          size={26} 
+        <MaterialIcons 
+          name="people-outline" 
+          size={24} 
           color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
+      label: "Connect",
       path: "/swipe"
     },
     {
       icon: (active: boolean) => (
         <Ionicons 
-          name={active ? "chatbubble" : "chatbubble-outline"} 
-          size={28} 
+          name={active ? "chatbubble-ellipses" : "chatbubble-outline"} 
+          size={24} 
           color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
+      label: "Chat",
       path: "/chat/chatInbox"
     },
     {
       icon: (active: boolean) => (
         <Ionicons 
-          name={active ? "settings" : "settings-outline"} 
-          size={28} 
+          name={active ? "settings-sharp" : "settings-outline"} 
+          size={24} 
           color={active ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff"} 
         />
       ),
+      label: "Settings",
       path: "/settings/settings"
     }
   ];
@@ -125,11 +138,16 @@ const BottomNavBar = () => {
             onPress={() => handleNavigation(item.path)}
             activeOpacity={0.7}
           >
-            <View style={[
-              styles.iconContainer,
-              isActive(item.path) && styles.activeIconContainer
-            ]}>
+            <View style={styles.iconContainer}>
               {item.icon(isActive(item.path))}
+              {isIPhone15OrLarger() && (
+                <Text style={[
+                  styles.label,
+                  { color: isActive(item.path) ? "#37a4c8" : theme === "light" ? "#0F172A" : "#ffffff" }
+                ]}>
+                  {item.label}
+                </Text>
+              )}
             </View>
           </TouchableOpacity>
         ))}
@@ -141,8 +159,8 @@ const BottomNavBar = () => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    paddingTop: 12,
-    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingHorizontal: 16,
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: -35,
@@ -163,17 +181,20 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 4,
   },
-  activeIconContainer: {
-    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+  label: {
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
   }
 });
 
