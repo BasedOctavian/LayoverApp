@@ -203,7 +203,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
     marginTop: 0,
     ...Platform.select({
       ios: {

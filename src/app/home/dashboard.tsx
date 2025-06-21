@@ -313,18 +313,6 @@ export default function Dashboard() {
     message: "",
     type: "success",
   });
-  const hasShownProfilePopup = useRef(false);
-  const hasShownNotificationPopup = useRef(false);
-  const [profilePicturePopup, setProfilePicturePopup] = useState<{
-    visible: boolean;
-  }>({
-    visible: false
-  });
-  const [notificationsPopup, setNotificationsPopup] = useState<{
-    visible: boolean;
-  }>({
-    visible: false
-  });
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [visibleAirportCount, setVisibleAirportCount] = useState(5);
   const AIRPORTS_PER_PAGE = 5;
@@ -945,55 +933,6 @@ export default function Dashboard() {
         if (doc.exists()) {
           const data = doc.data() as UserData;
           setUserData(data);
-          
-          try {
-            // Check both conditions
-            const hasNotifications = await checkNotificationPermissions();
-            const hasProfilePicture = !!data.profilePicture;
-            const randomChance = Math.random();
-            
-            console.log('Popup conditions:', {
-              hasNotifications,
-              hasProfilePicture,
-              randomChance,
-              hasShownNotifications: hasShownNotificationPopup.current,
-              hasShownProfile: hasShownProfilePopup.current
-            });
-
-            // If both conditions are true (need both notifications and profile pic)
-            if (!hasNotifications && !hasProfilePicture) {
-              if (randomChance < 0.2 && !hasShownNotificationPopup.current && !hasShownProfilePopup.current) {
-                // Randomly choose which popup to show
-                if (Math.random() < 0.5) {
-                  console.log('Showing notifications popup (both conditions true)');
-                  setNotificationsPopup({ visible: true });
-                  hasShownNotificationPopup.current = true;
-                } else {
-                  console.log('Showing profile popup (both conditions true)');
-                  setProfilePicturePopup({ visible: true });
-                  hasShownProfilePopup.current = true;
-                }
-              }
-            }
-            // If only notifications are needed
-            else if (!hasNotifications && !hasShownNotificationPopup.current) {
-              if (randomChance < 0.1) {
-                console.log('Showing notifications popup (only notifications needed)');
-                setNotificationsPopup({ visible: true });
-                hasShownNotificationPopup.current = true;
-              }
-            }
-            // If only profile picture is needed
-            else if (!hasProfilePicture && !hasShownProfilePopup.current) {
-              if (randomChance < 0.1) {
-                console.log('Showing profile popup (only profile needed)');
-                setProfilePicturePopup({ visible: true });
-                hasShownProfilePopup.current = true;
-              }
-            }
-          } catch (error) {
-            console.error('Error checking conditions:', error);
-          }
         }
       });
     }
@@ -1048,140 +987,7 @@ export default function Dashboard() {
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <Animated.View style={{ flex: 1, position: "relative", opacity: fadeAnim }}>
-            {/* Profile Picture Popup */}
-            {profilePicturePopup.visible && (
-              <View style={[styles.overlay, { backgroundColor: 'transparent', zIndex: 1000 }]}>
-                <View style={[styles.profilePicturePopup, { 
-                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                }]}>
-                  <Image
-                    source={require('../../../assets/adaptive-icon.png')}
-                    style={[
-                      styles.popupLogo,
-                      { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
-                    ]}
-                    resizeMode="contain"
-                  />
-                  <Text style={[styles.popupTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    Add a Profile Picture
-                  </Text>
-                  <Text style={[styles.popupMessage, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                    Make your profile stand out by adding a profile picture. This helps other travelers recognize you!
-                  </Text>
-                  <View style={styles.popupButtons}>
-                    <TouchableOpacity 
-                      style={[styles.popupButton, { 
-                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        borderWidth: 1
-                      }]}
-                      onPress={() => setProfilePicturePopup({ visible: false })}
-                    >
-                      <Text style={[styles.popupButtonText, { 
-                        color: theme === "light" ? "#37a4c8" : "#38a5c9"
-                      }]}>Maybe Later</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.popupButton, { 
-                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        borderWidth: 1,
-                        marginLeft: 8,
-                        shadowColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.2,
-                        shadowRadius: 4,
-                        elevation: 3
-                      }]}
-                      onPress={() => {
-                        setProfilePicturePopup({ visible: false });
-                        router.push(`profile/${userId}`);
-                      }}
-                    >
-                      <Text style={[styles.popupButtonText, { 
-                        color: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        fontWeight: '700'
-                      }]}>Add Picture</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {/* Notifications Popup */}
-            {notificationsPopup.visible && (
-              <View style={[styles.overlay, { backgroundColor: 'transparent', zIndex: 1000 }]}>
-                <View style={[styles.profilePicturePopup, { 
-                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                }]}>
-                  <Image
-                    source={require('../../../assets/adaptive-icon.png')}
-                    style={[
-                      styles.popupLogo,
-                      { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
-                    ]}
-                    resizeMode="contain"
-                  />
-                  <Text style={[styles.popupTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    Enable Notifications
-                  </Text>
-                  <Text style={[styles.popupMessage, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                    Stay connected with other travelers! Enable notifications to never miss a message or connection request.
-                  </Text>
-                  <View style={styles.popupButtons}>
-                    <TouchableOpacity 
-                      style={[styles.popupButton, { 
-                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        borderWidth: 1
-                      }]}
-                      onPress={() => setNotificationsPopup({ visible: false })}
-                    >
-                      <Text style={[styles.popupButtonText, { 
-                        color: theme === "light" ? "#37a4c8" : "#38a5c9"
-                      }]}>Maybe Later</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.popupButton, { 
-                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        borderWidth: 1,
-                        marginLeft: 8,
-                        shadowColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.2,
-                        shadowRadius: 4,
-                        elevation: 3
-                      }]}
-                      onPress={async () => {
-                        const granted = await requestNotificationPermissions();
-                        setNotificationsPopup({ visible: false });
-                        if (granted) {
-                          showPopup(
-                            "Notifications Enabled",
-                            "You'll now receive notifications for messages, connections, and events.",
-                            "success"
-                          );
-                        } else {
-                          showPopup(
-                            "Permission Required",
-                            "Please enable notifications in your device settings to receive updates.",
-                            "error"
-                          );
-                        }
-                      }}
-                    >
-                      <Text style={[styles.popupButtonText, { 
-                        color: theme === "light" ? "#37a4c8" : "#38a5c9",
-                        fontWeight: '700'
-                      }]}>Enable Notifications</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            )}
+            {/* Removed Profile Picture Popup and Notifications Popup */}
             <Animated.View 
               style={[
                 styles.searchHeaderContainer,
@@ -2033,14 +1839,14 @@ const styles = StyleSheet.create({
   eventCard: {
     width: 280,
     marginRight: 12,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     overflow: 'hidden',
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    elevation: 6,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
   },
   eventImageContainer: {
     position: 'relative',
@@ -2063,10 +1869,15 @@ const styles = StyleSheet.create({
     right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   organizerText: {
     color: '#FFFFFF',
@@ -2074,59 +1885,93 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.2,
   },
+  attendingBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  attendingText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
   eventContent: {
-    padding: 16,
+    padding: 20,
   },
   eventHeader: {
-    marginBottom: 12,
-    paddingBottom: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
   },
   eventTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 12,
   },
   eventName: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     flex: 1,
-    letterSpacing: 0.3,
+    letterSpacing: -0.3,
+    lineHeight: 24,
   },
   eventDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 16,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
     letterSpacing: 0.2,
+    fontWeight: '400',
   },
   eventMetaContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
   },
   eventMetaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   eventMeta: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     letterSpacing: 0.2,
   },
   categoryTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     borderWidth: 1,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   categoryText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -2476,16 +2321,21 @@ const styles = StyleSheet.create({
   countdownContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: 'rgba(56, 165, 201, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   countdownText: {
     fontSize: 13,
     color: "#38a5c9",
-    fontWeight: "600",
+    fontWeight: "700",
     letterSpacing: 0.2,
   },
   airportMetaContainer: {
@@ -2506,38 +2356,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 0,
-    gap: 12,
+    gap: 16,
+    marginBottom: 40,
   },
   featureGridItem: {
     width: '47%',
     aspectRatio: 1,
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 24,
+    padding: 20,
     borderWidth: 1,
-    elevation: 2,
+    elevation: 6,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
   },
   featureIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 16,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
   },
   featureGridTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 4,
-    letterSpacing: 0.3,
+    fontSize: 17,
+    fontWeight: "700",
+    marginBottom: 6,
+    letterSpacing: -0.3,
+    lineHeight: 22,
   },
   featureGridDescription: {
-    fontSize: 13,
+    fontSize: 14,
     letterSpacing: 0.2,
-    lineHeight: 18,
+    lineHeight: 20,
+    fontWeight: '400',
   },
   featureGridText: {
     fontSize: 14,
@@ -2643,23 +2501,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: -0.2,
-  },
-  attendingBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  attendingText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
   },
 });
 

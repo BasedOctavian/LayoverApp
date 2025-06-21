@@ -56,6 +56,7 @@ interface UserData {
     linkedin?: string;
     twitter?: string;
   };
+  airportCode?: string | null;
 }
 
 // Helper function to convert Firestore data to UserData
@@ -83,7 +84,8 @@ const convertToUserData = (data: DocumentData): UserData => {
     goals: data.goals || [],
     travelHistory: data.travelHistory,
     createdAt: data.createdAt,
-    socialMedia: data.socialMedia || {}
+    socialMedia: data.socialMedia || {},
+    airportCode: data.airportCode || null
   };
 };
 
@@ -428,7 +430,8 @@ const Profile = () => {
           goals: userData.goals,
           travelHistory: userData.travelHistory,
           createdAt: userData.createdAt,
-          socialMedia: userData.socialMedia || {}
+          socialMedia: userData.socialMedia || {},
+          airportCode: userData.airportCode || null
         };
         setEditedData(newEditedData);
       }
@@ -455,7 +458,8 @@ const Profile = () => {
         goals: editedData.goals,
         travelHistory: editedData.travelHistory,
         socialMedia: editedData.socialMedia || {},
-        createdAt: editedData.createdAt
+        createdAt: editedData.createdAt,
+        airportCode: editedData.airportCode || null
       };
       await updateDoc(userDocRef, updateData);
       setUserData(editedData);
@@ -832,7 +836,7 @@ const Profile = () => {
                         {connection.otherUser.name}
                       </Text>
                       <Text style={[styles.connectionType, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                        {connection.connectionType || "Local Experiences"}
+                        {connection.otherUser.airportCode || "Unknown Airport"}
                       </Text>
                       <Text style={[styles.connectionDate, { color: theme === "light" ? "#666666" : "#999999" }]}>
                         Connected {connection.createdAt?.toDate().toLocaleDateString()}
@@ -1294,7 +1298,8 @@ const Profile = () => {
               otherUser: {
                 id: otherUserId,
                 name: userData?.name || 'Unknown User',
-                profilePicture: userData?.profilePicture || "https://via.placeholder.com/150"
+                profilePicture: userData?.profilePicture || "https://via.placeholder.com/150",
+                airportCode: userData?.airportCode || null
               }
             };
           }
@@ -1581,7 +1586,7 @@ const Profile = () => {
                   <UserAvatar
                     user={userData || { name: 'User', profilePicture: null }}
                     size={128}
-                    style={[styles.profileImage, { borderColor: "#37a4c8" }]}
+                    style={styles.profileImage}
                   />
                 )}
                 {id === authUser?.uid && (
@@ -1651,12 +1656,13 @@ const Profile = () => {
                     }]}
                     onPress={() => handleModalVisibility(true)}
                   >
-                    <MaterialIcons name="people" size={16} color="#37a4c8" />
+                    <MaterialIcons name="people" size={18} color="#37a4c8" />
                     <Text style={[styles.statusButtonText, { 
                       color: "#37a4c8",
-                      fontSize: dynamicFontSize
+                      fontSize: 16,
+                      fontWeight: '700'
                     }]}>
-                      {connections.length} {connections.length === 1 ? 'Connection' : 'Connections'}
+                      {connections.length}
                     </Text>
                   </TouchableOpacity>
                   {id !== authUser?.uid && (
@@ -1986,7 +1992,7 @@ const Profile = () => {
                           {connection.otherUser.name}
                         </Text>
                         <Text style={[styles.connectionItemType, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                          {connection.connectionType || "Local Experiences"}
+                          {connection.otherUser.airportCode || "Unknown Airport"}
                         </Text>
                       </View>
                       <View style={[styles.profileButton, { 
@@ -2094,115 +2100,138 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
     paddingTop: 80,
+    position: 'relative',
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 10,
-    shadowColor: '#38a5c9',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    marginBottom: 20,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
     marginTop: 10,
   },
   profileImage: {
     width: 128,
     height: 128,
     borderRadius: 64,
-    borderWidth: 3,
-    borderColor: '#38a5c9',
+    borderWidth: 4,
+    borderColor: '#37a4c8',
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
   },
   statusIndicator: {
     position: "absolute",
-    bottom: 8,
-    right: 8,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    bottom: 12,
+    right: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: "#37a4c8",
-    borderWidth: 2,
-    borderColor: "#070707",
+    borderWidth: 3,
+    borderColor: "#ffffff",
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   nameContainer: {
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 16,
     width: '100%',
+    paddingHorizontal: 20,
   },
   nameText: {
-    fontSize: 32,
-    fontWeight: "700",
-    marginBottom: 4,
-    letterSpacing: -0.5,
+    fontSize: 36,
+    fontWeight: "800",
+    marginBottom: 6,
+    letterSpacing: -0.8,
     textAlign: 'center',
+    lineHeight: 42,
   },
   pronounsText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "400",
-    opacity: 0.8,
+    opacity: 0.7,
+    letterSpacing: -0.2,
   },
   infoContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 8,
+    gap: 16,
+    marginTop: 12,
     flexWrap: 'wrap',
     width: '100%',
   },
   ageContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(56, 165, 201, 0.1)",
+    backgroundColor: "rgba(55, 164, 200, 0.12)",
     height: 36,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    minWidth: 160,
+    borderWidth: 1.5,
+    borderColor: "#37a4c8",
+    minWidth: 130,
     justifyContent: 'center',
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   moodContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(56, 165, 201, 0.1)",
+    backgroundColor: "rgba(55, 164, 200, 0.12)",
     height: 36,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    minWidth: 160,
+    borderWidth: 1.5,
+    borderColor: "#37a4c8",
+    minWidth: 130,
     justifyContent: 'center',
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   ageText: {
-    fontSize: 14,
+    fontSize: 13,
     marginLeft: 6,
-    fontWeight: "500",
+    fontWeight: "600",
     flex: 1,
     textAlign: 'center',
     lineHeight: 36,
+    letterSpacing: 0.2,
   },
   moodText: {
-    fontSize: 14,
+    fontSize: 13,
     marginLeft: 6,
-    fontWeight: "500",
+    fontWeight: "600",
     flex: 1,
     textAlign: 'center',
     lineHeight: 36,
+    letterSpacing: 0.2,
   },
   sectionsContainer: {
     flex: 1,
   },
   card: {
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 4,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 6,
+    marginBottom: 20,
   },
   aboutCard: {
-    marginBottom: 24,
-    minHeight: 120,
+    marginBottom: 28,
+    minHeight: 140,
   },
   gridContainer: {
     flexDirection: "row",
@@ -2219,13 +2248,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 8,
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+    letterSpacing: 0.3,
   },
   cardContent: {
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
+    letterSpacing: 0.2,
   },
   metaContainer: {
     marginTop: 32,
@@ -2401,30 +2432,30 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   socialMediaCard: {
-    marginBottom: 24,
+    marginBottom: 28,
   },
   socialMediaLinks: {
-    gap: 12,
+    gap: 16,
   },
   socialLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    marginBottom: 12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 24,
+    borderWidth: 2,
+    marginBottom: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
     transform: [{ scale: 1 }],
   },
   socialLinkText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
-    letterSpacing: 0.2,
+    marginLeft: 12,
+    letterSpacing: 0.3,
   },
   loadingContainer: {
     flex: 1,
@@ -2442,61 +2473,66 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 16,
-    gap: 12,
+    marginBottom: 28,
+    paddingHorizontal: 20,
+    gap: 16,
   },
   tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: 'rgba(55, 164, 200, 0.1)',
-    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    backgroundColor: 'rgba(55, 164, 200, 0.08)',
+    borderWidth: 1.5,
     borderColor: 'rgba(55, 164, 200, 0.2)',
-    minWidth: 80,
+    minWidth: 90,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 6,
+    elevation: 3,
+    transform: [{ scale: 1 }],
   },
   activeTab: {
-    backgroundColor: 'rgba(55, 164, 200, 0.2)',
+    backgroundColor: 'rgba(55, 164, 200, 0.18)',
     borderColor: '#37a4c8',
     shadowColor: '#37a4c8',
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
+    transform: [{ scale: 1.05 }],
   },
   tabText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   activeTabText: {
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#37a4c8',
   },
   tabContent: {
-    marginTop: 16,
+    marginTop: 20,
   },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
+    gap: 12,
+    marginTop: 12,
   },
   tag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 3,
+    transform: [{ scale: 1 }],
   },
   tagText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   noContentText: {
     fontSize: 14,
@@ -2505,13 +2541,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   languagesCard: {
-    marginTop: 16,
+    marginTop: 20,
   },
   interestsCard: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   goalsCard: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   skeletonContainer: {
     flex: 1,
@@ -2559,29 +2595,77 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 20,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(55, 164, 200, 0.2)',
+    marginTop: 48,
+    marginBottom: 24,
+    paddingTop: 24,
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(55, 164, 200, 0.3)',
   },
   footerLogo: {
-    width: 60,
-    height: 60,
-    marginBottom: 8,
+    width: 64,
+    height: 64,
+    marginBottom: 12,
   },
   membershipText: {
-    fontSize: 14,
-    opacity: 0.8,
+    fontSize: 15,
+    opacity: 0.7,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  actionButtonsContainer: {
+    alignItems: 'center',
+    marginTop: 32,
+    marginBottom: 20,
+    gap: 16,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    gap: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    transform: [{ scale: 1 }],
+  },
+  reportButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  blockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    gap: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    transform: [{ scale: 1 }],
+  },
+  blockButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   badgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    marginBottom: 20,
+    gap: 16,
+    marginBottom: 24,
     flexWrap: 'wrap',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     width: '100%',
   },
   statusButton: {
@@ -2591,20 +2675,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 24,
-    borderWidth: 1.5,
+    borderWidth: 2,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 4,
-    minWidth: 140,
+    minWidth: 60,
     height: 44,
+    transform: [{ scale: 1 }],
   },
   statusButtonText: {
     fontWeight: '700',
-    marginLeft: 8,
+    marginLeft: 6,
     textAlign: 'center',
     letterSpacing: 0.3,
-    fontSize: 12,
+    fontSize: 14,
     flexShrink: 1,
   },
   connectionsContainer: {
@@ -2721,9 +2806,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 4,
+    marginLeft: 10,
   },
   connectionItemType: {
     fontSize: 14,
+    marginLeft: 10,
   },
   profileButton: {
     width: 40,
@@ -2765,47 +2852,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     marginTop: 2,
   },
-  actionButtonsContainer: {
-    alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 16,
-    gap: 12,
-  },
-  reportButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
-    borderWidth: 1,
-    gap: 8,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  reportButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  blockButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
-    borderWidth: 1,
-    gap: 8,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  blockButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+  separatorGradient: {
+    flex: 1,
+    height: 2,
+    borderRadius: 1,
   },
   nameSeparator: {
     width: '60%',
@@ -2814,11 +2864,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     marginTop: 4,
     alignSelf: 'center',
-  },
-  separatorGradient: {
-    flex: 1,
-    height: 2,
-    borderRadius: 1,
   },
   connectionsButton: {
     flexDirection: 'row',
@@ -2849,12 +2894,6 @@ const styles = StyleSheet.create({
     elevation: 4,
     minWidth: 180,
     height: 44,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   overlay: {
     position: 'absolute',

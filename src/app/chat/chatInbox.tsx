@@ -621,58 +621,58 @@ const styles = StyleSheet.create({
   pendingContainer: {
     flexDirection: 'column',
     alignItems: 'center',
-    marginTop: 8,
-    paddingVertical: 12,
+    marginTop: 4,
+    paddingVertical: 8, // Reduced from 12
     backgroundColor: 'rgba(55, 164, 200, 0.05)',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(55, 164, 200, 0.1)',
   },
   pendingText: {
-    fontSize: 15,
+    fontSize: 14, // Reduced from 15
     fontStyle: 'italic',
     textAlign: 'center',
-    marginBottom: 12,
-    lineHeight: 20,
+    marginBottom: 8, // Reduced from 12
+    lineHeight: 18, // Reduced from 20
   },
   connectionTypeText: {
-    fontSize: 14,
+    fontSize: 13, // Reduced from 14
     fontWeight: '600',
     textAlign: 'center',
     backgroundColor: '#37a4c8',
     color: '#FFFFFF',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    paddingVertical: 4, // Reduced from 6
+    paddingHorizontal: 10, // Reduced from 12
+    borderRadius: 14, // Reduced from 16
     overflow: 'hidden',
   },
   pendingStatusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    marginTop: 6, // Reduced from 8
+    paddingHorizontal: 10, // Reduced from 12
+    paddingVertical: 4, // Reduced from 6
     backgroundColor: 'rgba(255, 165, 0, 0.1)',
-    borderRadius: 20,
+    borderRadius: 16, // Reduced from 20
   },
   pendingStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6, // Reduced from 8
+    height: 6, // Reduced from 8
+    borderRadius: 3, // Reduced from 4
     backgroundColor: '#FFA500',
-    marginRight: 8,
+    marginRight: 6, // Reduced from 8
   },
   pendingStatusText: {
-    fontSize: 13,
+    fontSize: 12, // Reduced from 13
     color: '#FFA500',
     fontWeight: '600',
   },
   deleteAction: {}, // Empty style object instead of undefined
   deleteActionText: {}, // Empty style object instead of undefined 
   pendingActionsContainer: {
-    marginTop: 4,
-    paddingHorizontal: 8,
+    marginTop: 2, // Reduced from 4
+    paddingHorizontal: 6, // Reduced from 8
     alignItems: 'center',
     width: '100%',
   },
@@ -681,17 +681,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    gap: 20,
+    gap: 16, // Reduced from 20
   },
   pendingActionButton: {
     flex: 1,
-    maxWidth: 140,
-    height: 100,
+    maxWidth: 120, // Reduced from 140
+    height: 80, // Reduced from 100
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 16,
+    paddingVertical: 8, // Reduced from 12
+    paddingHorizontal: 6, // Reduced from 8
+    borderRadius: 14, // Reduced from 16
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -700,19 +700,19 @@ const styles = StyleSheet.create({
   },
   pendingActionText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14, // Reduced from 15
     fontWeight: '600',
-    marginTop: 8,
+    marginTop: 6, // Reduced from 8
     textAlign: 'center',
   },
   pendingActionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36, // Reduced from 44
+    height: 36, // Reduced from 44
+    borderRadius: 18, // Reduced from 22
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 4, // Reduced from 6
   },
   connectionTypeContainer: {
     marginBottom: 8,
@@ -1484,7 +1484,10 @@ const ChatItem = React.memo(({
         <TouchableOpacity
           style={[
             styles.chatCardContent,
-            chat.status === 'pending' && { opacity: 0.95 }
+            chat.status === 'pending' && { 
+              opacity: 0.95,
+              padding: 16 // Reduced padding for pending connections
+            }
           ]}
           onPress={handlePress}
           onPressIn={handlePressIn}
@@ -1892,8 +1895,7 @@ export default function ChatInbox() {
   const [searchQuery, setSearchQuery] = useState('');
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [foldedSections, setFoldedSections] = useState<{ [key: string]: boolean }>({
-    'Events': true,
-    'Pending Connections': false,
+    'Pending Connections': true,
     'Active Chats': false
   });
 
@@ -2071,6 +2073,18 @@ export default function ChatInbox() {
           active: active.length,
           total: allCombined.length
         });
+        
+        // Determine if Events section should start expanded
+        const hasActiveEvents = eventChats.some(chat => {
+          const status = getEventStatus(chat.startTime).status;
+          return status === 'in_progress' || status === 'upcoming';
+        });
+        
+        setFoldedSections(prev => ({
+          ...prev,
+          'Events': !hasActiveEvents // Collapse if no active events, expand if there are active events
+        }));
+        
         setPendingChats(pending);
         setActiveChats(active);
         setChats(allCombined);
@@ -2226,13 +2240,21 @@ export default function ChatInbox() {
   const renderItem = ({ item, index }: { item: Chat | { type: 'section'; title: string }, index: number }) => {
     if ('type' in item && item.type === 'section') {
       const isFolded = foldedSections[item.title];
+      
+      // Get count for pending connections section
+      let sectionTitle = item.title;
+      if (item.title === 'Pending Connections') {
+        const pendingCount = filteredChats.filter(chat => chat.status === 'pending').length;
+        sectionTitle = `Pending Connections (${pendingCount})`;
+      }
+      
       return (
         <View style={styles.sectionTitleContainer}>
           <Text style={[
             styles.sectionTitle,
             { color: theme === "light" ? "#0F172A" : "#e4fbfe" }
           ]}>
-            {item.title}
+            {sectionTitle}
           </Text>
           <TouchableOpacity 
             style={styles.sectionToggle}

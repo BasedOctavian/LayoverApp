@@ -224,6 +224,62 @@ const MemoizedNavigationButtons = React.memo(({
   </View>
 ));
 
+// Data Mode Toggle component
+const DataModeToggle = React.memo(({ 
+  dataMode, 
+  setDataMode,
+  theme 
+}: { 
+  dataMode: 'real' | 'fake' | 'none';
+  setDataMode: (mode: 'real' | 'fake' | 'none') => void;
+  theme: "light" | "dark";
+}) => (
+  <View style={styles.dataModeToggleContainer}>
+    <TouchableOpacity 
+      style={[
+        styles.dataModeToggleButton,
+        dataMode === 'real' && styles.dataModeToggleButtonActive,
+        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+      ]}
+      onPress={() => setDataMode('real')}
+    >
+      <MaterialIcons name="people" size={16} color={dataMode === 'real' ? "#37a4c8" : "#64748B"} />
+      <Text style={[
+        styles.dataModeToggleText,
+        { color: dataMode === 'real' ? "#37a4c8" : "#64748B" }
+      ]}>Real</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[
+        styles.dataModeToggleButton,
+        dataMode === 'fake' && styles.dataModeToggleButtonActive,
+        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+      ]}
+      onPress={() => setDataMode('fake')}
+    >
+      <MaterialIcons name="computer" size={16} color={dataMode === 'fake' ? "#37a4c8" : "#64748B"} />
+      <Text style={[
+        styles.dataModeToggleText,
+        { color: dataMode === 'fake' ? "#37a4c8" : "#64748B" }
+      ]}>Fake</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[
+        styles.dataModeToggleButton,
+        dataMode === 'none' && styles.dataModeToggleButtonActive,
+        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+      ]}
+      onPress={() => setDataMode('none')}
+    >
+      <MaterialIcons name="person-off" size={16} color={dataMode === 'none' ? "#37a4c8" : "#64748B"} />
+      <Text style={[
+        styles.dataModeToggleText,
+        { color: dataMode === 'none' ? "#37a4c8" : "#64748B" }
+      ]}>None</Text>
+    </TouchableOpacity>
+  </View>
+));
+
 // New LoadingCard component
 const LoadingCard = React.memo(({ theme }: { theme: "light" | "dark" }) => {
   const pulseAnim = useSharedValue(1);
@@ -420,10 +476,12 @@ const SwipeCard = React.memo(({
             >
               <View style={styles.imageContainer}> 
                 <Animated.View style={[styles.profileImageContainer, imageStyle]}>
-                  <UserAvatar
-                    user={user}
-                    size={400}
+                  <Image
+                    source={{ 
+                      uri: user.profilePicture || 'https://via.placeholder.com/400x400?text=No+Photo'
+                    }}
                     style={styles.profileImage}
+                    defaultSource={require('../../assets/adaptive-icon.png')}
                   />
                 </Animated.View>
                 <LinearGradient
@@ -1556,7 +1614,8 @@ const Swipe = () => {
               <Animated.View 
                 entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
                 style={[
-                  styles.emptyStateContainer, 
+                  styles.cardContainer, 
+                  styles.cardShadow,
                   { 
                     opacity: fadeAnim,
                     transform: [{ scale: scaleAnim }]
@@ -1565,28 +1624,88 @@ const Swipe = () => {
               >
                 <LinearGradient
                   colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#000000", "#1a1a1a"]}
-                  style={styles.emptyStateGradient}
+                  style={styles.cardContent}
                 >
-                  <MaterialIcons name="person-off" size={64} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={{ marginBottom: 24 }} />
-                  <Text style={[styles.emptyStateText, { color: theme === "light" ? "#37a4c8" : "#37a4c8", fontSize: 20, fontWeight: '700', marginBottom: 12, textAlign: 'center' }]}>
-                    No more users at {airportName || (currentUserData?.airportCode || "this airport")}
-                  </Text>
-                  <Text style={{ color: theme === "light" ? "#64748B" : "#CBD5E1", fontSize: 15, textAlign: 'center', marginBottom: 24 }}>
-                    We couldn't find any more travelers at this airport right now. Check back later!
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.clearHistoryButton,
-                      { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }
-                    ]}
-                    onPress={resetSwipeHistory}
-                  >
-                    <MaterialIcons name="history" size={20} color="#37a4c8" />
-                    <Text style={[styles.clearHistoryButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                      Reset History
-                    </Text>
-                  </TouchableOpacity>
+                  {/* Image Container - Empty State */}
+                  <View style={styles.imageContainer}>
+                    <View style={[styles.profileImageContainer, { 
+                      backgroundColor: theme === "light" ? "#f3f4f6" : "#2a2a2a",
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }]}>
+                      <Image
+                        source={require('../../assets/icon.png')}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          resizeMode: 'cover'
+                        }}
+                      />
+                    </View>
+                    <LinearGradient
+                      colors={['transparent', theme === "light" ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.8)']}
+                      style={styles.imageOverlay}
+                    >
+                      <View style={styles.profileHeader}>
+                        <Text style={styles.nameText}>
+                          No Nearby Users
+                        </Text>
+                      </View>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Content Container - Empty State */}
+                  <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                    <View style={styles.section}>
+                      <View style={styles.sectionHeader}>
+                        <MaterialIcons name="info" size={18} color="#37a4c8" />
+                        <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                          We couldn't find any more travelers at this airport right now.
+                        </Text>
+                      </View>
+                      <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+                    </View>
+                    <View style={styles.section}>
+                      <View style={styles.sectionHeader}>
+                        <MaterialIcons name="schedule" size={18} color="#37a4c8" />
+                        <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                          Check back later or try resetting your history to see users again.
+                        </Text>
+                      </View>
+                      <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+                    </View>
+                    <View style={[styles.moodContainer, { 
+                      backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                      alignSelf: 'center',
+                      marginTop: 'auto',
+                      marginBottom: 8
+                    }]}>
+                      <MaterialIcons name="refresh" size={16} color="#37a4c8" />
+                      <Text style={styles.moodText}>Ready for new connections!</Text>
+                    </View>
+                  </View>
                 </LinearGradient>
+                
+                {/* Reset History Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.clearHistoryButton,
+                    { 
+                      backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                      position: 'absolute',
+                      bottom: 16,
+                      left: 16,
+                      right: 16,
+                      zIndex: 10
+                    }
+                  ]}
+                  onPress={resetSwipeHistory}
+                >
+                  <MaterialIcons name="history" size={20} color="#37a4c8" />
+                  <Text style={[styles.clearHistoryButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                    Reset History
+                  </Text>
+                </TouchableOpacity>
               </Animated.View>
             )}
           </Animated.View>
@@ -2063,6 +2182,34 @@ const styles = StyleSheet.create({
   },
   clearHistoryButtonText: {
     fontSize: 16,
+    fontWeight: '600',
+  },
+  dataModeToggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+  },
+  dataModeToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#37a4c8',
+    gap: 6,
+    minWidth: 80,
+    backgroundColor: '#FFFFFF',
+  },
+  dataModeToggleButtonActive: {
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+  },
+  dataModeToggleText: {
+    fontSize: 14,
     fontWeight: '600',
   },
 });

@@ -26,6 +26,7 @@ import { useRouter } from "expo-router";
 import useEvents from "../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
 import useAuth from "../hooks/auth";
+import useConnections from "../hooks/useConnections";
 import * as Location from "expo-location";
 import TopBar from "../components/TopBar";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -213,6 +214,7 @@ export default function Explore() {
   const { getEvents } = useEvents();
   const { getAirports } = useAirports();
   const { user } = useAuth();
+  const { checkConnection } = useConnections();
   const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
   
@@ -237,6 +239,8 @@ export default function Explore() {
   const [refreshing, setRefreshing] = useState(false);
   const [visibleEventsCount, setVisibleEventsCount] = useState(3);
   const [visibleUsersCount, setVisibleUsersCount] = useState(3);
+  const [userConnectionStatus, setUserConnectionStatus] = useState<{[key: string]: 'connected' | 'pending' | 'none'}>({});
+  const [isCheckingConnections, setIsCheckingConnections] = useState(false);
   
   // Animation values
   const contentBounceAnim = useRef(new Animated.Value(0)).current;
@@ -369,10 +373,44 @@ export default function Explore() {
             return 0;
           });
         setUsers(filteredUsers);
+        
+        // Check connection status for all users
+        if (user?.uid) {
+          checkConnectionStatusForUsers(filteredUsers, user.uid);
+        }
       }
     };
     fetchUsers();
   }, [selectedAirport?.airportCode, user?.uid]);
+
+  // Function to check connection status for multiple users
+  const checkConnectionStatusForUsers = async (usersList: User[], currentUserId: string) => {
+    if (!currentUserId || usersList.length === 0) return;
+    
+    setIsCheckingConnections(true);
+    const connectionStatusMap: {[key: string]: 'connected' | 'pending' | 'none'} = {};
+    
+    // Check connection status for each user
+    for (const userItem of usersList) {
+      try {
+        const connection = await checkConnection(currentUserId, userItem.id);
+        if (connection) {
+          connectionStatusMap[userItem.id] = connection.status === 'active' ? 'connected' : 'pending';
+        } else {
+          connectionStatusMap[userItem.id] = 'none';
+        }
+      } catch (error) {
+        console.error(`Error checking connection with user ${userItem.id}:`, error);
+        connectionStatusMap[userItem.id] = 'none';
+      }
+    }
+    
+    setUserConnectionStatus(prevStatus => ({
+      ...prevStatus,
+      ...connectionStatusMap
+    }));
+    setIsCheckingConnections(false);
+  };
 
   // Filter events based on selected airport
   const { filteredRegularEvents } = useFilteredEvents(selectedAirport, events, []);
@@ -1200,11 +1238,76 @@ export default function Explore() {
                                   style={styles.profileImage}
                                 />
                                 <View style={styles.userMainInfo}>
-                                  <Text style={[styles.userName, { 
-                                    color: theme === "light" ? "#0F172A" : "#e4fbfe" 
-                                  }]}>
-                                    {user.name}
-                                  </Text>
+                                  <View style={styles.userNameRow}>
+                                    <Text style={[styles.userName, { 
+                                      color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                                    }]}>
+                                      {user.name}
+                                    </Text>
+                                    {/* Connection Status Badge */}
+                                    {isCheckingConnections && !userConnectionStatus[user.id] ? (
+                                      <View style={[
+                                        styles.connectionBadge,
+                                        {
+                                          backgroundColor: theme === "light" ? '#F8FAFC' : '#1a1a1a',
+                                          borderColor: theme === "light" ? '#E2E8F0' : '#374151'
+                                        }
+                                      ]}>
+                                        <ActivityIndicator size={8} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                                        <Text style={[
+                                          styles.connectionText,
+                                          { color: theme === "light" ? "#64748B" : "#94A3B8" }
+                                        ]}>
+                                          Checking...
+                                        </Text>
+                                      </View>
+                                    ) : userConnectionStatus[user.id] && (
+                                      <View style={[
+                                        styles.connectionBadge,
+                                        {
+                                          backgroundColor: userConnectionStatus[user.id] === 'connected' 
+                                            ? '#10B981' 
+                                            : userConnectionStatus[user.id] === 'pending'
+                                            ? '#F59E0B'
+                                            : theme === "light" ? '#F8FAFC' : '#1a1a1a',
+                                          borderColor: userConnectionStatus[user.id] === 'connected'
+                                            ? '#10B981'
+                                            : userConnectionStatus[user.id] === 'pending'
+                                            ? '#F59E0B'
+                                            : theme === "light" ? '#E2E8F0' : '#374151'
+                                        }
+                                      ]}>
+                                        <Ionicons 
+                                          name={userConnectionStatus[user.id] === 'connected' 
+                                            ? 'checkmark-circle' 
+                                            : userConnectionStatus[user.id] === 'pending'
+                                            ? 'time'
+                                            : 'person-add'
+                                          } 
+                                          size={12} 
+                                          color={userConnectionStatus[user.id] === 'none' 
+                                            ? (theme === "light" ? "#64748B" : "#94A3B8")
+                                            : '#FFFFFF'
+                                          } 
+                                        />
+                                        <Text style={[
+                                          styles.connectionText,
+                                          {
+                                            color: userConnectionStatus[user.id] === 'none' 
+                                              ? (theme === "light" ? "#64748B" : "#94A3B8")
+                                              : '#FFFFFF'
+                                          }
+                                        ]}>
+                                          {userConnectionStatus[user.id] === 'connected' 
+                                            ? 'Connected' 
+                                            : userConnectionStatus[user.id] === 'pending'
+                                            ? 'Pending'
+                                            : 'Connect'
+                                          }
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
                                   <View style={styles.userDetails}>
                                     <Text style={[styles.userAge, { color: "#37a4c8" }]}>
                                       {user.age} years old
@@ -1447,6 +1550,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     marginBottom: 4,
   },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   userDetails: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1490,6 +1598,20 @@ const styles = StyleSheet.create({
   moodText: {
     fontSize: 12,
     fontWeight: "500",
+  },
+  connectionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginLeft: 8,
+  },
+  connectionText: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginLeft: 2,
   },
   toggleButtonContainer: {
     position: 'absolute',

@@ -36,6 +36,140 @@ ExpoNotifications.setNotificationHandler({
   }),
 });
 
+// Skeleton loading component
+const NotificationSkeleton = ({ theme }: { theme: string }) => {
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const shimmerAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    shimmerAnimation.start();
+
+    return () => shimmerAnimation.stop();
+  }, []);
+
+  const shimmerOpacity = shimmerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.7],
+  });
+
+  return (
+    <View style={[styles.notificationItem, { 
+      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+      borderColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
+    }]}>
+      <View style={styles.notificationContent}>
+        <Animated.View 
+          style={[
+            styles.skeletonTitle, 
+            { 
+              backgroundColor: theme === "light" ? "#e0e0e0" : "#2a2a2a",
+              opacity: shimmerOpacity 
+            }
+          ]} 
+        />
+        <Animated.View 
+          style={[
+            styles.skeletonBody, 
+            { 
+              backgroundColor: theme === "light" ? "#e0e0e0" : "#2a2a2a",
+              opacity: shimmerOpacity 
+            }
+          ]} 
+        />
+        <Animated.View 
+          style={[
+            styles.skeletonTime, 
+            { 
+              backgroundColor: theme === "light" ? "#e0e0e0" : "#2a2a2a",
+              opacity: shimmerOpacity 
+            }
+          ]} 
+        />
+      </View>
+    </View>
+  );
+};
+
+// Animated notification item component
+const AnimatedNotificationItem = ({ item, index, theme, onPress, onClear }: { 
+  item: Notification; 
+  index: number; 
+  theme: string; 
+  onPress: () => void; 
+  onClear: () => void; 
+}) => {
+  const itemAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(itemAnim, {
+      toValue: 1,
+      duration: 400,
+      delay: index * 100, // Stagger animation
+      useNativeDriver: true,
+    }).start();
+  }, [index]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: itemAnim,
+        transform: [{
+          translateY: itemAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [20, 0],
+          }),
+        }],
+      }}
+    >
+      <TouchableOpacity
+        style={[styles.notificationItem, { 
+          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+          borderColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
+        }]}
+        onPress={onPress}
+      >
+        <View style={styles.notificationContent}>
+          <Text style={[styles.notificationTitle, { 
+            color: theme === "light" ? "#0F172A" : "#e4fbfe",
+            fontWeight: item.read ? "400" : "600"
+          }]}>
+            {item.title}
+          </Text>
+          <Text style={[styles.notificationBody, { 
+            color: theme === "light" ? "#666666" : "#a0a0a0"
+          }]}>
+            {item.body}
+          </Text>
+          <Text style={[styles.notificationTime, { 
+            color: theme === "light" ? "#666666" : "#a0a0a0"
+          }]}>
+            {new Date(item.timestamp?.seconds * 1000).toLocaleString()}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.clearButton}
+          onPress={onClear}
+        >
+          <Ionicons name="close-circle" size={24} color="#37a4c8" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 export default function Notifications() {
   const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
@@ -44,17 +178,25 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
     setupNotificationListeners();
     setupNotificationsListener();
 
-    // Start fade-in animation
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
+    // Start smooth entrance animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
     return () => {
       if (notificationListener.current) {
@@ -102,7 +244,17 @@ export default function Notifications() {
           const timeB = b.timestamp?.seconds || 0;
           return timeB - timeA;
         });
-        setNotifications(sortedNotifications);
+        
+        // Smooth transition when data loads
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => {
+          setNotifications(sortedNotifications);
+          setLoading(false);
+        });
+      } else {
         setLoading(false);
       }
     });
@@ -178,48 +330,37 @@ export default function Notifications() {
     }
   };
 
-  const renderNotification = ({ item }: { item: Notification }) => (
-    <TouchableOpacity
-      style={[styles.notificationItem, { 
-        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-        borderColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
-      }]}
-      onPress={() => {
-        if (item.data.type === 'chat') {
-          router.push(`/chat/${item.data.chatId}`);
-        } else if (item.data.type === 'eventChat') {
-          router.push(`/event/eventChat/${item.data.eventId}`);
-        } else if (item.data.type === 'match') {
-          router.push('/chat/chatInbox');
-        }
-      }}
-    >
-      <View style={styles.notificationContent}>
-        <Text style={[styles.notificationTitle, { 
-          color: theme === "light" ? "#0F172A" : "#e4fbfe",
-          fontWeight: item.read ? "400" : "600"
-        }]}>
-          {item.title}
-        </Text>
-        <Text style={[styles.notificationBody, { 
-          color: theme === "light" ? "#666666" : "#a0a0a0"
-        }]}>
-          {item.body}
-        </Text>
-        <Text style={[styles.notificationTime, { 
-          color: theme === "light" ? "#666666" : "#a0a0a0"
-        }]}>
-          {new Date(item.timestamp?.seconds * 1000).toLocaleString()}
-        </Text>
-      </View>
-      <TouchableOpacity
-        style={styles.clearButton}
-        onPress={() => clearNotification(item.id)}
-      >
-        <Ionicons name="close-circle" size={24} color="#37a4c8" />
-      </TouchableOpacity>
-    </TouchableOpacity>
+  const handleNotificationPress = (item: Notification) => {
+    if (item.data.type === 'chat') {
+      router.push(`/chat/${item.data.chatId}`);
+    } else if (item.data.type === 'eventChat') {
+      router.push(`/event/eventChat/${item.data.eventId}`);
+    } else if (item.data.type === 'match') {
+      router.push('/chat/chatInbox');
+    }
+  };
+
+  const renderNotification = ({ item, index }: { item: Notification; index: number }) => (
+    <AnimatedNotificationItem
+      item={item}
+      index={index}
+      theme={theme}
+      onPress={() => handleNotificationPress(item)}
+      onClear={() => clearNotification(item.id)}
+    />
   );
+
+  const renderSkeletonList = () => {
+    const skeletonItems = Array.from({ length: 5 }, (_, index) => (
+      <NotificationSkeleton key={index} theme={theme} />
+    ));
+
+    return (
+      <View style={styles.notificationList}>
+        {skeletonItems}
+      </View>
+    );
+  };
 
   return (
     <>
@@ -232,9 +373,26 @@ export default function Notifications() {
           colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]}
           style={styles.gradient}
         >
-          <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-            {notifications.length === 0 ? (
+          <Animated.View 
+            style={[
+              styles.content, 
+              { 
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }]
+              }
+            ]}
+          >
+            {loading ? (
               <>
+                <View style={styles.header}>
+                  <Text style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Notifications
+                  </Text>
+                </View>
+                {renderSkeletonList()}
+              </>
+            ) : notifications.length === 0 ? (
+              <Animated.View style={{ opacity: fadeAnim }}>
                 <Ionicons name="notifications-off" size={64} color="#37a4c8" />
                 <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                   No new notifications!
@@ -242,11 +400,11 @@ export default function Notifications() {
                 <Text style={[styles.subtitle, { color: "#37a4c8" }]}>
                   We'll notify you when something important happens
                 </Text>
-              </>
+              </Animated.View>
             ) : (
               <>
                 <View style={styles.header}>
-                  <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                  <Text style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     Notifications
                   </Text>
                   <TouchableOpacity
@@ -262,6 +420,7 @@ export default function Notifications() {
                   keyExtractor={item => item.id}
                   style={styles.notificationList}
                   contentContainerStyle={styles.notificationListContent}
+                  showsVerticalScrollIndicator={false}
                 />
               </>
             )}
@@ -304,14 +463,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     marginBottom: 16,
+    paddingHorizontal: 0,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   clearAllButton: {
     padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 40,
   },
   clearAllText: {
     color: '#37a4c8',
     fontSize: 16,
     fontWeight: '600',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   notificationList: {
     width: '100%',
@@ -348,5 +519,23 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
     marginLeft: 8,
+  },
+  // Skeleton loading styles
+  skeletonTitle: {
+    height: 16,
+    borderRadius: 4,
+    marginBottom: 8,
+    width: '80%',
+  },
+  skeletonBody: {
+    height: 14,
+    borderRadius: 4,
+    marginBottom: 8,
+    width: '90%',
+  },
+  skeletonTime: {
+    height: 12,
+    borderRadius: 4,
+    width: '60%',
   },
 }); 

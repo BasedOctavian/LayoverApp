@@ -16,6 +16,7 @@ import {
   Animated,
   Easing,
   Dimensions,
+  FlatList,
 } from "react-native";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import useUsers from "../../hooks/useUsers";
@@ -82,6 +83,8 @@ interface MessageItemProps {
   item: Message;
   isCurrentUser: boolean;
   theme: string;
+  isFirstInGroup: boolean;
+  isLastInGroup: boolean;
 }
 
 // Format timestamp for display
@@ -92,13 +95,41 @@ const formatTimestamp = (dateObj: { seconds: number; nanoseconds: number } | Dat
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme }) => {
+// Format date for message groups
+const formatMessageDate = (dateObj: { seconds: number; nanoseconds: number } | Date) => {
+  if (!dateObj) return "";
+  const date = 'seconds' in dateObj ? new Date(dateObj.seconds * 1000) : new Date(dateObj);
+  if (isNaN(date.getTime())) return "";
+  
+  const now = new Date();
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+  
+  if (diffInHours < 24) {
+    return date.toLocaleDateString([], { 
+      weekday: 'long',
+      month: 'short', 
+      day: 'numeric' 
+    });
+  } else if (diffInHours < 48) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString([], { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+};
+
+const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme, isFirstInGroup, isLastInGroup }) => {
   const [userProfile, setUserProfile] = useState<any>(userProfileCache.get(item.sender) || null);
   const router = useRouter();
   const loadingProgress = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const [isLoading, setIsLoading] = useState(!userProfileCache.has(item.sender));
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const bubbleAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
   // Add loading progress animation with pulse
   useEffect(() => {
@@ -142,6 +173,24 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme })
       pulseAnim.setValue(0);
     }
   }, [isLoading]);
+
+  // Animate message bubble on mount
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(bubbleAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, []);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -187,11 +236,15 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme })
   }, [item.sender, isCurrentUser]);
 
   return (
-    <View style={[
+    <Animated.View style={[
       styles.messageContainer,
-      isCurrentUser ? styles.currentUserContainer : styles.otherUserContainer
+      isCurrentUser ? styles.currentUserContainer : styles.otherUserContainer,
+      {
+        opacity: bubbleAnim,
+        transform: [{ scale: scaleAnim }]
+      }
     ]}>
-      {!isCurrentUser && (
+      {!isCurrentUser && isFirstInGroup && (
         <TouchableOpacity 
           onPress={() => router.push(`/profile/${item.sender}`)}
           style={styles.profileImageContainer}
@@ -221,30 +274,37 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme })
             <Animated.View style={{ opacity: fadeAnim }}>
               <UserAvatar
                 user={userProfile || { name: 'User', profilePicture: null }}
-                size={40}
+                size={32}
                 style={styles.profileImage}
               />
             </Animated.View>
           )}
         </TouchableOpacity>
       )}
+      
+      {!isCurrentUser && !isFirstInGroup && (
+        <View style={styles.profileImageSpacer} />
+      )}
+
       <View style={[
         styles.messageBubble, 
         isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble,
+        isFirstInGroup && !isCurrentUser ? styles.firstInGroup : null,
+        isLastInGroup && !isCurrentUser ? styles.lastInGroup : null,
         { 
           backgroundColor: isCurrentUser 
-            ? '#37a4c8' 
+            ? theme === "light" ? "#ffffff" : "#000000"
             : theme === "light" 
-              ? "#f5f5f5" 
+              ? "#f0f0f0" 
               : "#2a2a2a",
           borderColor: isCurrentUser 
-            ? '#37a4c8' 
+            ? theme === "light" ? "#e0e0e0" : "#000000"
             : theme === "light" 
               ? "#e0e0e0" 
               : "#3a3a3a"
         }
       ]}>
-        {!isCurrentUser && (
+        {!isCurrentUser && isFirstInGroup && (
           <View style={styles.userNameContainer}>
             {isLoading ? (
               <View style={[styles.userNamePlaceholder, { backgroundColor: theme === "light" ? "#e6e6e6" : "#2a2a2a" }]} />
@@ -280,16 +340,23 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme })
             />
           </View>
         )}
+        
         <Text style={[styles.messageText, { 
-          color: isCurrentUser ? "#ffffff" : theme === "light" ? "#1a1a1a" : "#ffffff",
-          fontWeight: "500"
+          color: isCurrentUser 
+            ? theme === "light" ? "#000000" : "#ffffff"
+            : theme === "light" ? "#1a1a1a" : "#ffffff",
+          fontWeight: isCurrentUser ? "500" : "400",
+          lineHeight: 20
         }]}>
           {item.text}
         </Text>
+        
         <View style={styles.messageFooter}>
           <Text style={[styles.messageTimestamp, { 
-            color: isCurrentUser ? "#ffffff" : theme === "light" ? "#666666" : "#a0a0a0",
-            opacity: 0.8
+            color: isCurrentUser 
+              ? theme === "light" ? "#666666" : "#ffffff"
+              : theme === "light" ? "#666666" : "#a0a0a0",
+            opacity: isCurrentUser ? 0.7 : 0.8
           }]}>
             {formatTimestamp(item.date)}
           </Text>
@@ -298,27 +365,30 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme })
               {item.status === 'read' ? (
                 <Ionicons 
                   name="checkmark-done" 
-                  size={18} 
-                  color="#ffffff"
+                  size={16} 
+                  color={theme === "light" ? "#000000" : "#ffffff"}
+                  style={{ marginLeft: 4, opacity: 0.9 }}
                 />
               ) : item.status === 'delivered' ? (
                 <Ionicons 
                   name="checkmark-done" 
-                  size={18} 
-                  color="#ffffff"
+                  size={16} 
+                  color={theme === "light" ? "#000000" : "#ffffff"}
+                  style={{ marginLeft: 4, opacity: 0.7 }}
                 />
               ) : (
                 <Ionicons 
                   name="checkmark" 
-                  size={18} 
-                  color="#ffffff"
+                  size={16} 
+                  color={theme === "light" ? "#000000" : "#ffffff"}
+                  style={{ marginLeft: 4, opacity: 0.5 }}
                 />
               )}
             </View>
           )}
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
@@ -346,7 +416,7 @@ export default function Chat() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const marginAnim = useRef(new Animated.Value(50)).current;
-  const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList<any>>(null);
   const isInitialScrollDone = useRef(false);
   const [messageError, setMessageError] = useState(false);
 
@@ -356,6 +426,50 @@ export default function Chat() {
 
   // Access ThemeContext
   const { theme } = React.useContext(ThemeContext);
+
+  // Group messages by sender and time proximity
+  const groupMessages = useCallback((messages: Message[]) => {
+    const grouped: Array<Message & { isFirstInGroup: boolean; isLastInGroup: boolean; showDate: boolean }> = [];
+    
+    for (let i = 0; i < messages.length; i++) {
+      const currentMessage = messages[i];
+      const prevMessage = messages[i - 1];
+      const nextMessage = messages[i + 1];
+      
+      // Check if this is the first message in a group
+      const isFirstInGroup = !prevMessage || 
+        prevMessage.sender !== currentMessage.sender ||
+        shouldShowDateSeparator(prevMessage.date, currentMessage.date);
+      
+      // Check if this is the last message in a group
+      const isLastInGroup = !nextMessage || 
+        nextMessage.sender !== currentMessage.sender ||
+        shouldShowDateSeparator(currentMessage.date, nextMessage.date);
+      
+      // Check if we should show a date separator
+      const showDate = isFirstInGroup && shouldShowDateSeparator(prevMessage?.date, currentMessage.date);
+      
+      grouped.push({
+        ...currentMessage,
+        isFirstInGroup,
+        isLastInGroup,
+        showDate
+      });
+    }
+    
+    return grouped;
+  }, []);
+
+  // Helper function to determine if we should show a date separator
+  const shouldShowDateSeparator = (prevDate?: any, currentDate?: any) => {
+    if (!prevDate || !currentDate) return true;
+    
+    const prev = 'seconds' in prevDate ? new Date(prevDate.seconds * 1000) : new Date(prevDate);
+    const current = 'seconds' in currentDate ? new Date(currentDate.seconds * 1000) : new Date(currentDate);
+    
+    const diffInHours = (current.getTime() - prev.getTime()) / (1000 * 60 * 60);
+    return diffInHours >= 1; // Show separator if messages are more than 1 hour apart
+  };
 
   // Get chat document and partner details on mount
   useEffect(() => {
@@ -425,8 +539,8 @@ export default function Chat() {
 
   // Function to scroll to bottom
   const scrollToBottom = (animated = true) => {
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollToEnd({ animated });
+    if (flatListRef.current && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated });
     }
   };
 
@@ -638,6 +752,45 @@ export default function Chat() {
     };
   }, []);
 
+  // Render date separator
+  const renderDateSeparator = (date: any) => (
+    <View style={styles.dateSeparatorContainer}>
+      <View style={[styles.dateSeparator, { 
+        backgroundColor: theme === "light" ? "#e8e9ea" : "#2a2a2a"
+      }]}>
+        <Text style={[styles.dateSeparatorText, { 
+          color: theme === "light" ? "#666666" : "#a0a0a0"
+        }]}>
+          {formatMessageDate(date)}
+        </Text>
+      </View>
+    </View>
+  );
+
+  // Render message item
+  const renderMessageItem = ({ item, index }: { item: Message & { isFirstInGroup: boolean; isLastInGroup: boolean; showDate: boolean }, index: number }) => {
+    const isCurrentUser = item.sender === authUser?.uid;
+    
+    return (
+      <>
+        {item.showDate && renderDateSeparator(item.date)}
+        <TouchableOpacity
+          onLongPress={() => handleLongPressMessage(item)}
+          activeOpacity={0.9}
+          style={styles.messageTouchable}
+        >
+          <MessageItem 
+            item={item} 
+            isCurrentUser={isCurrentUser} 
+            theme={theme || 'light'} 
+            isFirstInGroup={item.isFirstInGroup}
+            isLastInGroup={item.isLastInGroup}
+          />
+        </TouchableOpacity>
+      </>
+    );
+  };
+
   if (isInitialLoading) {
     return (
       <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
@@ -681,6 +834,8 @@ export default function Chat() {
     );
   }
 
+  const groupedMessages = groupMessages(messages);
+
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
@@ -694,7 +849,6 @@ export default function Chat() {
         {/* Chat Header Top Bar */}
         <View style={[styles.chatHeader, { 
           backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-          borderBottomColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
         }]}>
           <TouchableOpacity 
             onPress={() => router.push(`/profile/${partner.id}`)}
@@ -767,34 +921,34 @@ export default function Chat() {
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.inner}>
               {/* Chat Messages */}
-              <ScrollView
-                ref={scrollViewRef}
-                style={styles.messagesContainer}
+              <FlatList
+                ref={flatListRef}
+                data={groupedMessages}
+                keyExtractor={(item) => item.id}
+                renderItem={renderMessageItem}
                 contentContainerStyle={styles.messagesContent}
-                keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => scrollToBottom()}
                 onLayout={() => scrollToBottom()}
                 showsVerticalScrollIndicator={false}
-              >
-                {messages.map((message) => {
-                  const isCurrentUser = message.sender === authUser.uid;
-                  return (
-                    <MessageItem 
-                      key={message.id} 
-                      item={message} 
-                      isCurrentUser={isCurrentUser} 
-                      theme={theme || 'light'} 
-                    />
-                  );
-                })}
-              </ScrollView>
+                inverted
+                style={styles.messagesContainer}
+                removeClippedSubviews={false}
+                maxToRenderPerBatch={10}
+                windowSize={10}
+                initialNumToRender={20}
+              />
 
               {/* Chat Input Area */}
               <Animated.View style={[styles.inputContainer, { 
                 backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
                 borderTopColor: theme === "light" ? "#e0e0e0" : "#2a2a2a",
-                marginBottom: marginAnim 
-              }]}>
+                marginBottom: marginAnim,
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 10,
+              }]}> 
                 <TextInput
                   style={[styles.input, { 
                     backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
@@ -813,13 +967,16 @@ export default function Chat() {
                   multiline
                   maxLength={1000}
                   keyboardAppearance={theme === "light" ? "light" : "dark"}
+                  returnKeyType="send"
+                  onSubmitEditing={handleSendMessage}
                 />
                 <TouchableOpacity
                   style={[styles.sendButton, messageError && styles.sendButtonDisabled]}
                   onPress={handleSendMessage}
                   disabled={messageError}
+                  activeOpacity={0.7}
                 >
-                  <Text style={[styles.sendButtonText, messageError && styles.sendButtonTextDisabled]}>Send</Text>
+                  <Ionicons name="send" size={22} color={messageError ? "#666666" : "#fff"} />
                 </TouchableOpacity>
               </Animated.View>
             </View>
@@ -852,7 +1009,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    borderBottomWidth: 1,
   },
   avatar: {
     width: 40,
@@ -885,22 +1041,35 @@ const styles = StyleSheet.create({
     minWidth: '30%',
     borderWidth: 1,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   currentUserBubble: {
     borderTopRightRadius: 4,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     borderTopLeftRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 5,
   },
   otherUserBubble: {
     borderTopLeftRadius: 4,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     borderTopRightRadius: 20,
+  },
+  firstInGroup: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  lastInGroup: {
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
   messageText: {
     fontSize: 15,
@@ -921,7 +1090,6 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: "row",
     padding: 12,
-    borderTopWidth: 1,
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -1024,7 +1192,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 4,
+    marginTop: 6,
     gap: 4,
   },
   messageStatus: {
@@ -1065,7 +1233,7 @@ const styles = StyleSheet.create({
   messageContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginVertical: 4,
+    marginVertical: 2,
     paddingHorizontal: 4,
   },
   currentUserContainer: {
@@ -1086,13 +1254,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
+  profileImageSpacer: {
+    width: 40,
+    height: 32,
+  },
   defaultAvatar: {
     backgroundColor: '#000000',
   },
   userNameContainer: {
     position: 'relative',
     overflow: 'hidden',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   userNamePlaceholder: {
     height: 16,
@@ -1114,9 +1286,29 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   messageTimestamp: {
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 4,
     textAlign: "right",
     fontWeight: "500",
+  },
+  dateSeparatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 8,
+  },
+  dateSeparator: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e8e9ea',
+  },
+  dateSeparatorText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginHorizontal: 12,
+    textAlign: 'center',
+  },
+  messageTouchable: {
+    flex: 1,
   },
 });
