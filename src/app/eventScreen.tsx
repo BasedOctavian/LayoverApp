@@ -117,7 +117,7 @@ const CountdownTimer = ({ startTime }: { startTime: Date | null }) => {
   );
 };
 
-export default function EventCreation() {
+export default function EventScreen() {
   const router = useRouter();
   const { getUser } = useUsers();
   const { getEvents } = useEvents();
@@ -1073,4 +1073,4 @@ const styles = StyleSheet.create({
     color: "#64748B",
     letterSpacing: 0.2,
   },
-});
+}); 

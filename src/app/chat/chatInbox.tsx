@@ -21,8 +21,8 @@ import {
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons, Ionicons } from "@expo/vector-icons";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { MaterialIcons, Ionicons, Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { onAuthStateChanged, User, getAuth } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import useAuth from "../../hooks/auth";
@@ -35,9 +35,10 @@ import { formatDistanceToNow } from 'date-fns';
 import { Swipeable } from 'react-native-gesture-handler';
 import { collection, query, where, getDocs, doc, getDoc, onSnapshot, Timestamp, writeBatch, updateDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebaseConfig';
-import BottomNavBar from "../../components/BottomNavBar";
 import * as Haptics from 'expo-haptics';
 import useNotificationCount from "../../hooks/useNotificationCount";
+import UserAvatar from "../../components/UserAvatar";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const { width, height } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.85;
@@ -321,32 +322,55 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    paddingBottom: 0,
+  },
+  headerSection: {
+    marginBottom: 24,
+    paddingHorizontal: 4,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 22,
+  },
+  searchContainer: {
+    position: 'relative',
+    marginBottom: 20,
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 16,
+    top: 18,
+    zIndex: 1,
   },
   searchInput: {
-    borderRadius: 25,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingHorizontal: 48,
+    paddingVertical: 16,
     fontSize: 16,
-    marginBottom: 16,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
     borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   chatCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: 16,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
     borderWidth: 1,
     overflow: 'hidden',
     position: 'relative',
+    elevation: 6,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
   },
   pinnedBackground: {
     position: 'absolute',
@@ -357,13 +381,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(55, 164, 200, 0.03)',
   },
   chatCardContent: {
-    padding: 16,
+    padding: 20,
     flex: 1,
     justifyContent: 'center',
   },
   chatHeader: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 16,
   },
   imageContainer: {
     marginRight: 16,
@@ -371,18 +396,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profileImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   chatMainInfo: {
     flex: 1,
     justifyContent: 'center',
   },
   chatName: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 4,
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 6,
+    letterSpacing: -0.3,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   userDetails: {
     flexDirection: "row",
@@ -396,10 +428,10 @@ const styles = StyleSheet.create({
   userLocation: {
     fontSize: 14,
     fontWeight: "500",
-    marginLeft: 8,
+    marginLeft: 4,
   },
   chatInfo: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   chatLastMessage: {
     fontSize: 14,
@@ -408,7 +440,8 @@ const styles = StyleSheet.create({
   userInterestsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginBottom: 12,
+    marginBottom: 16,
+    alignItems: 'center',
   },
   interestTag: {
     backgroundColor: "#37a4c8",
@@ -421,7 +454,7 @@ const styles = StyleSheet.create({
   interestText: {
     color: "#FFFFFF",
     fontSize: 12,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   userMoodContainer: {
     flexDirection: "row",
@@ -440,11 +473,11 @@ const styles = StyleSheet.create({
   },
   onlineIndicator: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
@@ -469,8 +502,8 @@ const styles = StyleSheet.create({
   },
   unreadBadge: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: 20,
+    right: 20,
     backgroundColor: '#37a4c8',
     borderRadius: 12,
     minWidth: 24,
@@ -491,7 +524,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(100, 116, 139, 0.1)',
   },
   pinButtonActive: {
-    backgroundColor: 'rgba(55, 164, 200, 0.2)',
+    backgroundColor: '#37a4c8',
   },
   pinIcon: {
     width: 24,
@@ -503,12 +536,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 32,
   },
   errorText: {
-    color: "#FF3B30",
     fontSize: 16,
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 8,
+    fontWeight: '500',
   },
   retryButton: {
     backgroundColor: "#37a4c8",
@@ -522,22 +556,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   listContent: {
-    paddingBottom: 20,
-  },
-  newChatButton: {
-    position: "absolute",
-    bottom: 80,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    // paddingBottom: 80, // Removed - now handled dynamically
   },
   loadingContainer: {
     flex: 1,
@@ -555,8 +574,18 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
     textAlign: "center",
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  emptyIcon: {
+    marginBottom: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    textAlign: "center",
+    fontWeight: '400',
   },
   placeholderImage: {
     backgroundColor: "#37a4c8",
@@ -567,11 +596,6 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontSize: 24,
     fontWeight: "600",
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   sectionContainer: {
     marginBottom: 24,
@@ -698,7 +722,7 @@ const styles = StyleSheet.create({
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingBottom: 120,
+    // paddingBottom: 120, // Removed - now handled dynamically
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -751,9 +775,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#37a4c8',
     justifyContent: 'center',
     alignItems: 'center',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   sectionHeader: {
     fontSize: 20,
@@ -798,6 +822,63 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     justifyContent: 'flex-start',
   },
+  categoryBadge: {
+    backgroundColor: '#37a4c8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  categoryBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    marginLeft: 8,
+  },
+  ageBadge: {
+    backgroundColor: '#37a4c8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  ageBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  moreInterestsBadge: {
+    backgroundColor: 'rgba(55, 164, 200, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 4,
+  },
+  moreInterestsText: {
+    color: '#37a4c8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  sectionDivider: {
+    height: 2,
+    backgroundColor: 'rgba(55, 164, 200, 0.3)',
+    marginVertical: 12,
+    marginHorizontal: 4,
+    borderRadius: 1,
+  },
+  fixedDivider: {
+    height: 1,
+    backgroundColor: 'rgba(55, 164, 200, 0.3)',
+    marginTop: 12,
+    marginBottom: 2.4,
+    marginHorizontal: 4,
+    borderRadius: 1,
+  },
 });
 
 const ChatItem = React.memo(({ 
@@ -821,6 +902,7 @@ const ChatItem = React.memo(({
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const pinScaleAnim = useRef(new Animated.Value(1)).current;
+  const cardScaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (!preloadedData && !chat.isEventChat) {
@@ -894,6 +976,11 @@ const ChatItem = React.memo(({
   }, [partner, chat.isEventChat, index]);
 
   const handleAcceptConnection = async () => {
+    // Add haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     console.log('Accept button pressed for chat:', chat.id);
     try {
       const connectionId = chat.connectionId || chat.id;
@@ -1102,6 +1189,11 @@ const ChatItem = React.memo(({
   };
 
   const handleDeclineConnection = async () => {
+    // Add haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     console.log('Decline button pressed for connection:', chat.id);
     try {
       // For pending connections, the chat.id is actually the connection document ID
@@ -1258,19 +1350,38 @@ const ChatItem = React.memo(({
   };
 
   const handlePressIn = () => {
-    Animated.timing(scaleAnim, {
-      toValue: 0.98,
-      duration: 100,
-      useNativeDriver: true,
-    }).start();
+    // Add haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    Animated.parallel([
+      Animated.timing(cardScaleAnim, {
+        toValue: 0.98,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.98,
+        duration: 100,
+        useNativeDriver: true,
+      })
+    ]).start();
   };
 
   const handlePressOut = () => {
-    Animated.timing(scaleAnim, {
-      toValue: 1,
-      duration: 100,
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.timing(cardScaleAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      })
+    ]).start();
   };
 
   const handlePress = useCallback(() => {
@@ -1288,6 +1399,11 @@ const ChatItem = React.memo(({
   }, [chat, currentUser.uid, onPress]);
 
   const handlePinPress = () => {
+    // Add haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
     // Animate the pin button
     Animated.sequence([
       Animated.timing(pinScaleAnim, {
@@ -1354,11 +1470,11 @@ const ChatItem = React.memo(({
         style={[
           styles.chatCard,
           {
-            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-            borderColor: chat.status === 'pending' ? 'rgba(55, 164, 200, 0.3)' : "#37a4c8",
+            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+            borderColor: chat.status === 'pending' ? 'rgba(55, 164, 200, 0.3)' : theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
             borderWidth: 1,
             opacity: opacityAnim,
-            transform: [{ scale: scaleAnim }],
+            transform: [{ scale: cardScaleAnim }],
           }
         ]}
       >
@@ -1382,8 +1498,9 @@ const ChatItem = React.memo(({
                   <Ionicons name="calendar" size={24} color="#ffffff" />
                 </View>
               ) : partner?.profilePicture ? (
-                <Image
-                  source={{ uri: partner.profilePicture }}
+                <UserAvatar
+                  user={partner}
+                  size={56}
                   style={styles.profileImage}
                 />
               ) : (
@@ -1407,7 +1524,7 @@ const ChatItem = React.memo(({
             </View>
             <View style={styles.chatMainInfo}>
               <View style={styles.nameRow}>
-                <Text style={[styles.chatName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                <Text style={[styles.chatName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                   {chat.isEventChat ? chat.eventName : (partner?.name || "Unknown User")}
                 </Text>
                 {chat.status !== 'pending' && !chat.isEventChat && (
@@ -1428,7 +1545,7 @@ const ChatItem = React.memo(({
                       <Ionicons 
                         name={chat.isPinned ? "pin" : "pin-outline"} 
                         size={24} 
-                        color={chat.isPinned ? "#37a4c8" : "#64748B"} 
+                        color={chat.isPinned ? "#FFFFFF" : "#64748B"} 
                       />
                     </Animated.View>
                   </TouchableOpacity>
@@ -1437,13 +1554,23 @@ const ChatItem = React.memo(({
               <View style={styles.userDetails}>
                 {chat.isEventChat ? (
                   <>
-                    <Text style={[styles.userAge, { color: "#37a4c8" }]}>{chat.category}</Text>
-                    <Text style={[styles.userLocation, { color: "#37a4c8" }]}>• {chat.airportCode}</Text>
+                    <View style={styles.categoryBadge}>
+                      <Text style={styles.categoryBadgeText}>{chat.category}</Text>
+                    </View>
+                    <View style={styles.locationContainer}>
+                      <Ionicons name="location" size={14} color="#37a4c8" />
+                      <Text style={[styles.userLocation, { color: "#37a4c8" }]}>{chat.airportCode}</Text>
+                    </View>
                   </>
                 ) : (
                   <>
-                    <Text style={[styles.userAge, { color: "#37a4c8" }]}>{partner?.age} years old</Text>
-                    <Text style={[styles.userLocation, { color: "#37a4c8" }]}>• {partner?.airportCode}</Text>
+                    <View style={styles.ageBadge}>
+                      <Text style={styles.ageBadgeText}>{partner?.age} years</Text>
+                    </View>
+                    <View style={styles.locationContainer}>
+                      <Ionicons name="location" size={14} color="#37a4c8" />
+                      <Text style={[styles.userLocation, { color: "#37a4c8" }]}>{partner?.airportCode}</Text>
+                    </View>
                     {partner?.lastSeen && (
                       <Text style={[styles.lastSeen, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
                         • Last seen {(() => {
@@ -1525,10 +1652,10 @@ const ChatItem = React.memo(({
                       { 
                         color: theme === "light" ? "#64748B" : "#94A3B8",
                         fontWeight: '400',
-                        fontSize: 13,
-                        lineHeight: 18,
+                        fontSize: 14,
+                        lineHeight: 20,
                         fontStyle: 'italic',
-                        marginBottom: 6
+                        marginBottom: 8
                       }
                     ]} 
                     numberOfLines={2}
@@ -1564,7 +1691,9 @@ const ChatItem = React.memo(({
                     styles.chatLastMessage, 
                     { 
                       color: theme === "light" ? "#64748B" : "#94A3B8",
-                      fontWeight: chat.unreadCount ? '600' : '400'
+                      fontWeight: chat.unreadCount ? '600' : '400',
+                      fontSize: 15,
+                      lineHeight: 20
                     }
                   ]} 
                   numberOfLines={1}
@@ -1597,22 +1726,29 @@ const ChatItem = React.memo(({
 
           {chat.status !== 'pending' && !chat.isEventChat && (
             <>
-              <View style={styles.userInterestsContainer}>
-                {partner?.interests?.slice(0, 2).map((interest: string, index: number) => (
-                  <Animated.View 
-                    key={index} 
-                    style={[
-                      styles.interestTag,
-                      {
-                        transform: [{ scale: scaleAnim }],
-                        opacity: opacityAnim
-                      }
-                    ]}
-                  >
-                    <Text style={styles.interestText}>{interest}</Text>
-                  </Animated.View>
-                ))}
-              </View>
+              {partner?.interests && partner.interests.length > 0 && (
+                <View style={styles.userInterestsContainer}>
+                  {partner?.interests?.slice(0, 2).map((interest: string, index: number) => (
+                    <Animated.View 
+                      key={index} 
+                      style={[
+                        styles.interestTag,
+                        {
+                          transform: [{ scale: scaleAnim }],
+                          opacity: opacityAnim
+                        }
+                      ]}
+                    >
+                      <Text style={styles.interestText}>{interest}</Text>
+                    </Animated.View>
+                  ))}
+                  {partner.interests.length > 2 && (
+                    <View style={styles.moreInterestsBadge}>
+                      <Text style={styles.moreInterestsText}>+{partner.interests.length - 2}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
 
               <View style={styles.userMoodContainer}>
                 <Animated.View 
@@ -1630,20 +1766,6 @@ const ChatItem = React.memo(({
               </View>
             </>
           )}
-
-          {chat.unreadCount ? (
-            <Animated.View 
-              style={[
-                styles.unreadBadge,
-                {
-                  transform: [{ scale: scaleAnim }],
-                  opacity: opacityAnim
-                }
-              ]}
-            >
-              <Text style={styles.unreadCount}>{chat.unreadCount}</Text>
-            </Animated.View>
-          ) : null}
         </TouchableOpacity>
       </Animated.View>
     </Swipeable>
@@ -1775,6 +1897,37 @@ export default function ChatInbox() {
     'Active Chats': false
   });
 
+  // Animation values for bounce effect
+  const contentBounceAnim = useRef(new Animated.Value(0)).current;
+  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
+
+  // Dynamic styles that depend on safe area insets
+  const dynamicStyles = useMemo(() => ({
+    listContent: {
+      paddingTop: 16,
+      paddingBottom: 80 + insets.bottom,
+    },
+    newChatButton: {
+      position: "absolute" as const,
+      bottom: 40 + insets.bottom, // moved further down
+      right: 32, // moved further right
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      elevation: 4,
+      shadowColor: "#38a5c9",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+    },
+    scrollViewContent: {
+      flexGrow: 1,
+      paddingBottom: 120 + insets.bottom,
+    },
+  }), [insets.bottom]);
+
   useEffect(() => {
     if (user) {
       handleRefresh();
@@ -1789,6 +1942,26 @@ export default function ChatInbox() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Add effect for bounce animation when loading completes
+  useEffect(() => {
+    if (!isLoading && initialLoadComplete) {
+      Animated.parallel([
+        Animated.timing(contentBounceAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(contentScaleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        })
+      ]).start();
+    }
+  }, [isLoading, initialLoadComplete]);
 
   const handleRefresh = async () => {
     if (!user) return;
@@ -1952,6 +2125,11 @@ export default function ChatInbox() {
   };
 
   const handlePinChat = async (chat: Chat) => {
+    // Add haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
     try {
       const chatRef = doc(db, 'chats', chat.id);
       await updateDoc(chatRef, {
@@ -1988,6 +2166,11 @@ export default function ChatInbox() {
   };
 
   const toggleSection = (sectionTitle: string) => {
+    // Add haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
     console.log('Toggling section:', sectionTitle, 'Current state:', foldedSections[sectionTitle]);
     setFoldedSections(prev => ({
       ...prev,
@@ -2016,12 +2199,24 @@ export default function ChatInbox() {
       }
     }
 
-    // Active Chats Section
+    // Active Chats Section - Sort with pinned chats first
     const activeChats = filteredChats.filter(chat => chat.status === 'active' && !chat.isEventChat);
     if (activeChats.length > 0) {
       items.push({ type: 'section', title: 'Active Chats' });
       if (!foldedSections['Active Chats']) {
-        items.push(...activeChats);
+        // Sort active chats: pinned first, then by last message time
+        const sortedActiveChats = activeChats.sort((a, b) => {
+          // First, sort by pinned status (pinned chats first)
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          
+          // If both have the same pinned status, sort by last message time (most recent first)
+          const aTime = getTimestampMs(a.lastMessageTime);
+          const bTime = getTimestampMs(b.lastMessageTime);
+          return bTime - aTime;
+        });
+        
+        items.push(...sortedActiveChats);
       }
     }
 
@@ -2035,7 +2230,7 @@ export default function ChatInbox() {
         <View style={styles.sectionTitleContainer}>
           <Text style={[
             styles.sectionTitle,
-            { color: theme === "light" ? "#1a1a1a" : "#ffffff" }
+            { color: theme === "light" ? "#0F172A" : "#e4fbfe" }
           ]}>
             {item.title}
           </Text>
@@ -2047,26 +2242,27 @@ export default function ChatInbox() {
             <Ionicons 
               name={isFolded ? "add" : "remove"} 
               size={20} 
-              color={theme === "light" ? "#1a1a1a" : "#ffffff"} 
+              color={theme === "light" ? "#0F172A" : "#e4fbfe"} 
             />
           </TouchableOpacity>
         </View>
       );
     }
 
+    const chatItem = item as Chat;
     return (
       <ChatItem
-        chat={item as Chat}
+        chat={chatItem}
         currentUser={user!}
         getUser={getPartner}
         onPress={() => {
-          if ((item as Chat).isEventChat) {
-            router.push(`/event/eventChat/${(item as Chat).eventId}`);
+          if (chatItem.isEventChat) {
+            router.push(`/event/eventChat/${chatItem.eventId}`);
           } else {
-            router.push(`/chat/${(item as Chat).id}`);
+            router.push(`/chat/${chatItem.id}`);
           }
         }}
-        onPinPress={() => handlePinChat(item as Chat)}
+        onPinPress={() => handlePinChat(chatItem)}
         onAccept={handleAcceptChat}
         setPendingChats={setPendingChats}
         setChats={setChats}
@@ -2078,8 +2274,8 @@ export default function ChatInbox() {
 
   if (isLoading || !initialLoadComplete) {
     return (
-      <SafeAreaView style={styles.flex} edges={["bottom"]}>
-        <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
           <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
           <LoadingScreen />
         </LinearGradient>
@@ -2088,9 +2284,8 @@ export default function ChatInbox() {
   }
 
   return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
-      <LinearGradient colors={theme === "light" ? ["#ffffff", "#f8f8f8"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+    <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <TopBar 
           showBackButton={false}
           title=""
@@ -2098,54 +2293,89 @@ export default function ChatInbox() {
           onProfilePress={() => router.push(`/profile/${user?.uid}`)}
           notificationCount={notificationCount}
         />
-        <View style={[styles.container, { paddingBottom: 100 }]}>
-          <TextInput
-            style={[
-              styles.searchInput,
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <Animated.View 
+          style={{ 
+            flex: 1,
+            opacity: contentBounceAnim,
+            transform: [
+              { scale: contentScaleAnim },
               {
-                backgroundColor: theme === "light" ? "#ffffff" : "#2a2a2a",
-                color: theme === "light" ? "#1a1a1a" : "#ffffff",
-                borderColor: theme === "light" ? "#e0e0e0" : "#3a3a3a"
+                translateY: contentBounceAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [30, 0]
+                })
               }
-            ]}
-            placeholder="Search chats..."
-            placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
-            value={searchQuery}
-            onChangeText={handleSearch}
-          />
-          
-          <FlatList
-            data={getFlattenedList()}
-            renderItem={renderItem}
-            keyExtractor={(item) => 'type' in item ? `section-${item.title}` : item.id}
-            contentContainerStyle={{ paddingBottom: 100 }}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={handleRefresh}
-                tintColor={theme === "light" ? "#37a4c8" : "#4db8d4"}
+            ]
+          }}
+        >
+          {/* Chat Inbox Content */}
+          <View style={styles.container}>
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.searchIcon} />
+              <TextInput
+                style={[
+                  styles.searchInput,
+                  {
+                    backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                    color: theme === "light" ? "#0F172A" : "#e4fbfe",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                  }
+                ]}
+                placeholder="Search chats..."
+                placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
+                value={searchQuery}
+                onChangeText={handleSearch}
               />
-            }
-            ListEmptyComponent={
-              <View style={styles.stateContainer}>
-                <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                  No chats found
-                </Text>
-              </View>
-            }
-          />
-          <TouchableOpacity
-            style={[
-              styles.newChatButton,
-              { backgroundColor: theme === "light" ? "#37a4c8" : "#4db8d4" }
-            ]}
-            onPress={() => router.push("/chat/chatExplore")}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="add" size={32} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+            </View>
+            
+            {/* Fixed divider that content scrolls underneath */}
+            {filteredChats.some(chat => chat.status === 'pending') && (
+              <View style={styles.fixedDivider} />
+            )}
+            
+            <FlatList
+              data={getFlattenedList()}
+              renderItem={renderItem}
+              keyExtractor={(item) => 'type' in item ? `section-${item.title}` : item.id}
+              contentContainerStyle={dynamicStyles.listContent}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={theme === "light" ? "#37a4c8" : "#4db8d4"}
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.stateContainer}>
+                  <Ionicons name="chatbubbles" size={48} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.emptyIcon} />
+                  <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                    No chats found
+                  </Text>
+                  <Text style={[styles.emptySubtext, { color: theme === "light" ? "#94A3B8" : "#64748B" }]}>
+                    Start a conversation to see your chats here
+                  </Text>
+                </View>
+              }
+            />
+            <TouchableOpacity
+              style={[
+                dynamicStyles.newChatButton,
+                { backgroundColor: theme === "light" ? "#37a4c8" : "#4db8d4" }
+              ]}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                }
+                router.push("/chat/chatExplore");
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={32} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       </LinearGradient>
     </SafeAreaView>
   );

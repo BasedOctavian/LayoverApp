@@ -15,8 +15,9 @@ import {
   StatusBar,
   Animated,
   Easing,
+  Dimensions,
 } from "react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import useUsers from "../../hooks/useUsers";
 import useChats from "../../hooks/useChats";
 import useAuth from "../../hooks/auth";
@@ -26,11 +27,13 @@ import { auth, db } from "../../../config/firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import { containsFilteredContent, getFilteredContentCategory } from "../../utils/contentFilter";
+import LoadingElement from "../../components/LoadingElement";
+import UserAvatar from "../../components/UserAvatar";
 
 interface Chat {
   id: string; 
@@ -216,14 +219,11 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme })
             </View>
           ) : (
             <Animated.View style={{ opacity: fadeAnim }}>
-              {userProfile?.profilePicture ? (
-                <Image
-                  source={{ uri: userProfile.profilePicture }}
-                  style={styles.profileImage}
-                />
-              ) : (
-                <View style={[styles.profileImage, styles.defaultAvatar]} />
-              )}
+              <UserAvatar
+                user={userProfile || { name: 'User', profilePicture: null }}
+                size={40}
+                style={styles.profileImage}
+              />
             </Animated.View>
           )}
         </TouchableOpacity>
@@ -703,19 +703,16 @@ export default function Chat() {
             <View style={[styles.avatarContainer, { 
               backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
             }]}>
-              {partner.profilePicture ? (
-                <Image
-                  source={{ uri: partner.profilePicture }}
+              <View style={[styles.avatar, { 
+                backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
+              }]}>
+                <UserAvatar
+                  user={partner}
+                  size={40}
                   style={styles.avatar}
                 />
-              ) : (
-                <View style={[styles.avatar, styles.placeholderAvatar]}>
-                  <Text style={styles.placeholderText}>
-                    {partner.name?.charAt(0)?.toUpperCase() || "?"}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.onlineIndicator} />
+                <View style={styles.onlineIndicator} />
+              </View>
             </View>
             <View style={styles.headerTextContainer}>
               <View style={styles.nameRow}>

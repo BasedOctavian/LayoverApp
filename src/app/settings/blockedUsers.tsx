@@ -11,9 +11,10 @@ import {
   StatusBar,
   Easing,
   RefreshControl,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import useAuth from "../../hooks/auth";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -41,9 +42,15 @@ export default function BlockedUsers() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [displayedUsers, setDisplayedUsers] = useState<BlockedUser[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMoreUsers, setHasMoreUsers] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const retryCount = useRef(0);
   const MAX_RETRIES = 3;
+  const USERS_PER_PAGE = 10;
+  const INITIAL_USERS = 5;
+  const [animatingUsers, setAnimatingUsers] = useState<Set<string>>(new Set());
 
   const fetchBlockedUsers = async () => {
     try {
@@ -61,6 +68,9 @@ export default function BlockedUsers() {
         
         console.error('Max retries reached, no authenticated user available');
         setBlockedUsers([]);
+        setDisplayedUsers([]);
+        setHasMoreUsers(false);
+        setCurrentPage(1);
         setLoading(false);
         return;
       }
@@ -75,6 +85,18 @@ export default function BlockedUsers() {
       if (!authUserDoc.exists()) {
         console.error('Authenticated user document not found');
         setBlockedUsers([]);
+        setDisplayedUsers([]);
+        setHasMoreUsers(false);
+        setCurrentPage(1);
+        
+        // Animate in
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }).start();
+        
         setLoading(false);
         return;
       }
@@ -86,6 +108,18 @@ export default function BlockedUsers() {
       if (!authUserData?.blockedUsers) {
         console.warn('No blockedUsers array found in auth user document');
         setBlockedUsers([]);
+        setDisplayedUsers([]);
+        setHasMoreUsers(false);
+        setCurrentPage(1);
+        
+        // Animate in
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }).start();
+        
         setLoading(false);
         return;
       }
@@ -94,6 +128,18 @@ export default function BlockedUsers() {
       if (!isValidBlockedUsersArray(authUserData.blockedUsers)) {
         console.warn('Invalid blockedUsers array format in auth user document');
         setBlockedUsers([]);
+        setDisplayedUsers([]);
+        setHasMoreUsers(false);
+        setCurrentPage(1);
+        
+        // Animate in
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }).start();
+        
         setLoading(false);
         return;
       }
@@ -104,6 +150,18 @@ export default function BlockedUsers() {
       if (blockedUserIds.length === 0) {
         console.log('No blocked users found in auth user document');
         setBlockedUsers([]);
+        setDisplayedUsers([]);
+        setHasMoreUsers(false);
+        setCurrentPage(1);
+        
+        // Animate in
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }).start();
+        
         setLoading(false);
         return;
       }
@@ -160,6 +218,13 @@ export default function BlockedUsers() {
 
       setBlockedUsers(users);
 
+      // Set initial displayed users (first 5)
+      const allUsers = [...users];
+      const initialDisplayed = allUsers.slice(0, INITIAL_USERS);
+      setDisplayedUsers(initialDisplayed);
+      setHasMoreUsers(allUsers.length > INITIAL_USERS);
+      setCurrentPage(1);
+
       // Animate in
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -171,6 +236,19 @@ export default function BlockedUsers() {
       console.error("Error fetching blocked users:", error);
       Alert.alert("Error", "Failed to load blocked users. Please try again.");
       setBlockedUsers([]);
+      setDisplayedUsers([]);
+      setHasMoreUsers(false);
+      setCurrentPage(1);
+      
+      // Animate in even on error
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }).start();
+      
+      setLoading(false);
     } finally {
       setLoading(false);
     }
@@ -202,224 +280,314 @@ export default function BlockedUsers() {
     setRefreshing(false);
   }, [user?.uid]);
 
+  const loadMoreUsers = () => {
+    const allUsers = blockedUsers;
+    const nextPage = currentPage + 1;
+    const startIndex = INITIAL_USERS + (nextPage - 2) * USERS_PER_PAGE;
+    const endIndex = startIndex + USERS_PER_PAGE;
+    const newUsers = allUsers.slice(startIndex, endIndex);
+    
+    setDisplayedUsers(prev => [...prev, ...newUsers]);
+    setCurrentPage(nextPage);
+    setHasMoreUsers(endIndex < allUsers.length);
+  };
+
   const handleUnblock = async (userId: string) => {
     try {
       if (!user) return;
 
-      Alert.alert(
-        "Unblock User",
-        "Are you sure you want to unblock this user?",
-        [
-          {
-            text: "Cancel",
-            style: "cancel"
-          },
-          {
-            text: "Unblock",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                // Update current user's document
-                const userRef = doc(db, "users", user.uid);
-                await updateDoc(userRef, {
-                  blockedUsers: arrayRemove(userId)
-                });
+      // Start animation
+      setAnimatingUsers(prev => new Set(prev).add(userId));
 
-                // Update the other user's document
-                const otherUserRef = doc(db, "users", userId);
-                await updateDoc(otherUserRef, {
-                  hasMeBlocked: arrayRemove(user.uid)
-                });
+      // Animate out the item
+      await new Promise(resolve => setTimeout(resolve, 300));
 
-                // Update the local state
-                setBlockedUsers(prev => prev.filter(u => u.id !== userId));
-              } catch (error) {
-                console.error("Error updating documents:", error);
-                Alert.alert("Error", "Failed to unblock user. Please try again.");
-              }
-            }
-          }
-        ]
-      );
+      // Update current user's document
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        blockedUsers: arrayRemove(userId)
+      });
+
+      // Update the other user's document
+      const otherUserRef = doc(db, "users", userId);
+      await updateDoc(otherUserRef, {
+        hasMeBlocked: arrayRemove(user.uid)
+      });
+
+      // Update the local state
+      setBlockedUsers(prev => prev.filter(u => u.id !== userId));
+      setDisplayedUsers(prev => prev.filter(u => u.id !== userId));
+      setAnimatingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
     } catch (error) {
       console.error("Error unblocking user:", error);
       Alert.alert("Error", "Failed to unblock user. Please try again.");
+      // Remove from animating state if error occurs
+      setAnimatingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
     }
   };
 
-  const renderBlockedUser = ({ item }: { item: BlockedUser }) => (
-    <TouchableOpacity
-      style={[styles.userCard, { 
-        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-        borderColor: theme === "light" ? "#dddddd" : "#37a4c8"
-      }]}
-    >
-      <View style={styles.userCardContent}>
-        <View style={styles.userHeader}>
-          <Image
-            source={{ uri: item.profilePicture || "https://via.placeholder.com/150" }}
-            style={styles.profileImage}
-          />
-          <View style={styles.userInfo}>
-            <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-              {item.name}
-            </Text>
-            {item.airportCode && (
-              <Text style={[styles.userLocation, { color: "#37a4c8" }]}>
-                {item.airportCode}
+  const renderBlockedUser = ({ item }: { item: BlockedUser }) => {
+    const isAnimating = animatingUsers.has(item.id);
+    
+    return (
+      <Animated.View
+        style={[
+          styles.blockedUserItem, 
+          { 
+            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+            borderColor: "#37a4c8",
+            opacity: isAnimating ? 0 : 1,
+            transform: [
+              {
+                translateX: isAnimating ? -100 : 0
+              },
+              {
+                scale: isAnimating ? 0.8 : 1
+              }
+            ]
+          }
+        ]}
+      >
+        <View style={[styles.blockedUserGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+          <View style={styles.userInfoContainer}>
+            <Image
+              source={{ uri: item.profilePicture || "https://via.placeholder.com/150" }}
+              style={styles.profileImage}
+            />
+            <View style={styles.userTextContainer}>
+              <Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                {item.name}
               </Text>
-            )}
+              {item.airportCode && (
+                <Text style={[styles.userLocation, { color: "#37a4c8" }]}>
+                  {item.airportCode}
+                </Text>
+              )}
+            </View>
           </View>
+          <TouchableOpacity
+            style={[
+              styles.unblockButton,
+              {
+                opacity: isAnimating ? 0.5 : 1,
+                transform: [{ scale: isAnimating ? 0.9 : 1 }]
+              }
+            ]}
+            onPress={() => handleUnblock(item.id)}
+            disabled={isAnimating}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="person-remove" size={20} color="#ff4444" />
+            <Text style={styles.unblockButtonText}>Unblock</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.unblockButton, { backgroundColor: "#ff4444" }]}
-          onPress={() => handleUnblock(item.id)}
-        >
-          <Text style={styles.unblockButtonText}>Unblock</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+      </Animated.View>
+    );
+  };
 
   if (loading) {
     return <LoadingScreen message="Loading blocked users..." />;
   }
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-      <LinearGradient
-        colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]}
-        style={styles.container}
-      >
+    <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+      <TopBar 
+        showBackButton={true}
+      />
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <TopBar 
-          showBackButton={false}
-        />
-        <View style={styles.content}>
-          {!loading && blockedUsers.length === 0 ? (
-            <View style={[styles.emptyState, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "#dddddd" : "#37a4c8"
-            }]}>
-              <View style={[styles.emptyIconContainer, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#000000",
-                borderColor: theme === "light" ? "#dddddd" : "#37a4c8"
-              }]}>
-                <Ionicons name="person-remove" size={48} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-              </View>
-              <Text style={[styles.emptyText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                No Blocked Users
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+          <ScrollView 
+            contentContainerStyle={styles.container}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={["#37a4c8"]}
+                tintColor={theme === "light" ? "#37a4c8" : "#38a5c9"}
+              />
+            }
+          >
+            {/* Header */}
+            <View style={styles.header}>
+              <Text 
+                style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
+                accessibilityRole="header"
+              >
+                Blocked Users
               </Text>
-              <Text style={[styles.emptySubtext, { color: theme === "light" ? "#666666" : "#94A3B8" }]}>
-                Users you block won't be able to see your profile or message you. You can block users from their profile or chat.
+              <Text 
+                style={[styles.headerDescription, { color: theme === "light" ? "#666666" : "#94A3B8" }]}
+              >
+                Manage users you've blocked from seeing your profile and messaging you
               </Text>
             </View>
-          ) : (
-            <Animated.View style={[styles.listContainer, { opacity: fadeAnim }]}>
-              <FlatList
-                data={blockedUsers}
-                renderItem={renderBlockedUser}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.list}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    colors={["#37a4c8"]}
-                    tintColor={theme === "light" ? "#37a4c8" : "#38a5c9"}
-                  />
-                }
-              />
-            </Animated.View>
-          )}
-        </View>
-      </LinearGradient>
-    </SafeAreaView>
+
+            {/* Blocked Users Section */}
+            <View style={styles.settingsSection}>
+              <Text 
+                style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
+                accessibilityRole="header"
+              >
+                Blocked Users ({blockedUsers.length})
+              </Text>
+              
+              {displayedUsers.length === 0 ? (
+                <View style={[styles.emptyState, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}>
+                  <View style={[styles.emptyIconContainer, { 
+                    backgroundColor: theme === "light" ? "#f8f9fa" : "#000000",
+                    borderColor: "#37a4c8"
+                  }]}>
+                    <Ionicons name="person-remove" size={48} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                  </View>
+                  <Text style={[styles.emptyText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    No Blocked Users
+                  </Text>
+                  <Text style={[styles.emptySubtext, { color: theme === "light" ? "#666666" : "#94A3B8" }]}>
+                    Users you block won't be able to see your profile or message you. You can block users from their profile or chat.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {displayedUsers.map((user) => (
+                    <View key={user.id}>
+                      {renderBlockedUser({ item: user })}
+                    </View>
+                  ))}
+                  
+                  {hasMoreUsers && (
+                    <TouchableOpacity
+                      style={[styles.loadMoreButton, { 
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                        borderColor: "#37a4c8"
+                      }]}
+                      onPress={loadMoreUsers}
+                      accessibilityRole="button"
+                      accessibilityLabel="Load more blocked users"
+                    >
+                      <View style={[styles.loadMoreGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                        <Ionicons name="chevron-down" size={20} color="#37a4c8" />
+                        <Text style={[styles.loadMoreText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                          Load More
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </View>
+          </ScrollView>
+        </Animated.View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
     padding: 16,
+    paddingBottom: 32,
   },
-  listContainer: {
-    flex: 1,
-  },
-  list: {
-    paddingBottom: 20,
-  },
-  userCard: {
-    borderRadius: 24,
+  header: {
+    paddingVertical: 20,
     marginBottom: 16,
-    borderWidth: 1,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "bold",
+  },
+  headerDescription: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  settingsSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  blockedUserItem: {
+    marginBottom: 12,
+    borderRadius: 16,
     overflow: "hidden",
+    borderWidth: 1,
     elevation: 4,
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
-  userCardContent: {
-    padding: 24,
-  },
-  userHeader: {
+  blockedUserGradient: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    padding: 16,
+  },
+  userInfoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
   },
   profileImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginRight: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
     borderWidth: 2,
     borderColor: "#37a4c8",
   },
-  userInfo: {
+  userTextContainer: {
     flex: 1,
   },
   userName: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 4,
-    letterSpacing: 0.5,
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 2,
   },
   userLocation: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "500",
-    letterSpacing: 0.3,
   },
   unblockButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 30,
+    flexDirection: "row",
     alignItems: "center",
-    elevation: 4,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 68, 68, 0.1)",
+    borderWidth: 1,
+    borderColor: "#ff4444",
   },
   unblockButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    color: "#ff4444",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 4,
   },
   emptyState: {
-    flex: 1,
     padding: 24,
-    borderRadius: 24,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     marginVertical: 24,
     elevation: 4,
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   emptyIconContainer: {
     width: 96,
@@ -430,21 +598,42 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     borderWidth: 1,
     elevation: 4,
+    shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   emptyText: {
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 12,
+    fontSize: 20,
+    fontWeight: "600",
+    marginBottom: 8,
     textAlign: "center",
-    letterSpacing: 0.5,
   },
   emptySubtext: {
-    fontSize: 16,
+    fontSize: 14,
     textAlign: "center",
-    lineHeight: 24,
-    letterSpacing: 0.3,
+    lineHeight: 20,
+  },
+  loadMoreButton: {
+    marginTop: 16,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  loadMoreGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  loadMoreText: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
   },
 }); 

@@ -149,7 +149,7 @@ export default function Feedback() {
       style={styles.container}
     >
       <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <TopBar />
+        <TopBar showBackButton={true} />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.container}

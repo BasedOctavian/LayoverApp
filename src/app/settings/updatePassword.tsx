@@ -98,7 +98,7 @@ export default function UpdatePassword() {
 
   return (
     <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff", "#f8f9fa"] : ["#000000", "#1a1a1a", "#000000"]} locations={[0, 0.5, 1]} style={{ flex: 1 }}>
-      <TopBar />
+      <TopBar showBackButton={true} />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
           <Text style={[styles.header, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>

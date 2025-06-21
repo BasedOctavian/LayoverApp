@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Easing } from "react-native";
+import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Easing, Modal } from "react-native";
 import useEvents from "../../hooks/useEvents";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
@@ -18,6 +18,8 @@ import useChat from "../../hooks/useChat";
 import { doc, getDoc, updateDoc, arrayUnion, deleteDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 import LoadingImage from "../../components/LoadingImage";
+import UserAvatar from "../../components/UserAvatar";
+import * as Haptics from 'expo-haptics';
 
 interface Event {
   id: string;
@@ -37,6 +39,12 @@ interface Event {
 interface UserData {
   id: string;
   name: string;
+  age?: number;
+  bio?: string;
+  interests?: string[];
+  profilePicture?: string;
+  airportCode?: string;
+  moodStatus?: string;
 }
 
 const ADMIN_IDS = ['hDn74gYZCdZu0efr3jMGTIWGrRQ2', 'WhNhj8WPUpbomevJQ7j69rnLbDp2'];
@@ -184,75 +192,41 @@ const notifyAttendees = async (event: Event, eventName: string, updateType: stri
 const ModernLoadingIndicator = ({ color }: { color: string }) => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const shadowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Complex animation sequence
     const pulseAnimation = Animated.sequence([
-      // First phase: grow and fade in
       Animated.parallel([
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 800,
+          duration: 1000,
           useNativeDriver: true,
-          easing: Easing.bezier(0.4, 0, 0.2, 1),
+          easing: Easing.inOut(Easing.ease),
         }),
         Animated.timing(scaleAnim, {
-          toValue: 1.3,
-          duration: 800,
+          toValue: 1.2,
+          duration: 1000,
           useNativeDriver: true,
-          easing: Easing.bezier(0.4, 0, 0.2, 1),
-        }),
-        Animated.timing(shadowAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-          easing: Easing.bezier(0.4, 0, 0.2, 1),
+          easing: Easing.inOut(Easing.ease),
         }),
       ]),
-      // Second phase: shrink and fade out
       Animated.parallel([
         Animated.timing(pulseAnim, {
           toValue: 0,
-          duration: 800,
+          duration: 1000,
           useNativeDriver: true,
-          easing: Easing.bezier(0.4, 0, 0.2, 1),
+          easing: Easing.inOut(Easing.ease),
         }),
         Animated.timing(scaleAnim, {
-          toValue: 0.9,
-          duration: 800,
+          toValue: 1,
+          duration: 1000,
           useNativeDriver: true,
-          easing: Easing.bezier(0.4, 0, 0.2, 1),
-        }),
-        Animated.timing(shadowAnim, {
-          toValue: 0,
-          duration: 800,
-          useNativeDriver: true,
-          easing: Easing.bezier(0.4, 0, 0.2, 1),
+          easing: Easing.inOut(Easing.ease),
         }),
       ]),
     ]);
 
-    // Continuous rotation animation
-    const rotationAnimation = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 2000,
-        useNativeDriver: true,
-        easing: Easing.linear,
-      })
-    );
-
-    // Start both animations
     Animated.loop(pulseAnimation).start();
-    rotationAnimation.start();
   }, []);
-
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
 
   return (
     <View style={styles.loadingIndicatorContainer}>
@@ -263,20 +237,9 @@ const ModernLoadingIndicator = ({ color }: { color: string }) => {
             backgroundColor: color,
             opacity: pulseAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [0.3, 0.8],
+              outputRange: [0.3, 0.7],
             }),
-            transform: [
-              { scale: scaleAnim },
-              { rotate: spin }
-            ],
-            shadowOpacity: shadowAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.2, 0.5],
-            }),
-            shadowRadius: shadowAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [4, 8],
-            }),
+            transform: [{ scale: scaleAnim }],
           },
         ]}
       />
@@ -290,21 +253,27 @@ export default function Event() {
   const { getEvent, updateEvent } = useEvents();
   const { getUser } = useUsers();
   const [event, setEvent] = useState<Event | null>(null);
-  const [organizer, setOrganizer] = useState<string | null>(null);
+  const [organizer, setOrganizer] = useState<UserData | null>(null);
   const [isAttending, setIsAttending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Loading event details...");
   const { user } = useAuth();
   const router = useRouter();
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showAttendeesModal, setShowAttendeesModal] = useState(false);
+  const [attendeesList, setAttendeesList] = useState<UserData[]>([]);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const insets = useSafeAreaInsets();
-  const topBarHeight = 50 + insets.top;
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const { theme } = React.useContext(ThemeContext);
   const { messages } = useChat(eventId);
   const messageCount = messages?.length || 0;
+
+  // Animation values for bounce effect
+  const contentBounceAnim = useRef(new Animated.Value(0)).current;
+  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
+  const loadingStartTime = useRef<number | null>(null);
 
   // Existing useEffect hooks
   useEffect(() => {
@@ -316,6 +285,7 @@ export default function Event() {
 
   useEffect(() => {
     if (eventId) {
+      loadingStartTime.current = Date.now();
       (async () => {
         const eventData = await getEvent(eventId);
         if (eventData) {
@@ -324,11 +294,22 @@ export default function Event() {
           const organizerID = typedEventData.organizer;
           if (organizerID) {
             const organizerData = await getUser(organizerID) as UserData;
-            setOrganizer(organizerData?.name || "Unknown");
+            setOrganizer(organizerData || null);
           } else {
             setOrganizer(null);
           }
-          setInitialLoadComplete(true);
+          
+          // Ensure minimum loading time of 1.5 seconds
+          const elapsedTime = Date.now() - (loadingStartTime.current || 0);
+          const minLoadingTime = 1500; // 1.5 seconds
+          
+          if (elapsedTime < minLoadingTime) {
+            setTimeout(() => {
+              setInitialLoadComplete(true);
+            }, minLoadingTime - elapsedTime);
+          } else {
+            setInitialLoadComplete(true);
+          }
         }
       })();
     }
@@ -346,15 +327,36 @@ export default function Event() {
     return unsubscribe;
   }, []);
 
+  // Handle fade in animation when content is ready
   useEffect(() => {
     if (!loading && initialLoadComplete && event) {
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 1000,
+        duration: 500,
         useNativeDriver: true,
       }).start();
     }
   }, [loading, initialLoadComplete, event, fadeAnim]);
+
+  // Add effect for bounce animation when loading completes
+  useEffect(() => {
+    if (!loading && initialLoadComplete && event) {
+      Animated.parallel([
+        Animated.timing(contentBounceAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(contentScaleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic),
+        })
+      ]).start();
+    }
+  }, [loading, initialLoadComplete, event]);
 
   // Existing handler functions
   const formatDateTime = (timestamp: any) => {
@@ -384,6 +386,17 @@ export default function Event() {
 
   const handleAttend = async () => {
     if (!user?.uid || !event) return;
+    
+    // Prevent attending if there's no organizer
+    if (!event.organizer) {
+      Alert.alert(
+        "No Organizer",
+        "This event needs an organizer before you can attend. Please wait for someone to claim organization or become the organizer yourself.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+    
     setLoading(true);
     setLoadingMessage("Updating attendance...");
     try {
@@ -425,7 +438,7 @@ export default function Event() {
       const updatedEvent = await getEvent(eventId) as Event;
       setEvent(updatedEvent);
       const organizerData = await getUser(user.uid) as UserData;
-      setOrganizer(organizerData?.name || "You");
+      setOrganizer(organizerData || null);
       setIsAttending(true);
       
       // Show date picker after successful organizer claim
@@ -536,15 +549,52 @@ export default function Event() {
     );
   };
 
-  if (!event) {
+  // Fetch attendees data when modal opens
+  const handleShowAttendees = async () => {
+    if (!event) return;
+    
+    setShowAttendeesModal(true);
+    setLoading(true);
+    
+    try {
+      const allAttendees: UserData[] = [];
+      
+      // Add organizer if exists
+      if (event.organizer && organizer) {
+        allAttendees.push(organizer);
+      }
+      
+      // Fetch all attendee data
+      const attendeePromises = event.attendees
+        .filter(attendeeId => attendeeId !== event.organizer) // Don't duplicate organizer
+        .map(async (attendeeId) => {
+          try {
+            const attendeeData = await getUser(attendeeId) as UserData;
+            return attendeeData;
+          } catch (error) {
+            console.error("Error fetching attendee:", error);
+            return null;
+          }
+        });
+      
+      const attendeeResults = await Promise.all(attendeePromises);
+      const validAttendees = attendeeResults.filter((attendee): attendee is UserData => attendee !== null);
+      
+      setAttendeesList([...allAttendees, ...validAttendees]);
+    } catch (error) {
+      console.error("Error fetching attendees:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show loading screen during initial load
+  if (!initialLoadComplete || !event) {
     return (
       <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
         <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
           <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-          <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
-          <View style={styles.loadingContainer}>
-            <ModernLoadingIndicator color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-          </View>
+          <LoadingScreen />
         </LinearGradient>
       </SafeAreaView>
     );
@@ -552,29 +602,99 @@ export default function Event() {
 
   const isOrganizer = user?.uid === event.organizer;
 
+  // Debug logging
+  console.log('Event organizer:', event.organizer);
+  console.log('Is attending:', isAttending);
+  console.log('Should disable attend button:', !event.organizer && !isAttending);
+
+  // Attend button state variables
+  const attendButtonDisabled = !event.organizer && !isAttending;
+  const attendButtonColors = attendButtonDisabled 
+    ? ["#cccccc", "#999999"] 
+    : isAttending 
+    ? ["#FF416C", "#FF4B2B"] 
+    : ["#37a4c8", "#37a4c8"];
+
   const renderOrganizerSection = () => (
     <View style={styles.organizerContainer}>
-      <View style={styles.organizerBadge}>
-        <MaterialIcons
-          name={event.organizer ? "person" : "group-add"}
-          size={20}
-          color="#38a5c9"
-        />
-        <Text style={styles.organizerText}>
-          {event.organizer
-            ? `Organized by ${organizer || "Unknown"}`
-            : "This event needs an organizer!"}
-        </Text>
-      </View>
+      {event.organizer ? (
+        <TouchableOpacity
+          style={[styles.organizerBadge, { 
+            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.04)" : "rgba(55, 164, 200, 0.08)",
+            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+          }]}
+          onPress={() => router.push(`/profile/${event.organizer}`)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.organizerHeader}>
+            <View style={[styles.organizerIconContainer, {
+              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.12)"
+            }]}>
+              <MaterialIcons name="person" size={14} color="#37a4c8" />
+            </View>
+            <View style={styles.organizerMainInfo}>
+              <Text style={[styles.organizerTitle, { color: "#37a4c8" }]}>
+                Organized by {organizer?.name || "Unknown"}
+              </Text>
+              {organizer && (organizer.age || organizer.airportCode) && (
+                <View style={styles.organizerMeta}>
+                  {organizer.age && (
+                    <Text style={[styles.organizerMetaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      {organizer.age} years old
+                    </Text>
+                  )}
+                  {organizer.age && organizer.airportCode && (
+                    <View style={[styles.organizerMetaDot, { 
+                      backgroundColor: theme === "light" ? "#64748B" : "#94A3B8" 
+                    }]} />
+                  )}
+                  {organizer.airportCode && (
+                    <Text style={[styles.organizerMetaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      {organizer.airportCode}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+            <View style={[styles.organizerChevron, {
+              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(55, 164, 200, 0.1)"
+            }]}>
+              <MaterialIcons name="chevron-right" size={16} color="#37a4c8" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <View style={[styles.organizerBadge, { 
+          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.04)" : "rgba(55, 164, 200, 0.08)",
+          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+        }]}>
+          <View style={styles.organizerHeader}>
+            <View style={[styles.organizerIconContainer, {
+              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.12)"
+            }]}>
+              <MaterialIcons name="group-add" size={14} color="#37a4c8" />
+            </View>
+            <View style={styles.organizerMainInfo}>
+              <Text style={[styles.organizerTitle, { color: "#37a4c8" }]}>
+                This event needs an organizer!
+              </Text>
+              <Text style={[styles.organizerSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                Be the first to claim organization and set the event time
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {event.organizer === null && (
         <TouchableOpacity
           style={styles.becomeOrganizerButton}
           onPress={confirmOrganizerTakeover}
           disabled={loading}
+          activeOpacity={0.7}
         >
           <LinearGradient
-            colors={["#38a5c9", "#2F80ED"]}
+            colors={["#37a4c8", "#37a4c8"]}
             style={styles.buttonGradient}
           >
             <Feather name="star" size={20} color="#fff" />
@@ -586,158 +706,395 @@ export default function Event() {
       )}
 
       {event.organizedAt && (
-        <Text style={styles.organizedTimestamp}>
-          Organized on {formatDateTime(event.organizedAt)}
-        </Text>
+        <View style={styles.organizedTimestampContainer}>
+          <View style={[styles.organizedTimestampIcon, {
+            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(55, 164, 200, 0.1)"
+          }]}>
+            <MaterialIcons name="schedule" size={10} color="#37a4c8" />
+          </View>
+          <Text style={[styles.organizedTimestamp, { color: "#37a4c8" }]}>
+            Organized on {formatDateTime(event.organizedAt)}
+          </Text>
+        </View>
       )}
     </View>
   );
 
+  const renderAttendeesModal = () => (
+    <Modal
+      visible={showAttendeesModal}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => setShowAttendeesModal(false)}
+    >
+      <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]}>
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.modalGradient}>
+          <View style={[styles.modalHeader, {
+            borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.15)"
+          }]}>
+            <TouchableOpacity
+              style={[styles.modalCloseButton, {
+                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(55, 164, 200, 0.1)"
+              }]}
+              onPress={() => setShowAttendeesModal(false)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={20} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+              Event Attendees
+            </Text>
+            <View style={styles.modalSpacer} />
+          </View>
+          
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {loading ? (
+              <View style={styles.modalLoadingContainer}>
+                <View style={[styles.modalLoadingIcon, {
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                }]}>
+                  <MaterialIcons name="people" size={24} color="#37a4c8" />
+                </View>
+                <Text style={[styles.modalLoadingText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                  Loading attendees...
+                </Text>
+              </View>
+            ) : attendeesList.length > 0 ? (
+              <View style={styles.attendeesList}>
+                {attendeesList.map((attendee, index) => (
+                  <TouchableOpacity
+                    key={attendee.id}
+                    style={[styles.attendeeItem, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                    }]}
+                    onPress={() => {
+                      setShowAttendeesModal(false);
+                      router.push(`/profile/${attendee.id}`);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.attendeeHeader}>
+                      <View style={[styles.attendeeAvatarContainer, {
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(55, 164, 200, 0.1)"
+                      }]}>
+                        <UserAvatar
+                          user={attendee}
+                          size={44}
+                          style={styles.attendeeAvatar}
+                        />
+                      </View>
+                      <View style={styles.attendeeInfo}>
+                        <View style={styles.attendeeNameRow}>
+                          <Text style={[styles.attendeeName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                            {attendee.name}
+                          </Text>
+                          {event.organizer === attendee.id && (
+                            <View style={[styles.organizerBadge, {
+                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.25)"
+                            }]}>
+                              <MaterialIcons name="star" size={10} color="#37a4c8" />
+                              <Text style={styles.organizerBadgeText}>Organizer</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.attendeeDetails}>
+                          {attendee.age && (
+                            <Text style={[styles.attendeeDetail, { color: "#37a4c8" }]}>
+                              {attendee.age} years old
+                            </Text>
+                          )}
+                          {attendee.age && attendee.airportCode && (
+                            <View style={[styles.attendeeDetailDot, { 
+                              backgroundColor: theme === "light" ? "#64748B" : "#94A3B8" 
+                            }]} />
+                          )}
+                          {attendee.airportCode && (
+                            <Text style={[styles.attendeeDetail, { color: "#37a4c8" }]}>
+                              {attendee.airportCode}
+                            </Text>
+                          )}
+                        </View>
+                        {attendee.bio && (
+                          <Text style={[styles.attendeeBio, { color: theme === "light" ? "#64748B" : "#94A3B8" }]} numberOfLines={2}>
+                            {attendee.bio}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={[styles.attendeeChevron, {
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(55, 164, 200, 0.1)"
+                      }]}>
+                        <Ionicons name="chevron-forward" size={16} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.modalEmptyContainer}>
+                <View style={[styles.modalEmptyIcon, {
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                }]}>
+                  <Ionicons name="people" size={32} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                </View>
+                <Text style={[styles.modalEmptyText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                  No attendees yet
+                </Text>
+                <Text style={[styles.modalEmptySubtext, { color: theme === "light" ? "#94A3B8" : "#64748B" }]}>
+                  Be the first to join this event!
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </LinearGradient>
+      </SafeAreaView>
+    </Modal>
+  );
+
   return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+    <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar onProfilePress={() => router.push(`/profile/${authUser?.uid}`)} />
-        {event.eventImage && (
-          <View style={[styles.imageContainer, { top: topBarHeight }]}>
-            <LoadingImage 
-              source={{ uri: event.eventImage }} 
-              style={styles.eventImage}
-            />
-            <LinearGradient
-              colors={['transparent', theme === "light" ? '#ffffff' : '#1a1a1a']}
-              style={styles.imageGradient}
-            />
-          </View>
-        )}
-        <ScrollView
-          style={styles.scrollContainer}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingTop: event.eventImage ? 100 : 24 }
-          ]}
-          showsVerticalScrollIndicator={false}
+        
+        <Animated.View 
+          style={{ 
+            flex: 1,
+            opacity: contentBounceAnim,
+            transform: [
+              { scale: contentScaleAnim },
+              {
+                translateY: contentBounceAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [30, 0]
+                })
+              }
+            ]
+          }}
         >
-          <Animated.View style={{ opacity: fadeAnim }}>
-            <View style={[styles.detailsCard, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: "#37a4c8"
-            }]}>
-              <Text style={[styles.eventTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>{event.name}</Text>
-              <View style={[styles.categoryChip, { 
-                backgroundColor: theme === "light" ? "rgba(56,165,201,0.1)" : "rgba(56,165,201,0.1)",
-                borderColor: "#37a4c8"
-              }]}>
-                <Text style={styles.eventCategory}>{event.category}</Text>
-              </View>
-              <Text style={[styles.eventDescription, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>{event.description}</Text>
-              <View style={styles.detailsGrid}>
-                <View style={styles.detailItem}>
-                  <MaterialIcons name="event" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    Created {formatDateTime(event.createdAt)}
-                  </Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <MaterialIcons name="schedule" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    Starts {formatDateTime(event.startTime)}
-                    {isOrganizer && (
-                      <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                        <MaterialIcons name="edit" size={16} color="#37a4c8" style={{ marginLeft: 8 }} />
-                      </TouchableOpacity>
-                    )}
-                  </Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <MaterialIcons name="people" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    {event.attendees?.length || 0} attendees
-                  </Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <MaterialIcons name="flight" size={20} color="#37a4c8" />
-                  <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    {event.airportCode || "No airport set"}
-                  </Text>
-                </View>
-              </View>
-              {renderOrganizerSection()}
-            </View>
-            <View style={styles.bottomButtons}>
-              <TouchableOpacity
-                style={[styles.buttonContainer, (!isAttending && !isOrganizer) && styles.buttonContainerDisabled]}
-                onPress={() => router.push(`event/eventChat/${id}`)}
-                accessibilityLabel="Event Chat"
-                accessibilityHint="Navigate to event discussion"
-                disabled={!isAttending && !isOrganizer}
-              >
-                <LinearGradient 
-                  colors={(!isAttending && !isOrganizer) ? ["#cccccc", "#999999"] : ["#37a4c8", "#2F80ED"]} 
-                  style={[styles.buttonGradient, { borderRadius: 12 }]}
-                >
-                  <View style={styles.chatButtonContent}>
-                    <View style={styles.chatIconContainer}>
-                      <Ionicons name="chatbubbles" size={24} color="#ffffff" />
-                      {messageCount > 0 && (
-                        <View style={styles.messageBadge}>
-                          <Text style={styles.messageBadgeText}>
-                            {messageCount > 99 ? '99+' : messageCount}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[styles.buttonText, { color: "#ffffff" }]}>
-                      {(!isAttending && !isOrganizer) ? "Join to Chat" : "Event Chat"}
-                    </Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.buttonContainer}
-                onPress={handleAttend}
-                activeOpacity={0.9}
-                disabled={loading}
-              >
-                <LinearGradient
-                  colors={isAttending ? ["#FF416C", "#FF4B2B"] : ["#37a4c8", "#2F80ED"]}
-                  style={[styles.buttonGradient, { borderRadius: 12 }]}
-                >
-                  <Feather
-                    name={isAttending ? "x-circle" : "check-circle"}
-                    size={24}
-                    color="#ffffff"
+          <ScrollView
+            style={styles.container}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View style={{ opacity: fadeAnim }}>
+              {/* Event Image */}
+              {event.eventImage && (
+                <View style={styles.imageContainer}>
+                  <LoadingImage 
+                    source={{ uri: event.eventImage }} 
+                    style={styles.eventImage}
                   />
-                  <Text style={[styles.buttonText, { color: "#ffffff" }]}>
-                    {loading
-                      ? "Processing..."
-                      : isAttending
-                      ? "Leave Event"
-                      : "Attend Event"}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+                  <LinearGradient
+                    colors={['transparent', theme === "light" ? '#ffffff' : '#1a1a1a']}
+                    style={styles.imageGradient}
+                  />
+                </View>
+              )}
 
-            {/* Add report button for non-organizer users */}
-            {authUser && event.organizer !== authUser.uid && (
-              <View style={styles.reportButtonContainer}>
-                <TouchableOpacity
-                  style={[styles.reportButton, { 
-                    backgroundColor: theme === "light" ? "rgba(255, 68, 68, 0.1)" : "rgba(255, 102, 102, 0.1)",
-                    borderColor: theme === "light" ? "#ff4444" : "#ff6666",
-                  }]}
-                  onPress={handleReport}
-                >
-                  <MaterialIcons name="report" size={16} color={theme === "light" ? "#ff4444" : "#ff6666"} />
-                  <Text style={[styles.reportButtonText, { color: theme === "light" ? "#ff4444" : "#ff6666" }]}>
-                    Report Event
-                  </Text>
-                </TouchableOpacity>
+              {/* Event Card */}
+              <View style={[styles.eventCard, { 
+                backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+              }]}>
+                <Text style={[styles.eventTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>{event.name}</Text>
+                
+                <View style={[styles.categoryChip, { 
+                  backgroundColor: theme === "light" ? "rgba(56,165,201,0.1)" : "rgba(56,165,201,0.1)",
+                  borderColor: "#37a4c8"
+                }]}>
+                  <Text style={styles.eventCategory}>{event.category}</Text>
+                </View>
+                
+                <Text style={[styles.eventDescription, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>{event.description}</Text>
+                
+                <View style={styles.detailsGrid}>
+                  <View style={[styles.detailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderRadius: 12,
+                    padding: 12,
+                    borderWidth: 1,
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.detailIconContainer}>
+                      <MaterialIcons name="event" size={18} color="#37a4c8" />
+                    </View>
+                    <View style={styles.detailContent}>
+                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Created
+                      </Text>
+                      <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                        {formatDateTime(event.createdAt)}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={[styles.detailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderRadius: 12,
+                    padding: 12,
+                    borderWidth: 1,
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.detailIconContainer}>
+                      <MaterialIcons name="schedule" size={18} color="#37a4c8" />
+                    </View>
+                    <View style={styles.detailContent}>
+                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Starts
+                      </Text>
+                      <View style={styles.detailTextContainer}>
+                        <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                          {formatDateTime(event.startTime)}
+                        </Text>
+                        {isOrganizer && (
+                          <TouchableOpacity 
+                            style={styles.editButton}
+                            onPress={() => setShowDatePicker(true)}
+                          >
+                            <MaterialIcons name="edit" size={14} color="#37a4c8" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                  
+                  <View style={[styles.detailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderRadius: 12,
+                    padding: 12,
+                    borderWidth: 1,
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.detailIconContainer}>
+                      <MaterialIcons name="people" size={18} color="#37a4c8" />
+                    </View>
+                    <View style={styles.detailContent}>
+                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Attendees
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.attendeesButton}
+                        onPress={handleShowAttendees}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.attendeesButtonContent}>
+                          <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                            {event.attendees?.length || 0} people
+                          </Text>
+                          <Ionicons name="chevron-forward" size={16} color="#37a4c8" />
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  
+                  <View style={[styles.detailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderRadius: 12,
+                    padding: 12,
+                    borderWidth: 1,
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.detailIconContainer}>
+                      <MaterialIcons name="flight" size={18} color="#37a4c8" />
+                    </View>
+                    <View style={styles.detailContent}>
+                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Airport
+                      </Text>
+                      <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                        {event.airportCode || "Not set"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                
+                {renderOrganizerSection()}
+
+                {/* Action Buttons */}
+                <View style={styles.bottomButtons}>
+                  <TouchableOpacity
+                    style={[styles.buttonContainer, (!isAttending && !isOrganizer) && styles.buttonContainerDisabled]}
+                    onPress={() => router.push(`event/eventChat/${id}`)}
+                    accessibilityLabel="Event Chat"
+                    accessibilityHint="Navigate to event discussion"
+                    disabled={!isAttending && !isOrganizer}
+                    activeOpacity={0.7}
+                  >
+                    <LinearGradient 
+                      colors={(!isAttending && !isOrganizer) ? ["#cccccc", "#999999"] : ["#37a4c8", "#37a4c8"]} 
+                      style={styles.buttonGradient}
+                    >
+                      <View style={styles.chatButtonContent}>
+                        <View style={styles.chatIconContainer}>
+                          <Ionicons name="chatbubbles" size={24} color="#ffffff" />
+                          {messageCount > 0 && (
+                            <View style={styles.messageBadge}>
+                              <Text style={styles.messageBadgeText}>
+                                {messageCount > 99 ? '99+' : messageCount}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.buttonText}>
+                          {(!isAttending && !isOrganizer) ? "Join to Chat" : "Event Chat"}
+                        </Text>
+                      </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.buttonContainer, attendButtonDisabled && styles.buttonContainerDisabled]}
+                    onPress={handleAttend}
+                    activeOpacity={0.7}
+                    disabled={loading || attendButtonDisabled}
+                  >
+                    <LinearGradient
+                      colors={attendButtonColors}
+                      style={styles.buttonGradient}
+                    >
+                      <Feather
+                        name={isAttending ? "x-circle" : "check-circle"}
+                        size={24}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.buttonText}>
+                        {loading
+                          ? "Processing..."
+                          : isAttending
+                          ? "Leave Event"
+                          : !event.organizer
+                          ? "Need Organizer"
+                          : "Attend Event"}
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
               </View>
-            )}
-          </Animated.View>
-        </ScrollView>
+
+              {/* Report Button */}
+              {authUser && event.organizer !== authUser.uid && (
+                <View style={styles.reportButtonContainer}>
+                  <TouchableOpacity
+                    style={[styles.reportButton, { 
+                      backgroundColor: theme === "light" ? "rgba(255, 68, 68, 0.1)" : "rgba(255, 102, 102, 0.1)",
+                      borderColor: theme === "light" ? "#ff4444" : "#ff6666",
+                    }]}
+                    onPress={handleReport}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="report" size={16} color={theme === "light" ? "#ff4444" : "#ff6666"} />
+                    <Text style={[styles.reportButtonText, { color: theme === "light" ? "#ff4444" : "#ff6666" }]}>
+                      Report Event
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </Animated.View>
+          </ScrollView>
+        </Animated.View>
+        
         <DateTimePickerModal
           isVisible={showDatePicker}
           mode="datetime"
@@ -748,6 +1105,8 @@ export default function Event() {
           isDarkModeEnabled={theme === "dark"}
           buttonTextColorIOS="#37a4c8"
         />
+
+        {renderAttendeesModal()}
       </LinearGradient>
     </SafeAreaView>
   );
@@ -758,25 +1117,43 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: -20,
   },
-  gradient: {
+  container: {
     flex: 1,
+    padding: 16,
+  },
+  scrollContent: {
+    paddingBottom: Platform.OS === 'ios' ? 100 : 80,
+  },
+  headerSection: {
+    marginBottom: 24,
+    paddingHorizontal: 4,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 22,
   },
   imageContainer: {
-    position: "absolute",
-    left: 24,
-    right: 24,
     height: 200,
-    zIndex: 0,
     borderRadius: 20,
     overflow: "hidden",
+    marginBottom: 20,
+    elevation: 6,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
   },
   eventImage: {
-    marginTop: 20,
     width: "100%",
     height: "100%",
     resizeMode: "cover",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
   },
   imageGradient: {
     position: "absolute",
@@ -785,135 +1162,167 @@ const styles = StyleSheet.create({
     right: 0,
     height: 80,
   },
-  scrollContainer: {
-    flex: 1,
-    zIndex: 1,
-  },
-  scrollContent: {
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 100 : 80,
-  },
-  detailsCard: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
+  eventCard: {
+    borderRadius: 20,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#38a5c8",
-    marginBottom: 8,
-    marginTop: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    elevation: 6,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    padding: 20,
+    paddingBottom: 24,
   },
   eventTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
-    color: "#e4fbfe",
-    marginBottom: 10,
+    marginBottom: 12,
+    letterSpacing: -0.3,
   },
   categoryChip: {
     backgroundColor: "rgba(56,165,201,0.1)",
     borderRadius: 16,
-    paddingVertical: 4,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     alignSelf: "flex-start",
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#38a5c8",
+    borderColor: "#37a4c8",
   },
   eventCategory: {
     fontSize: 12,
-    color: "#38a5c8",
+    color: "#37a4c8",
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
   eventDescription: {
-    fontSize: 13,
-    color: "#e4fbfe",
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
     marginBottom: 20,
+    fontWeight: '400',
   },
   detailsGrid: {
     marginBottom: 20,
+    gap: 8,
   },
   detailItem: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
-    gap: 10,
+    gap: 12,
   },
   detailText: {
-    fontSize: 13,
-    color: "#e4fbfe",
+    fontSize: 14,
     fontWeight: "500",
   },
   organizerContainer: {
     marginBottom: 24,
   },
   organizerBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(56,165,201,0.1)",
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    gap: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#38a5c8",
   },
-  organizerText: {
-    fontSize: 13,
-    color: "#38a5c8",
-    fontWeight: "600",
+  organizerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+  },
+  organizerIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  organizerMainInfo: {
+    flex: 1,
+  },
+  organizerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 1,
+  },
+  organizerSubtitle: {
+    fontSize: 11,
+    fontWeight: '400',
+    lineHeight: 14,
+  },
+  organizerMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 1,
+  },
+  organizerMetaText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  organizerMetaDot: {
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+    marginHorizontal: 4,
+  },
+  organizerChevron: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   becomeOrganizerButton: {
-    marginTop: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     overflow: "hidden",
+    elevation: 4,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
   buttonGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    height: 46,
+    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
   },
   buttonText: {
-    color: "#fff",
-    fontSize: 13,
+    color: "#FFFFFF",
+    fontSize: 15,
     fontWeight: "600",
-    textAlign: "center",
-  },
-  organizedTimestamp: {
-    fontSize: 11,
-    color: "#38a5c8",
-    marginTop: 6,
-    alignSelf: "flex-end",
+    letterSpacing: 0.3,
   },
   bottomButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 20,
-    marginBottom: Platform.OS === 'ios' ? 12 : 8,
+    marginTop: 16,
+    gap: 12,
   },
   buttonContainer: {
-    width: "48%",
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 8 },
+    flex: 1,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 6,
-    borderRadius: 12,
+    shadowRadius: 8,
+    elevation: 4,
+    borderRadius: 16,
     overflow: "hidden",
   },
   chatButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
   },
   chatIconContainer: {
@@ -942,8 +1351,8 @@ const styles = StyleSheet.create({
   },
   reportButtonContainer: {
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 16,
+    marginBottom: 16,
   },
   reportButton: {
     flexDirection: 'row',
@@ -964,27 +1373,228 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   buttonContainerDisabled: {
-    opacity: 0.7,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    opacity: 0.4,
   },
   loadingIndicatorContainer: {
-    width: 60,
-    height: 60,
+    width: 40,
+    height: 40,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  detailIconContainer: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailContent: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  detailTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editButton: {
+    padding: 4,
+  },
+  modalContainer: {
+    flex: 1,
+  },
+  modalGradient: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  modalSpacer: {
+    width: 36,
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  modalLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  modalLoadingIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalLoadingText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  attendeesList: {
+    paddingVertical: 20,
+    gap: 12,
+  },
+  attendeeItem: {
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    elevation: 2,
     shadowColor: "#37a4c8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 8,
+  },
+  attendeeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  attendeeAvatarContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  attendeeAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  attendeeInfo: {
+    flex: 1,
+  },
+  attendeeNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  attendeeName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  attendeeDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  attendeeDetail: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  attendeeDetailDot: {
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+    marginHorizontal: 6,
+  },
+  attendeeBio: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 18,
+  },
+  attendeeChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  organizerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  organizerBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#37a4c8',
+  },
+  attendeesButton: {
+    flex: 1,
+  },
+  attendeesButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 20,
+  },
+  modalEmptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  modalEmptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalEmptyText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  modalEmptySubtext: {
+    fontSize: 12,
+    fontWeight: '400',
+    opacity: 0.7,
+  },
+  organizedTimestampContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  organizedTimestampIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  organizedTimestamp: {
+    fontSize: 11,
+    fontWeight: '500',
+    opacity: 0.7,
   },
 });

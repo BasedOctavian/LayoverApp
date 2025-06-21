@@ -73,7 +73,7 @@ export default function TOS() {
       locations={[0, 0.5, 1]}
       style={styles.container}
     >
-      <TopBar />
+      <TopBar showBackButton={true} />
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <ScrollView 

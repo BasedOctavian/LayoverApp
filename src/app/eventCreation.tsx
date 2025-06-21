@@ -16,6 +16,7 @@ import {
   Animated,
   StatusBar,
   Easing,
+  SafeAreaView,
 } from "react-native";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from "expo-linear-gradient";
@@ -449,9 +450,9 @@ const EventCreation: React.FC = () => {
 
   return (
     <>
-    <TopBar onProfilePress={() => {}} notificationCount={notificationCount} />
-    <SafeAreaWrapper>
-      <LinearGradient colors={theme === "light" ? ["#e6e6e6", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+    <TopBar onProfilePress={() => {}} notificationCount={notificationCount} showBackButton={true} />
+    <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -460,40 +461,40 @@ const EventCreation: React.FC = () => {
             <Animated.View style={[{ flex: 1 }, screenStyle]}>
               <ScrollView contentContainerStyle={styles.contentContainer}>
                 <Animated.View style={{ opacity: fadeAnim }}>
+                  {/* Header Section */}
                   <View style={styles.headerSection}>
-                    <Text style={[styles.headerText, { 
-                      color: theme === "light" ? "#000000" : "#e4fbfe" 
+                    <Text style={[styles.headerTitle, { 
+                      color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                     }]}>
                       Create Event
                     </Text>
                     <Text style={[styles.headerSubtitle, { 
                       color: theme === "light" ? "#64748B" : "#94A3B8" 
                     }]}>
-                      Share your layover experience
+                      Share your layover experience with fellow travelers
                     </Text>
                   </View>
 
                   {/* Airport Selection */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
+                  <View style={styles.settingsSection}>
                     <Text style={[styles.sectionTitle, { 
-                      color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                     }]}>Location</Text>
                     <TouchableOpacity 
                       style={[styles.airportSelector, {
-                        backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
                         borderColor: "#37a4c8"
                       }]}
                       onPress={() => setShowSearch(true)}
                       activeOpacity={0.7}
                     >
                       <View style={styles.airportSelectorContent}>
-                        <Feather name="airplay" size={20} color="#37a4c8" />
+                        <View style={styles.airportIconContainer}>
+                          <Feather name="airplay" size={24} color="#37a4c8" />
+                        </View>
                         <View style={styles.airportSelectorTextContainer}>
-                          <Text style={[styles.airportSelectorText, { 
-                            color: theme === "light" ? "#000000" : "#e4fbfe" 
+                          <Text style={[styles.airportSelectorTitle, { 
+                            color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                           }]} numberOfLines={1} ellipsizeMode="tail">
                             {selectedAirport?.name || "Select Airport"}
                           </Text>
@@ -503,86 +504,108 @@ const EventCreation: React.FC = () => {
                             </Text>
                           )}
                         </View>
-                        <Feather name="chevron-right" size={20} color="#37a4c8" />
+                        <View style={styles.airportSelectorArrow}>
+                          <Feather name="chevron-right" size={24} color="#37a4c8" />
+                        </View>
                       </View>
                     </TouchableOpacity>
                   </View>
 
                   {/* Event Details */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
+                  <View style={styles.settingsSection}>
                     <Text style={[styles.sectionTitle, { 
-                      color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                     }]}>Event Details</Text>
                     
-                    <View style={styles.inputGroup}>
-                      <TextInput
-                        style={[styles.input, { 
-                          backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                          color: theme === "light" ? "#000000" : "#e4fbfe",
-                          borderColor: fieldErrors['name'] ? "#ff4444" : "#37a4c8"
-                        }]}
-                        placeholder="Event Name"
-                        placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-                        value={eventData.name}
-                        onChangeText={(text) => {
-                          if (containsFilteredContent(text)) {
-                            setFieldErrors(prev => ({ ...prev, name: true }));
-                          } else {
-                            setFieldErrors(prev => ({ ...prev, name: false }));
-                          }
-                          setEventData({ ...eventData, name: text });
-                        }}
-                      />
+                    <View style={[styles.settingsItem, {
+                      backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                      borderColor: fieldErrors['name'] ? "#ff4444" : "#37a4c8"
+                    }]}>
+                      <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                        <Feather name="edit-3" size={24} color="#37a4c8" />
+                        <TextInput
+                          style={[styles.settingsTextInput, { 
+                            color: theme === "light" ? "#0F172A" : "#e4fbfe"
+                          }]}
+                          placeholder="Event Name"
+                          placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
+                          value={eventData.name}
+                          onChangeText={(text) => {
+                            if (containsFilteredContent(text)) {
+                              setFieldErrors(prev => ({ ...prev, name: true }));
+                            } else {
+                              setFieldErrors(prev => ({ ...prev, name: false }));
+                            }
+                            setEventData({ ...eventData, name: text });
+                          }}
+                        />
+                      </View>
                     </View>
 
-                    <View style={styles.inputGroup}>
-                      <TextInput
-                        style={[styles.input, styles.multilineInput, { 
-                          backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                          color: theme === "light" ? "#000000" : "#e4fbfe",
-                          borderColor: fieldErrors['description'] ? "#ff4444" : "#37a4c8"
-                        }]}
-                        placeholder="Describe your event"
-                        placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-                        multiline
-                        value={eventData.description}
-                        onChangeText={(text) => {
-                          if (containsFilteredContent(text)) {
-                            setFieldErrors(prev => ({ ...prev, description: true }));
-                          } else {
-                            setFieldErrors(prev => ({ ...prev, description: false }));
-                          }
-                          setEventData({ ...eventData, description: text });
-                        }}
-                      />
+                    <View style={[styles.settingsItem, {
+                      backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                      borderColor: fieldErrors['description'] ? "#ff4444" : "#37a4c8"
+                    }]}>
+                      <View style={[styles.descriptionContainer, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                        <View style={styles.descriptionHeader}>
+                          <Feather name="file-text" size={24} color="#37a4c8" />
+                          <Text style={[styles.descriptionLabel, { 
+                            color: theme === "light" ? "#64748B" : "#94A3B8" 
+                          }]}>
+                            Event Description
+                          </Text>
+                        </View>
+                        <TextInput
+                          style={[styles.descriptionInput, { 
+                            color: theme === "light" ? "#0F172A" : "#e4fbfe",
+                            backgroundColor: theme === "light" ? "#F8FAFC" : "#000000"
+                          }]}
+                          placeholder="Share the details of your event... What will people be doing? What should they bring? Any special requirements?"
+                          placeholderTextColor={theme === "light" ? "#94A3B8" : "#64748B"}
+                          multiline
+                          numberOfLines={6}
+                          textAlignVertical="top"
+                          value={eventData.description}
+                          onChangeText={(text) => {
+                            if (containsFilteredContent(text)) {
+                              setFieldErrors(prev => ({ ...prev, description: true }));
+                            } else {
+                              setFieldErrors(prev => ({ ...prev, description: false }));
+                            }
+                            setEventData({ ...eventData, description: text });
+                          }}
+                        />
+                        <Text style={[styles.characterCount, { 
+                          color: theme === "light" ? "#94A3B8" : "#64748B" 
+                        }]}>
+                          {eventData.description.length}/500 characters
+                        </Text>
+                      </View>
                     </View>
 
                     <TouchableOpacity 
-                      style={[styles.imageSelector, {
-                        backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                      style={[styles.settingsItem, {
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
                         borderColor: "#37a4c8"
                       }]} 
                       onPress={handleSelectEventImage}
                     >
-                      <Feather name="image" size={24} color="#37a4c8" />
-                      <Text style={[styles.imageSelectorText, { 
-                        color: theme === "light" ? "#000000" : "#e4fbfe" 
-                      }]}>
-                        {eventData.eventImage ? "Change Image" : "Add Event Image"}
-                      </Text>
+                      <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                        <Feather name="image" size={24} color="#37a4c8" />
+                        <Text style={[styles.settingsText, { 
+                          color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                        }]}>
+                          {eventData.eventImage ? "Change Image" : "Add Event Image"}
+                        </Text>
+                        <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                      </View>
                     </TouchableOpacity>
                   </View>
 
                   {/* Category Selection */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
+                  <View style={styles.settingsSection}>
                     <Text style={[styles.sectionTitle, { 
-                      color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                     }]}>Category</Text>
                     <View style={styles.categoryContainer}>
                       {categories.map((category) => (
@@ -600,7 +623,7 @@ const EventCreation: React.FC = () => {
                         >
                           <Text style={[
                             styles.categoryText,
-                            { color: theme === "light" ? "#000000" : "#e4fbfe" },
+                            { color: theme === "light" ? "#0F172A" : "#e4fbfe" },
                             eventData.category === category && styles.selectedCategoryText
                           ]}>
                             {category}
@@ -611,16 +634,13 @@ const EventCreation: React.FC = () => {
                   </View>
 
                   {/* Event Time */}
-                  <View style={[styles.sectionContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: "#37a4c8"
-                  }]}>
+                  <View style={styles.settingsSection}>
                     <Text style={[styles.sectionTitle, { 
-                      color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                     }]}>Event Time</Text>
                     <TouchableOpacity 
-                      style={[styles.timeSelector, {
-                        backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                      style={[styles.settingsItem, {
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
                         borderColor: "#37a4c8"
                       }]} 
                       onPress={() => {
@@ -628,40 +648,37 @@ const EventCreation: React.FC = () => {
                         setShowDatePicker(true);
                       }}
                     >
-                      <Feather name="calendar" size={20} color="#37a4c8" />
-                      <Text style={[styles.timeSelectorText, { 
-                        color: theme === "light" ? "#000000" : "#e4fbfe" 
-                      }]}>
-                        {formatDateTime(eventData.startTime)}
-                      </Text>
-                      <Feather name="chevron-right" size={20} color="#37a4c8" />
+                      <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                        <Feather name="calendar" size={24} color="#37a4c8" />
+                        <Text style={[styles.settingsText, { 
+                          color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                        }]}>
+                          {formatDateTime(eventData.startTime)}
+                        </Text>
+                        <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                      </View>
                     </TouchableOpacity>
                   </View>
                 </Animated.View>
 
                 {/* Create Button */}
-                <LinearGradient
-                  colors={['#37a4c8', '#2F80ED']}
-                  style={[
-                    styles.createButton, 
-                    (isSubmitting || Object.values(fieldErrors).some(error => error)) && styles.createButtonDisabled
-                  ]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+                <TouchableOpacity 
+                  style={[styles.createButton, { borderColor: "#37a4c8" }]} 
+                  onPress={handleSubmit}
+                  disabled={loading || isSubmitting || Object.values(fieldErrors).some(error => error)}
+                  activeOpacity={0.7}
                 >
-                  <TouchableOpacity 
-                    onPress={handleSubmit}
-                    disabled={loading || isSubmitting || Object.values(fieldErrors).some(error => error)}
-                    style={[styles.buttonInner, isSubmitting && styles.buttonInnerDisabled]}
-                    activeOpacity={0.7}
+                  <LinearGradient
+                    colors={['#37a4c8', '#38a5c9']}
+                    style={styles.createButtonGradient}
                   >
                     {loading || isSubmitting ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
                       <Text style={styles.createButtonText}>Create Event</Text>
                     )}
-                  </TouchableOpacity>
-                </LinearGradient>
+                  </LinearGradient>
+                </TouchableOpacity>
               </ScrollView>
             </Animated.View>
           </TouchableWithoutFeedback>
@@ -674,7 +691,8 @@ const EventCreation: React.FC = () => {
           }]}>
             <View style={[styles.searchModalHeader, { 
               borderBottomColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
-              backgroundColor: theme === "light" ? "#ffffff" : "#000000"
+              backgroundColor: theme === "light" ? "#ffffff" : "#000000",
+              paddingTop: Platform.OS === 'ios' ? 20 : 10
             }]}>
               <View style={[styles.searchInputContainer, {
                 backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
@@ -706,7 +724,12 @@ const EventCreation: React.FC = () => {
                 }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.searchResultsContainer}>
+            <ScrollView 
+              style={styles.searchResultsContainer}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.searchResultsContent}
+              keyboardShouldPersistTaps="handled"
+            >
               {filteredAirports.map((airport) => (
                 <TouchableOpacity
                   key={airport.airportCode}
@@ -768,7 +791,7 @@ const EventCreation: React.FC = () => {
           </View>
         )}
       </LinearGradient>
-    </SafeAreaWrapper>
+    </SafeAreaView>
     </>
   );
 };
@@ -806,26 +829,50 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   contentContainer: {
-    padding: 0,
-    paddingBottom: 100,
+    padding: 24,
+    paddingBottom: 120,
   },
-  sectionContainer: {
-    marginHorizontal: 16,
-    marginBottom: 24,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+  settingsSection: {
+    marginBottom: 36,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 16,
-    letterSpacing: 0.3,
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 18,
+    letterSpacing: -0.3,
+    textAlign: 'left',
+  },
+  settingsItem: {
+    marginBottom: 18,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    elevation: 6,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  settingsGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 22,
+  },
+  settingsText: {
+    fontSize: 16,
+    marginLeft: 18,
+    flex: 1,
+    fontWeight: "500",
+  },
+  settingsTextInput: {
+    flex: 1,
+    marginLeft: 18,
+    fontSize: 16,
+    padding: 0,
+    fontWeight: "400",
+  },
+  chevronIcon: {
+    marginLeft: "auto",
   },
   searchContainer: {
     backgroundColor: 'transparent',
@@ -863,32 +910,47 @@ const styles = StyleSheet.create({
   multilineInput: {
     height: 120,
     textAlignVertical: 'top',
+    lineHeight: 24,
+    paddingTop: 4,
   },
   categoryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 14,
     justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingHorizontal: 12,
   },
   categoryButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    borderRadius: 22,
+    borderWidth: 1.5,
     minWidth: 120,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
   },
   selectedCategory: {
     backgroundColor: '#37a4c8',
+    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
   },
   categoryText: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   selectedCategoryText: {
     color: '#FFFFFF',
-    fontWeight: "600",
+    fontWeight: "700",
   },
   dateText: {
     color: '#e4fbfe',
@@ -919,38 +981,42 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 1000,
-    marginTop: 35,
+    zIndex: 9999,
+    elevation: 9999,
   },
   searchModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    elevation: 4,
+    padding: 24,
+    borderBottomWidth: 1.5,
+    elevation: 6,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
   },
   searchInputContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    marginRight: 16,
+    borderWidth: 1.5,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 8,
+    marginLeft: 14,
     fontSize: 16,
     padding: 0,
+    fontWeight: "500",
   },
   searchResultsContainer: {
     flex: 1,
+  },
+  searchResultsContent: {
+    paddingBottom: 24,
   },
   airportItem: {
     borderBottomWidth: 1,
@@ -958,132 +1024,98 @@ const styles = StyleSheet.create({
   airportItemContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 22,
   },
   airportItemInfo: {
     flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
+    marginLeft: 18,
+    marginRight: 14,
   },
   airportName: {
     fontSize: 16,
-    fontWeight: "500",
-    marginBottom: 2,
+    fontWeight: "600",
+    marginBottom: 6,
     letterSpacing: 0.2,
   },
   airportCode: {
     fontSize: 14,
     color: "#37a4c8",
-    fontWeight: "500",
-    letterSpacing: 0.2,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   cancelButton: {
-    padding: 8,
+    padding: 14,
   },
   cancelButtonText: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   createButton: {
-    marginHorizontal: 16,
-    marginBottom: 32,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#38a5c9',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    marginTop: 40,
+    marginBottom: 50,
+    borderRadius: 22,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    elevation: 10,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
   },
-  createButtonDisabled: {
-    opacity: 0.7,
-  },
-  buttonInner: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonInnerDisabled: {
-    opacity: 0.8,
+  createButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 22,
   },
   createButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  textInput: {
-    color: '#e4fbfe',
-  },
-  timeContainer: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  timeInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#38a5c9',
-    borderRadius: 12,
-  },
-  timeContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  timeTextContainer: {
-    flex: 1,
-  },
-  timeLabel: {
-    color: '#64748B',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  timeValue: {
-    color: '#e4fbfe',
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   datePickerContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1.5,
     shadowColor: '#38a5c9',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 10,
   },
   datePickerWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 20,
   },
   datePickerButtons: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 16,
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
+    gap: 24,
+    marginTop: 24,
+    paddingTop: 24,
+    borderTopWidth: 1.5,
   },
   datePickerButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    minWidth: 100,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 18,
+    minWidth: 130,
     alignItems: 'center',
+    elevation: 4,
+    shadowColor: "#38a4c8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
   },
   datePickerCancelButton: {
     backgroundColor: 'transparent',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#37a4c8',
   },
   datePickerDoneButton: {
@@ -1092,12 +1124,12 @@ const styles = StyleSheet.create({
   datePickerCancelText: {
     color: '#37a4c8',
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   datePickerDoneText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "700",
   },
   inputError: {
     borderColor: "#ff4444",
@@ -1124,85 +1156,93 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  headerSection: {
-    paddingHorizontal: 16,
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  headerText: {
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    letterSpacing: 0.3,
-  },
-  airportSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    marginTop: 8,
-  },
-  airportSelectorContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
   airportSelectorTextContainer: {
     flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-  airportSelectorText: {
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: 0.2,
+    marginRight: 12,
   },
   airportSelectorCode: {
     fontSize: 14,
     color: "#37a4c8",
-    marginTop: 2,
-    fontWeight: "500",
+    marginTop: 4,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  headerSection: {
+    marginBottom: 36,
+    alignItems: 'flex-start',
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    marginBottom: 12,
+    letterSpacing: -0.5,
+    textAlign: 'left',
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: "#64748B",
+    letterSpacing: 0.2,
+    textAlign: 'left',
+    lineHeight: 22,
+  },
+  airportSelector: {
+    marginBottom: 18,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    elevation: 6,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  airportSelectorContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 22,
+  },
+  airportIconContainer: {
+    marginRight: 18,
+  },
+  airportSelectorTitle: {
+    fontSize: 16,
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
-  imageSelector: {
+  airportSelectorArrow: {
+    marginLeft: "auto",
+  },
+  descriptionContainer: {
+    padding: 20,
+  },
+  descriptionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: 8,
+    marginBottom: 12,
   },
-  imageSelectorText: {
+  descriptionLabel: {
     fontSize: 16,
-    fontWeight: "500",
-  },
-  timeSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  timeSelectorText: {
-    flex: 1,
+    fontWeight: "600",
     marginLeft: 12,
+    letterSpacing: 0.2,
+  },
+  descriptionInput: {
+    minHeight: 120,
+    padding: 16,
+    borderRadius: 12,
     fontSize: 16,
+    lineHeight: 24,
+    textAlignVertical: 'top',
+    fontWeight: "400",
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  characterCount: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    fontSize: 12,
     fontWeight: "500",
+    letterSpacing: 0.2,
   },
 });
 

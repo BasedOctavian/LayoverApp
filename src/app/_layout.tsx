@@ -34,10 +34,9 @@ const ThemeAwareStack = () => {
   // Define routes where bottom nav should be hidden
   const hideBottomNavRoutes = ['/login/login', '/userOnboarding'];
   const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
-    !pathname.startsWith('/chat/') && 
+    !pathname.startsWith('/chat/[id]') && // Only hide for individual chat conversations
     !pathname.startsWith('/event/eventChat/') && 
-    !pathname.includes('loading') ||
-    pathname === '/chat/chatInbox';
+    !pathname.includes('loading');
 
   return (
     <Stack
@@ -57,15 +56,6 @@ const ThemeAwareStack = () => {
       {/* Main Screen (index) */}
       <Stack.Screen
         name="index"
-        options={{
-          headerShown: false,
-          animation: 'none',
-        }}
-      />
-
-      {/* Home Screen */}
-      <Stack.Screen
-        name="home"
         options={{
           headerShown: false,
           animation: 'none',
@@ -96,6 +86,7 @@ const ThemeAwareStack = () => {
         options={{
           headerShown: false,
           animation: 'none',
+          gestureEnabled: false,
         }}
       />
 
@@ -127,6 +118,14 @@ const ThemeAwareStack = () => {
       {/* Swipe */}
       <Stack.Screen
         name="swipe"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      {/* Event Screen */}
+      <Stack.Screen
+        name="eventScreen"
         options={{
           headerShown: false,
           animation: 'none',
@@ -308,10 +307,9 @@ export default function RootLayout() {
   // Define routes where bottom nav should be hidden
   const hideBottomNavRoutes = ['/login/login', '/userOnboarding'];
   const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
-    !pathname.startsWith('/chat/') && 
+    !pathname.startsWith('/chat/[id]') && // Only hide for individual chat conversations
     !pathname.startsWith('/event/eventChat/') && 
-    !pathname.includes('loading') ||
-    pathname === '/chat/chatInbox';
+    !pathname.includes('loading');
 
   return (
     <SafeAreaProvider>

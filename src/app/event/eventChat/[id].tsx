@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView, Keyboard, Platform, Animated, Alert, Image, Easing } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBar, KeyboardAvoidingView, Keyboard, Platform, Animated, Alert, Image, Easing, Dimensions, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import useAuth from '../../../hooks/auth';
 import useChat from '../../../hooks/useChat';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { db } from '../../../../config/firebaseConfig';
 import { ThemeContext } from '../../../context/ThemeContext';
 import * as ExpoNotifications from 'expo-notifications';
 import { containsFilteredContent, getFilteredContentCategory } from '../../../utils/contentFilter';
+import UserAvatar from '../../../components/UserAvatar';
 
 interface Message {
   id: string;
@@ -158,14 +159,11 @@ const MessageItem = ({ item, isCurrentUser, theme }: { item: Message; isCurrentU
             </View>
           ) : (
             <Animated.View style={{ opacity: fadeAnim }}>
-              {userProfile?.profilePicture ? (
-                <Image
-                  source={{ uri: userProfile.profilePicture }}
-                  style={styles.profileImage}
-                />
-              ) : (
-                <View style={[styles.profileImage, styles.defaultAvatar]} />
-              )}
+              <UserAvatar
+                user={userProfile || { name: 'User', profilePicture: null }}
+                size={32}
+                style={styles.profileImage}
+              />
             </Animated.View>
           )}
         </TouchableOpacity>

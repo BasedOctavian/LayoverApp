@@ -17,9 +17,10 @@ import {
   Modal,
   FlatList,
   KeyboardAvoidingView,
+  StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { MediaType } from "expo-image-picker";
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -33,6 +34,13 @@ import { containsFilteredContent, getFilteredContentCategory, sanitizeText } fro
 import { fetchSignInMethodsForEmail } from "firebase/auth";
 import { auth } from "../../config/firebaseConfig";
 import * as ExpoNotifications from 'expo-notifications';
+import useUsers from "../hooks/useUsers";
+import TopBar from "../components/TopBar";
+import SafeAreaWrapper from "../components/SafeAreaWrapper";
+import { ThemeContext } from "../context/ThemeContext";
+import LoadingElement from "../components/LoadingElement";
+import useNotificationCount from "../hooks/useNotificationCount";
+import UserAvatar from "../components/UserAvatar";
 
 const avatarSize = 100;
 
@@ -547,19 +555,11 @@ const UserOnboarding = () => {
                 activeOpacity={0.7}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                {userData.profilePicture ? (
-                  <Image
-                    source={{ uri: userData.profilePicture }}
-                    style={styles.avatar}
-                  />
-                ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <Image 
-                      source={require("../../assets/adaptive-icon.png")}
-                      style={styles.defaultAvatar}
-                    />
-                  </View>
-                )}
+                <UserAvatar
+                  user={userData}
+                  size={avatarSize}
+                  style={styles.avatar}
+                />
                 <View style={styles.cameraBadge}>
                   <Feather name="camera" size={16} color="#000000" />
                 </View>
@@ -776,19 +776,11 @@ const UserOnboarding = () => {
             onPress={handleSelectPhoto}
             activeOpacity={0.7}
           >
-            {userData.profilePicture ? (
-              <Image
-                source={{ uri: userData.profilePicture }}
-                style={styles.avatar}
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Image 
-                  source={require("../../assets/adaptive-icon.png")}
-                  style={styles.defaultAvatar}
-                />
-              </View>
-            )}
+            <UserAvatar
+              user={userData}
+              size={avatarSize}
+              style={styles.avatar}
+            />
             <View style={styles.cameraBadge}>
               <Feather name="camera" size={16} color="#000000" />
             </View>

@@ -28,6 +28,7 @@ import { doc, deleteDoc } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 import * as LocalAuthentication from 'expo-local-authentication';
 import useNotificationCount from "../../hooks/useNotificationCount";
+import UserAvatar from "../../components/UserAvatar";
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -399,22 +400,11 @@ export default function Settings() {
                 borderColor: "#37a4c8"
               }]}>
                 <View style={styles.profilePictureContainer}>
-                  {userData?.profilePicture ? (
-                    <Animated.View style={{ opacity: profilePictureOpacity }}>
-                      <Image 
-                        source={{ uri: userData.profilePicture }} 
-                        style={styles.profilePicture}
-                        accessibilityLabel={`Profile picture of ${userData.name}`}
-                        onLoadStart={() => setIsProfilePictureLoading(true)}
-                        onLoadEnd={() => {
-                          setIsProfilePictureLoading(false);
-                          fadeInProfilePicture();
-                        }}
-                      />
-                    </Animated.View>
-                  ) : (
-                    <Ionicons name="person-circle" size={50} color="#37a4c8" />
-                  )}
+                  <UserAvatar
+                    user={userData || { name: 'User', profilePicture: null }}
+                    size={50}
+                    style={styles.profilePicture}
+                  />
                   {isProfilePictureLoading && (
                     <View style={[styles.profilePictureLoading, { backgroundColor: theme === "light" ? "#f8f9fa" : "#1a1a1a" }]} />
                   )}
@@ -734,7 +724,6 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    marginRight: 12,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -760,6 +749,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 20,
     fontWeight: "600",
+    marginLeft: 10,
   },
   userNamePlaceholder: {
     height: 20,

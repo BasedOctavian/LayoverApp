@@ -47,6 +47,14 @@ const BottomNavBar = () => {
   });
 
   const isActive = useCallback((path: string) => {
+    // For settings, check if we're on any settings-related route only
+    if (path === "/settings/settings") {
+      return pathname === path || pathname.startsWith("/settings/");
+    }
+    // For chat, check if we're on any chat-related route
+    if (path === "/chat/chatInbox") {
+      return pathname === path || pathname.startsWith("/chat/");
+    }
     return pathname === path;
   }, [pathname]);
 

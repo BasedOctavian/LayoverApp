@@ -2,7 +2,7 @@ import React, { useContext, useRef, useCallback, useState, useEffect } from 'rea
 import { View, Image, TouchableOpacity, StyleSheet, Text, Platform, Animated } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemeContext } from '../context/ThemeContext';
 import useAuth from '../hooks/auth';
@@ -31,9 +31,13 @@ const TopBar: React.FC<TopBarProps> = ({
   const topBarHeight = 50 + insets.top;
   const { theme } = useContext(ThemeContext);
   const { user } = useAuth();
+  const pathname = usePathname();
   const isNavigating = useRef(false);
   const [isLogoLoaded, setIsLogoLoaded] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Check if we're on a profile page
+  const isOnProfilePage = pathname.startsWith('/profile/');
 
   useEffect(() => {
     if (isLogoLoaded) {
@@ -173,9 +177,13 @@ const TopBar: React.FC<TopBarProps> = ({
           <View style={styles.avatarContainer}>
             <View style={[styles.profilePlaceholder, { 
               backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#38a5c9"
+              borderColor: isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#E2E8F0" : "#38a5c9")
             }]}>
-              <Ionicons name="person" size={20} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+              <Ionicons 
+                name="person" 
+                size={20} 
+                color={isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#0F172A" : "#ffffff")} 
+              />
             </View>
             <View style={[styles.statusIndicator, { 
               borderColor: theme === "light" ? "#FFFFFF" : "#000000",

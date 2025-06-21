@@ -18,26 +18,27 @@ import {
   TextStyle,
   StatusBar,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons, Feather, FontAwesome } from "@expo/vector-icons";
+import { MaterialIcons, Feather, FontAwesome, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import useEvents from "../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
 import useAuth from "../hooks/auth";
 import * as Location from "expo-location";
 import TopBar from "../components/TopBar";
-import SafeAreaWrapper from "../components/SafeAreaWrapper";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../context/ThemeContext";
 import useAirports, { Airport } from "../hooks/useAirports";
 import { useFilteredEvents } from "../hooks/useFilteredEvents";
 import { useNearestAirports } from "../hooks/useNearestAirports";
 import * as Haptics from "expo-haptics";
-import BottomNavBar from "../components/BottomNavBar";
 import LoadingElement from "../components/LoadingElement";
 import useLoadingMessages from "../hooks/useLoadingMessages";
 import LoadingScreen from "../components/LoadingScreen";
 import useNotificationCount from "../hooks/useNotificationCount";
+import UserAvatar from "../components/UserAvatar";
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
@@ -212,6 +213,12 @@ export default function Explore() {
   const { getEvents } = useEvents();
   const { getAirports } = useAirports();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { theme } = React.useContext(ThemeContext);
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
   const [events, setEvents] = useState<Event[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
@@ -219,42 +226,32 @@ export default function Explore() {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
-  const { theme } = React.useContext(ThemeContext);
   const [showAirportList, setShowAirportList] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState(false);
   const [expandedUsers, setExpandedUsers] = useState(false);
-  const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
-  const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
+  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [visibleAirportCount, setVisibleAirportCount] = useState(10);
+  const [refreshing, setRefreshing] = useState(false);
+  const [visibleEventsCount, setVisibleEventsCount] = useState(3);
+  const [visibleUsersCount, setVisibleUsersCount] = useState(3);
+  
+  // Animation values
+  const contentBounceAnim = useRef(new Animated.Value(0)).current;
+  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const additionalEventsAnim = useRef(new Animated.Value(0)).current;
   const additionalUsersAnim = useRef(new Animated.Value(0)).current;
   const buttonPositionAnim = useRef(new Animated.Value(0)).current;
   const usersButtonPositionAnim = useRef(new Animated.Value(0)).current;
-  const [showAllEvents, setShowAllEvents] = useState(false);
-  const loadMoreAnim = useRef(new Animated.Value(0)).current;
-  const gridHeightAnim = useRef(new Animated.Value(0)).current;
-  const eventsAnim = useRef(new Animated.Value(0)).current;
-  const buttonAnim = useRef(new Animated.Value(0)).current;
-  const newEventsAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const headerSlideAnim = useRef(new Animated.Value(20)).current;
-  const listSlideAnim = useRef(new Animated.Value(30)).current;
   const eventListAnim = useRef(new Animated.Value(1)).current;
   const airportListAnim = useRef(new Animated.Value(0)).current;
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
-  const eventsHeaderAnim = useRef(new Animated.Value(0)).current;
-  const travelersHeaderAnim = useRef(new Animated.Value(0)).current;
-  const loadingMessage = useLoadingMessages();
-  const messageFadeAnim = useRef(new Animated.Value(1)).current;
-  const [error, setError] = useState<string | null>(null);
-  const contentBounceAnim = useRef(new Animated.Value(0)).current;
-  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
-  const [visibleAirportCount, setVisibleAirportCount] = useState(10);
-  const AIRPORTS_PER_PAGE = 10;
+  const loadingStartTime = useRef<number | null>(null);
 
-  // Get notification count
-  const notificationCount = useNotificationCount(user?.uid || null);
+  const AIRPORTS_PER_PAGE = 10;
 
   // Get nearest airports when location and airports are available
   const nearestAirports = useNearestAirports(
@@ -422,7 +419,8 @@ export default function Explore() {
       (event.name?.toLowerCase() || '').includes(query) ||
       (event.description?.toLowerCase() || '').includes(query) ||
       (event.organizerName?.toLowerCase() || '').includes(query) ||
-      (event.airportCode?.toLowerCase() || '').includes(query)
+      (event.airportCode?.toLowerCase() || '').includes(query) ||
+      (event.category?.toLowerCase() || '').includes(query)
     );
   }, [sortedEvents, searchQuery]);
 
@@ -436,9 +434,16 @@ export default function Explore() {
       (user.airportCode?.toLowerCase() || '').includes(query) ||
       (user.interests || []).some(interest => 
         (interest?.toLowerCase() || '').includes(query)
+      ) ||
+      (user.languages || []).some(language => 
+        (language?.toLowerCase() || '').includes(query)
       )
     );
   }, [users, searchQuery]);
+
+  // Check if we're actively searching
+  const isActivelySearching = searchQuery.trim().length > 0;
+  const hasSearchResults = filteredEvents.length > 0 || filteredUsers.length > 0;
 
   // Handle search focus
   const handleSearchFocus = useCallback(() => {
@@ -510,15 +515,15 @@ export default function Explore() {
   const handleLoadMore = () => {
     setShowAllEvents(true);
     Animated.parallel([
-      Animated.spring(loadMoreAnim, {
+      Animated.spring(buttonPositionAnim, {
         toValue: 1,
         useNativeDriver: true,
         tension: 40,
         friction: 7,
       }),
-      Animated.spring(gridHeightAnim, {
-        toValue: 1,
-        useNativeDriver: false,
+      Animated.spring(buttonPositionAnim, {
+        toValue: 0,
+        useNativeDriver: true,
         tension: 40,
         friction: 7,
       })
@@ -527,15 +532,15 @@ export default function Explore() {
 
   const handleShowLess = () => {
     Animated.parallel([
-      Animated.spring(loadMoreAnim, {
+      Animated.spring(buttonPositionAnim, {
         toValue: 0,
         useNativeDriver: true,
         tension: 40,
         friction: 7,
       }),
-      Animated.spring(gridHeightAnim, {
-        toValue: 0,
-        useNativeDriver: false,
+      Animated.spring(buttonPositionAnim, {
+        toValue: 1,
+        useNativeDriver: true,
         tension: 40,
         friction: 7,
       })
@@ -621,43 +626,6 @@ export default function Explore() {
   const remainingEvents = sortedEvents.length - 4;
   const remainingUsers = users.length - 3;
 
-  // Add this effect to handle the section headers animation
-  useEffect(() => {
-    const animations = Animated.parallel([
-      Animated.timing(eventsHeaderAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-        easing: Easing.bezier(0.4, 0.0, 0.2, 1),
-      }),
-      Animated.timing(travelersHeaderAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-        easing: Easing.bezier(0.4, 0.0, 0.2, 1),
-      })
-    ]);
-
-    animations.start();
-    return () => animations.stop();
-  }, []);
-
-  // Add effect for message fade animation
-  useEffect(() => {
-    Animated.sequence([
-      Animated.timing(messageFadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(messageFadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [loadingMessage]);
-
   // Add effect for seamless animation when loading completes
   useEffect(() => {
     if (!isLoading && initialLoadComplete) {
@@ -723,9 +691,24 @@ export default function Explore() {
     setVisibleAirportCount(prev => prev + AIRPORTS_PER_PAGE);
   };
 
+  const handleLoadMoreEvents = () => {
+    setVisibleEventsCount(prev => prev + 3);
+  };
+
+  const handleLoadMoreUsers = () => {
+    setVisibleUsersCount(prev => prev + 3);
+  };
+
   // Show loading screen during initial load
   if (isLoading || !initialLoadComplete) {
-    return <LoadingScreen />;
+    return (
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+          <LoadingScreen />
+        </LinearGradient>
+      </SafeAreaView>
+    );
   }
 
   // Regular card component without animations
@@ -777,20 +760,16 @@ export default function Explore() {
           >
               {item.description}
             </Text>
-            <View style={styles.metaContainer}>
-              <View style={[styles.metaItem, { 
-              backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
-              }]}>
-              <MaterialIcons name="location-pin" size={16} color={theme === "light" ? "#0F172A" : "#37a4c8"} style={styles.metaIcon} />
-              <Text style={[styles.metaText, { 
+            {/* Airport section */}
+            <View style={styles.attendeesContainer}>
+              <MaterialIcons name="airplay" size={16} color={theme === "light" ? "#0F172A" : "#37a4c8"} />
+              <Text style={[styles.attendeesText, { 
                 color: theme === "light" ? "#0F172A" : "#e4fbfe" 
               }]}>
-                  {item.airportCode}
-                </Text>
-              </View>
-              <CountdownTimer startTime={item.startTime} />
+                {item.airportCode} Airport
+              </Text>
             </View>
+            {/* Duplicate people attending section */}
             <View style={styles.attendeesContainer}>
             <MaterialIcons name="group" size={16} color={theme === "light" ? "#0F172A" : "#37a4c8"} />
             <Text style={[styles.attendeesText, { 
@@ -799,21 +778,47 @@ export default function Explore() {
                 {item.attendees?.length || 0} people attending
               </Text>
             </View>
+            {/* Bottom section - countdown if startTime exists, otherwise show no start time */}
+            {item.startTime ? (
+              <View style={styles.attendeesContainer}>
+                <MaterialIcons name="schedule" size={16} color={theme === "light" ? "#0F172A" : "#37a4c8"} />
+                <Text style={[styles.attendeesText, { 
+                  color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                }]}>
+                  {(() => {
+                    const now = new Date();
+                    const diff = item.startTime.getTime() - now.getTime();
+                    if (diff <= 0) return 'Starting now';
+                    const hours = Math.floor(diff / (1000 * 60 * 60));
+                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    if (hours > 0) return `Starts in ${hours}h ${minutes}m`;
+                    return `Starts in ${minutes}m`;
+                  })()}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.attendeesContainer}>
+                <MaterialIcons name="schedule" size={16} color={theme === "light" ? "#0F172A" : "#37a4c8"} />
+                <Text style={[styles.attendeesText, { 
+                  color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                }]}>
+                  No start time
+                </Text>
+              </View>
+            )}
           </View>
       </View>
     );
   };
 
   return (
-    <LinearGradient 
-      colors={theme === "light" 
-        ? ["#f8f9fa", "#ffffff", "#f8f9fa"] 
-        : ["#000000", "#1a1a1a", "#000000"]} 
-      locations={[0, 0.5, 1]}
-      style={{ flex: 1 }}
-    >
-      <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-      <SafeAreaWrapper edges={["bottom"]}>
+    <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          onProfilePress={() => router.push("profile")} 
+          notificationCount={notificationCount} 
+        />
         <Animated.View 
           style={{ 
             flex: 1,
@@ -823,14 +828,13 @@ export default function Explore() {
               {
                 translateY: contentBounceAnim.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [50, 0]
+                  outputRange: [30, 0]
                 })
               }
             ]
           }}
         >
-          <TopBar onProfilePress={() => router.push("profile")} notificationCount={notificationCount} />
-          <View style={{ flex: 1 }}>
+          <View style={styles.container}>
             {showAirportList ? (
               <View style={{ flex: 1 }}>
                 <FlatList
@@ -840,37 +844,28 @@ export default function Explore() {
                   showsVerticalScrollIndicator={false}
                   ListHeaderComponent={
                     <View style={styles.headerSection}>
-                      <View style={styles.headerTop}>
-                        <Text 
-                          style={[
-                            styles.headerText, 
-                            { color: theme === "light" ? "#000000" : "#e4fbfe" }
-                          ]}
-                        >
-                          Select Airport
-                        </Text>
-                      </View>
-                      <View style={[styles.searchContainer, {
-                        backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
-                        borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
-                        marginBottom: 16
-                      }]}>
-                        <Feather name="search" size={20} color={theme === "light" ? "#64748B" : "#37a4c8"} />
+                      <Text style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                        Select Airport
+                      </Text>
+                      <Text style={[styles.headerSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Choose your location to explore events and travelers
+                      </Text>
+                      <View style={styles.searchContainer}>
+                        <Ionicons name="search" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.searchIcon} />
                         <TextInput
-                          style={[styles.searchInput, {
-                            color: theme === "light" ? "#1E293B" : "#e4fbfe"
-                          }]}
+                          style={[
+                            styles.searchInput,
+                            {
+                              backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                              color: theme === "light" ? "#0F172A" : "#e4fbfe",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                            }
+                          ]}
                           placeholder="Search airports..."
-                          placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                          placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
                           value={searchQuery}
                           onChangeText={setSearchQuery}
-                          keyboardAppearance={theme === "light" ? "light" : "dark"}
                         />
-                        {searchQuery ? (
-                          <TouchableOpacity onPress={() => setSearchQuery("")}>
-                            <Feather name="x" size={20} color={theme === "light" ? "#64748B" : "#37a4c8"} />
-                          </TouchableOpacity>
-                        ) : null}
                       </View>
                     </View>
                   }
@@ -878,20 +873,22 @@ export default function Explore() {
                     <TouchableOpacity
                       style={[styles.airportCard, {
                         backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                        borderColor: "#37a4c8"
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
                       }]}
                       onPress={() => handleAirportSelect(airport)}
                     >
                       <View style={styles.airportCardContent}>
-                        <Feather name="airplay" size={24} color="#37a4c8" />
+                        <Ionicons name="airplane" size={24} color="#37a4c8" />
                         <View style={styles.airportInfo}>
                           <Text style={[styles.airportName, { 
-                            color: theme === "light" ? "#000000" : "#e4fbfe" 
+                            color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                           }]}>
                             {airport.name}
                           </Text>
-                          <Text style={styles.airportCode}>{airport.airportCode}</Text>
-                          <Text style={styles.airportLocation}>{airport.location || 'Location not available'}</Text>
+                          <Text style={[styles.airportCode, { color: "#37a4c8" }]}>{airport.airportCode}</Text>
+                          <Text style={[styles.airportLocation, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                            {airport.location || 'Location not available'}
+                          </Text>
                           {airport.distance !== undefined && (
                             <Text style={[styles.airportDistance, { 
                               color: theme === "light" ? "#64748B" : "#94A3B8" 
@@ -900,13 +897,16 @@ export default function Explore() {
                             </Text>
                           )}
                         </View>
-                        <Feather name="chevron-right" size={20} color="#37a4c8" />
+                        <Ionicons name="chevron-forward" size={20} color="#37a4c8" />
                       </View>
                     </TouchableOpacity>
                   )}
                   ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                      <Text style={styles.emptyText}>No airports found</Text>
+                    <View style={styles.stateContainer}>
+                      <Ionicons name="airplane" size={48} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.emptyIcon} />
+                      <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        No airports found
+                      </Text>
                     </View>
                   }
                   ListFooterComponent={
@@ -914,7 +914,7 @@ export default function Explore() {
                       <TouchableOpacity
                         style={[styles.loadMoreButton, {
                           backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                          borderColor: "#37a4c8"
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
                         }]}
                         onPress={handleLoadMoreAirports}
                       >
@@ -932,213 +932,224 @@ export default function Explore() {
                   style={styles.scrollView}
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={styles.scrollContent}
-                >
-                  <Animated.View 
-                    style={[
-                      styles.headerSection,
-                      {
-                        opacity: contentBounceAnim,
-                        transform: [
-                          {
-                            translateY: contentBounceAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [30, 0]
-                            })
-                          }
-                        ]
-                      }
-                    ]}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={refreshing}
+                      onRefresh={() => {
+                        // Add refresh logic here if needed
+                      }}
+                      tintColor={theme === "light" ? "#37a4c8" : "#4db8d4"}
+                    />
+                  }
                 >
                   <View style={styles.headerSection}>
                     <TouchableOpacity
                       style={[styles.airportSelector, {
                         backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                        borderColor: "#37a4c8",
-                        marginBottom: 16
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
                       }]}
                       onPress={handleAirportSelectorPress}
                     >
                       <View style={styles.airportSelectorContent}>
-                        <Feather name="airplay" size={20} color="#37a4c8" />
+                        <Ionicons name="airplane" size={20} color="#37a4c8" />
                         <Text style={[styles.airportSelectorText, { 
-                          color: theme === "light" ? "#000000" : "#e4fbfe" 
+                          color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                         }]}>
                           {selectedAirport ? selectedAirport.name : "Select Airport"}
                         </Text>
-                        <Feather name="chevron-down" size={20} color="#37a4c8" />
+                        <Ionicons name="chevron-down" size={20} color="#37a4c8" />
                       </View>
                     </TouchableOpacity>
 
-                      {/* Search Bar */}
-                      <View style={[styles.searchContainer, {
-                      backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
-                      borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
-                      }]}>
-                      <Feather name="search" size={20} color={theme === "light" ? "#64748B" : "#37a4c8"} />
-                        <TextInput
-                          ref={searchInputRef}
-                          style={[styles.searchInput, {
-                          color: theme === "light" ? "#1E293B" : "#e4fbfe"
-                          }]}
-                          placeholder="Search events and travelers..."
-                        placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
-                          value={searchQuery}
-                          onChangeText={setSearchQuery}
-                          onFocus={handleSearchFocus}
-                          onBlur={handleSearchBlur}
-                        keyboardAppearance={theme === "light" ? "light" : "dark"}
-                        />
-                        {searchQuery ? (
-                          <TouchableOpacity onPress={handleSearchClear}>
-                          <Feather name="x" size={20} color={theme === "light" ? "#64748B" : "#37a4c8"} />
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
+                    <View style={styles.searchContainer}>
+                      <Ionicons name="search" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.searchIcon} />
+                      <TextInput
+                        ref={searchInputRef}
+                        style={[
+                          styles.searchInput,
+                          {
+                            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                            color: theme === "light" ? "#0F172A" : "#e4fbfe",
+                            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                          }
+                        ]}
+                        placeholder="Search events and travelers..."
+                        placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        onFocus={handleSearchFocus}
+                        onBlur={handleSearchBlur}
+                      />
+                      {searchQuery ? (
+                        <TouchableOpacity 
+                          onPress={handleSearchClear}
+                          style={styles.searchClearButton}
+                        >
+                          <Ionicons name="close" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
-                  </Animated.View>
+                  </View>
 
-                    {/* Events Section */}
-                    <Animated.View 
-                      style={[
-                        styles.sectionHeader,
-                        {
-                          transform: [{
-                            translateY: 0
-                          }]
+                  {/* Search Results Summary */}
+                  {isActivelySearching && (
+                    <View style={styles.searchResultsSummary}>
+                      <Text style={[styles.searchResultsText, { 
+                        color: theme === "light" ? "#64748B" : "#94A3B8" 
+                      }]}>
+                        Found {filteredEvents.length + filteredUsers.length} results for "{searchQuery}"
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Events Section */}
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.headerLeft}>
+                      <Text style={[styles.headerText, { 
+                        color: theme === "light" ? "#0F172A" : "#e4fbfe"
+                      }]}>
+                        {isActivelySearching ? "Search Results" : "Explore Events"}
+                      </Text>
+                      <Text style={[styles.sectionSubtitle, { 
+                        color: theme === "light" ? "#475569" : "#94A3B8" 
+                      }]}>
+                        {isActivelySearching 
+                          ? `${filteredEvents.length} events found`
+                          : `${filteredEvents.length} events available`
                         }
-                      ]}
-                    >
-                      <View style={styles.headerLeft}>
-                        <Text style={[styles.headerText, { 
-                          color: theme === "light" ? "#0F172A" : "#e4fbfe"
-                        }]}>
-                          Explore Events
-                        </Text>
-                        <Text style={[styles.sectionSubtitle, { 
-                          color: theme === "light" ? "#475569" : "#94A3B8" 
-                        }]}>
-                            {filteredEvents.length} events available
-                        </Text>
-                      </View>
+                      </Text>
+                    </View>
+                    {!isActivelySearching && (
                       <TouchableOpacity
                         style={[styles.headerButton, { 
                           backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                          borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
                         }]}
                         onPress={() => router.push("/eventCreation")}
                         activeOpacity={0.7}
                       >
                         <MaterialIcons name="add" size={24} color={theme === "light" ? "#0F172A" : "#37a4c8"} />
                       </TouchableOpacity>
-                    </Animated.View>
+                    )}
+                  </View>
 
-                  <Animated.View 
-                    style={[
-                      styles.gridContent,
-                      {
-                        opacity: contentBounceAnim,
-                        transform: [
-                          {
-                            translateY: contentBounceAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [40, 0]
-                            })
-                          }
-                        ]
-                      }
-                    ]}
-                  >
-                      {filteredEvents.length > 0 ? (
-                      <View style={styles.eventsWrapper}>
-                        <View style={styles.gridContainer}>
-                          {/* Initial 4 events */}
-                            {filteredEvents.slice(0, 4).map((item, index) => (
-                            <View key={`event-${item.id}`} style={{ width: CARD_WIDTH, marginBottom: 16 }}>
-                              <TouchableOpacity
-                                style={[styles.eventCard, { 
-                                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                                  borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
-                                  shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
-                                }]}
-                                onPress={() => router.push("/event/" + item.id)}
-                              >
-                                <EventCard item={item} index={index} />
-                              </TouchableOpacity>
-                            </View>
-                          ))}
-                          
-                          {/* Additional events with fade animation */}
-                            {filteredEvents.slice(4).map((item, index) => (
-                            <Animated.View 
-                              key={`additional-event-${item.id}`}
-                              style={{
-                                opacity: additionalEventsAnim,
-                                display: expandedEvents ? 'flex' : 'none',
-                                width: CARD_WIDTH,
-                                marginBottom: 16,
-                              }}
-                            >
-                              <TouchableOpacity
-                                style={[styles.eventCard, { 
-                                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                                  borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
-                                  shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
-                                }]}
-                                onPress={() => router.push("/event/" + item.id)}
-                            >
-                              <EventCard item={item} index={index + 4} />
-                              </TouchableOpacity>
-                            </Animated.View>
-                          ))}
-                        </View>
-                        
-                          {filteredEvents.length > 4 && (
-                          <Animated.View 
-                            style={[
-                              styles.toggleButtonContainer,
-                              {
-                                transform: [{
-                                  translateY: buttonPositionAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [0, 16]
-                                  })
-                                }]
-                              }
-                            ]}
+                  <View style={styles.gridContent}>
+                    {filteredEvents.length > 0 ? (
+                      <View>
+                        {filteredEvents.slice(0, visibleEventsCount).map((item, index) => (
+                          <TouchableOpacity
+                            key={`event-${item.id}`}
+                            style={[styles.eventCard, { 
+                              backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
+                              shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+                            }]}
+                            onPress={() => router.push("/event/" + item.id)}
+                            activeOpacity={0.7}
                           >
-                            <TouchableOpacity
-                              style={[styles.toggleButton, {
-                                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                borderColor: "#37a4c8"
-                              }]}
-                              onPress={handleToggleEvents}
-                              activeOpacity={0.7}
-                            >
-                              <View style={styles.toggleButtonContent}>
-                                <Text style={[styles.toggleButtonText, { color: "#37a4c8" }]}>
-                                    {expandedEvents ? "Show Less" : `Show ${filteredEvents.length - 4} More`}
-                                </Text>
-                                <MaterialIcons 
-                                  name={expandedEvents ? "expand-less" : "expand-more"}
-                                  size={24} 
-                                  color="#37a4c8" 
-                                />
+                            <View style={styles.eventCardContent}>
+                              <View style={styles.eventHeader}>
+                                <View style={styles.eventMainInfo}>
+                                  <Text style={[styles.eventTitle, { 
+                                    color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                                  }]} numberOfLines={1}>
+                                    {item.name}
+                                  </Text>
+                                  <View style={styles.organizerContainer}>
+                                    <Ionicons name="person" size={14} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                                    <Text style={[styles.organizerText, { 
+                                      color: theme === "light" ? "#64748B" : "#94A3B8" 
+                                    }]}>
+                                      {item.organizerName}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <View style={styles.eventStatus}>
+                                  {item.startTime ? (
+                                    <View style={[styles.statusBadge, { backgroundColor: '#37a4c8' }]}>
+                                      <Text style={styles.statusText}>
+                                        {(() => {
+                                          const now = new Date();
+                                          const diff = item.startTime.getTime() - now.getTime();
+                                          if (diff <= 0) return 'Now';
+                                          const hours = Math.floor(diff / (1000 * 60 * 60));
+                                          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                                          if (hours > 0) return `${hours}h`;
+                                          return `${minutes}m`;
+                                        })()}
+                                      </Text>
+                                    </View>
+                                  ) : (
+                                    <View style={[styles.statusBadge, { backgroundColor: '#37a4c8' }]}>
+                                      <Text style={styles.statusText}>TBD</Text>
+                                    </View>
+                                  )}
+                                </View>
                               </View>
-                            </TouchableOpacity>
-                          </Animated.View>
+                              
+                              <View style={styles.eventDescriptionContainer}>
+                                <Text style={[styles.eventDescription, { 
+                                  color: theme === "light" ? "#64748B" : "#94A3B8" 
+                                }]} numberOfLines={2}>
+                                  {item.description}
+                                </Text>
+                              </View>
+
+                              <View style={styles.eventMetaContainer}>
+                                <View style={styles.metaItem}>
+                                  <Ionicons name="airplane" size={16} color="#37a4c8" />
+                                  <Text style={[styles.metaText, { color: "#37a4c8" }]}>
+                                    {item.airportCode}
+                                  </Text>
+                                </View>
+                                <View style={styles.metaItem}>
+                                  <Ionicons name="people" size={16} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                                  <Text style={[styles.metaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                                    {item.attendees?.length || 0}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                        
+                        {filteredEvents.length > visibleEventsCount && (
+                          <TouchableOpacity
+                            style={[styles.loadMoreButton, {
+                              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                            }]}
+                            onPress={handleLoadMoreEvents}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.loadMoreButtonContent}>
+                              <Text style={[styles.loadMoreText, { color: "#37a4c8" }]}>
+                                Load More
+                              </Text>
+                              <MaterialIcons name="expand-more" size={20} color="#37a4c8" />
+                            </View>
+                          </TouchableOpacity>
                         )}
                       </View>
                     ) : (
-                      <View style={[styles.emptyContainer, { display: isSearching ? 'none' : 'flex' }]}>
-                        <MaterialIcons name="event-busy" size={48} color="#37a4c8" style={styles.emptyIcon} />
-                          <Text style={styles.emptyText}>
-                            No events found at this airport
+                      <View style={[styles.stateContainer, { display: isSearching ? 'none' : 'flex' }]}>
+                        <Ionicons 
+                          name={isActivelySearching ? "search" : "calendar"} 
+                          size={48} 
+                          color={theme === "light" ? "#64748B" : "#94A3B8"} 
+                          style={styles.emptyIcon} 
+                        />
+                        <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                            {isActivelySearching 
+                              ? "No events match your search"
+                              : "No events found at this airport"
+                            }
                           </Text>
-                          {!isSearching && (
+                          {!isActivelySearching && !isSearching && (
                         <TouchableOpacity
                           style={[styles.createEventButton, {
                             backgroundColor: theme === "light" ? "#f8f9fa" : "#000000",
-                            borderColor: "#37a4c8"
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
                           }]}
                           onPress={() => router.push("/eventCreation")}
                         >
@@ -1147,71 +1158,50 @@ export default function Explore() {
                           )}
                       </View>
                     )}
-                  </Animated.View>
+                  </View>
 
                   {/* Users Section */}
-                  <Animated.View 
-                    style={[
-                      styles.sectionHeader,
-                      {
-                        transform: [{
-                          translateY: 0
-                        }]
-                      }
-                    ]}
-                  >
+                  <View style={styles.sectionHeader}>
                     <View style={styles.headerLeft}>
                       <Text style={[styles.headerText, { 
                         color: theme === "light" ? "#0F172A" : "#e4fbfe"
                       }]}>
-                        Nearby Travelers
+                        {isActivelySearching ? "Search Results" : "Nearby Travelers"}
                       </Text>
                       <Text style={[styles.sectionSubtitle, { 
                         color: theme === "light" ? "#475569" : "#94A3B8" 
                       }]}>
-                        {filteredUsers.length} travelers available
+                        {isActivelySearching 
+                          ? `${filteredUsers.length} travelers found`
+                          : `${filteredUsers.length} travelers available`
+                        }
                       </Text>
                     </View>
-                  </Animated.View>
+                  </View>
 
-                  <Animated.View 
-                    style={[
-                      styles.gridContent,
-                      {
-                        opacity: contentBounceAnim,
-                        transform: [
-                          {
-                            translateY: contentBounceAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [40, 0]
-                            })
-                          }
-                        ]
-                      }
-                    ]}
-                  >
+                  <View style={styles.gridContent}>
                     {filteredUsers.length > 0 ? (
-                      <View style={styles.usersWrapper}>
-                        {/* Initial 3 users */}
-                        {filteredUsers.slice(0, 3).map((user, index) => (
+                      <View>
+                        {filteredUsers.slice(0, visibleUsersCount).map((user, index) => (
                           <TouchableOpacity
                             key={`user-${user.id}`}
                             style={[styles.userCard, { 
                               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
                               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
                             }]}
                             onPress={() => router.push(`/profile/${user.id}`)}
                           >
                             <View style={styles.userCardContent}>
                               <View style={styles.userHeader}>
-                                <Image
-                                  source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
+                                <UserAvatar
+                                  user={user}
+                                  size={48}
                                   style={styles.profileImage}
                                 />
                                 <View style={styles.userMainInfo}>
                                   <Text style={[styles.userName, { 
-                                    color: theme === "light" ? "#000000" : "#e4fbfe" 
+                                    color: theme === "light" ? "#0F172A" : "#e4fbfe" 
                                   }]}>
                                     {user.name}
                                   </Text>
@@ -1226,95 +1216,9 @@ export default function Explore() {
                                 </View>
                               </View>
                               
-                              <View style={styles.userBioContainer}>
-                                <Text style={[styles.userBio, { 
-                                  color: theme === "light" ? "#64748B" : "#94A3B8" 
-                                }]} 
-                                numberOfLines={2}>
-                                  {user.bio || "No bio available"}
-                                </Text>
-                              </View>
-
-                              <View style={styles.userInterestsContainer}>
-                                {user.interests?.slice(0, 3).map((interest: string, index: number) => (
-                                  <View 
-                                    key={index} 
-                                    style={[styles.interestTag, {
-                                      backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                                      borderColor: "#37a4c8"
-                                    }]}
-                                  >
-                                    <Text style={[styles.interestText, { color: "#37a4c8" }]}>
-                                      {interest}
-                                    </Text>
-                                  </View>
-                                ))}
-                              </View>
-
-                              <View style={styles.userMoodContainer}>
-                                <View style={[styles.moodIndicator, { backgroundColor: "#10B981" }]} />
-                                <Text style={[styles.moodText, { 
-                                  color: theme === "light" ? "#64748B" : "#94A3B8" 
-                                }]}>
-                                  {user.moodStatus || "Available"}
-                                </Text>
-                              </View>
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-
-                        {/* Additional users with fade animation */}
-                        {filteredUsers.slice(3).map((user, index) => (
-                          <Animated.View 
-                            key={`additional-user-${user.id}`}
-                            style={{
-                              opacity: additionalUsersAnim,
-                              display: expandedUsers ? 'flex' : 'none',
-                              marginBottom: 16,
-                            }}
-                          >
-                            <TouchableOpacity
-                              style={[styles.userCard, { 
-                                backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                                borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
-                                shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
-                              }]}
-                              onPress={() => router.push(`/profile/${user.id}`)}
-                            >
-                              <View style={styles.userCardContent}>
-                                <View style={styles.userHeader}>
-                                  <Image
-                                    source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
-                                    style={styles.profileImage}
-                                  />
-                                  <View style={styles.userMainInfo}>
-                                    <Text style={[styles.userName, { 
-                                      color: theme === "light" ? "#000000" : "#e4fbfe" 
-                                    }]}>
-                                      {user.name}
-                                    </Text>
-                                    <View style={styles.userDetails}>
-                                      <Text style={[styles.userAge, { color: "#37a4c8" }]}>
-                                        {user.age} years old
-                                      </Text>
-                                      <Text style={[styles.userLocation, { color: "#37a4c8" }]}>
-                                        • {user.airportCode}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                </View>
-                                
-                                <View style={styles.userBioContainer}>
-                                  <Text style={[styles.userBio, { 
-                                    color: theme === "light" ? "#64748B" : "#94A3B8" 
-                                  }]} 
-                                  numberOfLines={2}>
-                                    {user.bio || "No bio available"}
-                                  </Text>
-                                </View>
-
+                              {user.interests && user.interests.length > 0 && (
                                 <View style={styles.userInterestsContainer}>
-                                  {user.interests?.slice(0, 3).map((interest: string, index: number) => (
+                                  {user.interests.slice(0, 3).map((interest: string, index: number) => (
                                     <View 
                                       key={index} 
                                       style={[styles.interestTag, {
@@ -1328,83 +1232,125 @@ export default function Explore() {
                                     </View>
                                   ))}
                                 </View>
+                              )}
 
-                                <View style={styles.userMoodContainer}>
-                                  <View style={[styles.moodIndicator, { backgroundColor: "#10B981" }]} />
-                                  <Text style={[styles.moodText, { 
-                                    color: theme === "light" ? "#64748B" : "#94A3B8" 
-                                  }]}>
-                                    {user.moodStatus || "Available"}
-                                  </Text>
-                                </View>
-                              </View>
-                            </TouchableOpacity>
-                          </Animated.View>
-                        ))}
-
-                        {filteredUsers.length > 3 && (
-                          <Animated.View 
-                            style={[
-                              styles.toggleButtonContainer,
-                              {
-                                transform: [{
-                                  translateY: usersButtonPositionAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [0, 16]
-                                  })
-                                }]
-                              }
-                            ]}
-                          >
-                            <TouchableOpacity
-                              style={[styles.toggleButton, {
-                                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                borderColor: "#37a4c8"
-                              }]}
-                              onPress={handleToggleUsers}
-                              activeOpacity={0.7}
-                            >
-                              <View style={styles.toggleButtonContent}>
-                                <Text style={[styles.toggleButtonText, { color: "#37a4c8" }]}>
-                                  {expandedUsers ? "Show Less" : `Show ${filteredUsers.length - 3} More`}
+                              <View style={styles.userMoodContainer}>
+                                <View style={[styles.moodIndicator, { backgroundColor: "#10B981" }]} />
+                                <Text style={[styles.moodText, { 
+                                  color: theme === "light" ? "#64748B" : "#94A3B8" 
+                                }]}>
+                                  {user.moodStatus || "Available"}
                                 </Text>
-                                <MaterialIcons 
-                                  name={expandedUsers ? "expand-less" : "expand-more"}
-                                  size={24} 
-                                  color="#37a4c8" 
-                                />
                               </View>
-                            </TouchableOpacity>
-                          </Animated.View>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                        
+                        {filteredUsers.length > visibleUsersCount && (
+                          <TouchableOpacity
+                            style={[styles.loadMoreButton, {
+                              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                            }]}
+                            onPress={handleLoadMoreUsers}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.loadMoreButtonContent}>
+                              <Text style={[styles.loadMoreText, { color: "#37a4c8" }]}>
+                                Load More
+                              </Text>
+                              <MaterialIcons name="expand-more" size={20} color="#37a4c8" />
+                            </View>
+                          </TouchableOpacity>
                         )}
                       </View>
                     ) : (
-                      <View style={styles.emptyContainer}>
-                        <MaterialIcons name="people" size={48} color="#37a4c8" style={styles.emptyIcon} />
-                        <Text style={styles.emptyText}>
-                          {isSearching ? "No travelers match your search" : "No travelers found at this airport"}
+                      <View style={styles.stateContainer}>
+                        <Ionicons 
+                          name={isActivelySearching ? "search" : "people"} 
+                          size={48} 
+                          color={theme === "light" ? "#64748B" : "#94A3B8"} 
+                          style={styles.emptyIcon} 
+                        />
+                        <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                          {isActivelySearching 
+                            ? "No travelers match your search"
+                            : "No travelers found at this airport"
+                          }
                         </Text>
                       </View>
                     )}
-                  </Animated.View>
+                  </View>
                 </ScrollView>
               </View>
             )}
           </View>
         </Animated.View>
-      </SafeAreaWrapper>
-    </LinearGradient>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+    marginBottom: -20,
+  },
+  container: {
+    flex: 1,
+    padding: 16,
   },
   headerSection: {
-    paddingHorizontal: 16,
+    marginBottom: 24,
+    paddingHorizontal: 4,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  searchContainer: {
+    position: 'relative',
     marginBottom: 16,
-    marginTop: 8,
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 16,
+    top: 18,
+    zIndex: 1,
+  },
+  searchInput: {
+    borderRadius: 16,
+    paddingHorizontal: 48,
+    paddingVertical: 16,
+    fontSize: 16,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+  },
+  stateContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 18,
+    textAlign: "center",
+    marginBottom: 8,
+    fontWeight: '600',
   },
   headerTop: {
     flexDirection: 'row',
@@ -1419,15 +1365,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginRight: 12,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  listContent: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: -20,
-    backgroundColor: 'transparent',
+    paddingBottom: 100,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1435,29 +1375,183 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
     paddingHorizontal: 16,
-    marginTop: 24,
+    marginTop: 8,
   },
   gridContent: {
     paddingHorizontal: 16,
     marginTop: 0,
     marginBottom: 16
   },
-  listContent: {
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    elevation: 2,
+    shadowColor: "#37a4c8",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    marginLeft: 8,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  usersListContent: {
     paddingHorizontal: 16,
     paddingBottom: 100,
+    marginTop: 8
+  },
+  userCard: {
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    elevation: 6,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  userCardContent: {
+    padding: 16,
+    flex: 1,
+  },
+  userHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+    height: 48,
+  },
+  profileImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 0,
+  },
+  userMainInfo: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    marginLeft: 12,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  userDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  userAge: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  userLocation: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  userInterestsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 12,
+    gap: 6,
+  },
+  interestTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  interestText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  userMoodContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  moodIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  moodText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  toggleButtonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingVertical: 16,
+    backgroundColor: 'transparent',
+    zIndex: 1,
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  toggleButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  toggleButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  headerLeft: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    marginTop: 4,
+    marginBottom: 12,
+    fontWeight: "500",
+    color: "#64748B",
   },
   eventCard: {
-    borderRadius: 16,
-    elevation: 4,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    borderRadius: 20,
+    marginBottom: 12,
     borderWidth: 1,
-    overflow: "hidden",
-    transform: [{ scale: 1 }],
-    width: '100%',
-    height: 220,
-    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    position: 'relative',
+    elevation: 6,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  eventCardContent: {
+    padding: 16,
+    flex: 1,
+    justifyContent: 'center',
   },
   eventDetails: {
     padding: 16,
@@ -1465,32 +1559,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   eventTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
-    marginBottom: 6,
-    letterSpacing: 0.3,
-    lineHeight: 22,
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   organizerContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
   },
   organizerText: {
-    fontSize: 13,
-    color: "#37a4c8",
+    fontSize: 14,
     marginLeft: 6,
-    fontWeight: "600",
-    letterSpacing: 0.2,
+    fontWeight: "500",
   },
   eventDescription: {
-    fontSize: 13,
-    color: "#37a4c8",
-    lineHeight: 18,
-    marginBottom: 8,
-    letterSpacing: 0.2,
-    flex: 1,
-    minHeight: 36,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '400',
   },
   metaContainer: {
     flexDirection: "row",
@@ -1502,18 +1588,11 @@ const styles = StyleSheet.create({
   metaItem: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: "center",
   },
   metaText: {
-    fontSize: 12,
-    marginLeft: 6,
-    fontWeight: "600",
-    letterSpacing: 0.2,
+    fontSize: 14,
+    marginLeft: 4,
+    fontWeight: "500",
   },
   metaIcon: {
     marginRight: 4,
@@ -1529,125 +1608,9 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     letterSpacing: 0.2,
   },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  usersListContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 100,
-    marginTop: 8
-  },
-  userCard: {
-    borderRadius: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  userCardContent: {
-    padding: 16,
-  },
-  userHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  profileImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 12,
-  },
-  userMainInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  userDetails: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  userAge: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  userLocation: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  userBioContainer: {
-    marginBottom: 12,
-  },
-  userBio: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  userInterestsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  interestTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  interestText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  userMoodContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(55, 164, 200, 0.2)',
-  },
-  moodIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  moodText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  headerLeft: {
-    flex: 1,
-    paddingRight: 16,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    marginTop: 4,
-    fontWeight: "500",
-    color: "#64748B",
-  },
-  emptyIcon: {
-    marginBottom: 16,
-  },
-  createEventButton: {
-    marginTop: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  createEventText: {
-    fontSize: 16,
-    fontWeight: '600',
+  usersWrapper: {
+    position: 'relative',
+    minHeight: 200,
   },
   scrollView: {
     flex: 1,
@@ -1659,7 +1622,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 16,
     paddingBottom: 80,
     width: '100%',
   },
@@ -1697,46 +1659,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     minHeight: 200,
   },
-  toggleButtonContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingVertical: 16,
-    backgroundColor: 'transparent',
-    zIndex: 1,
-  },
-  toggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    backgroundColor: 'transparent',
-  },
-  toggleButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  toggleButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    padding: 0,
-  },
   searchResultsCount: {
     fontSize: 14,
     fontWeight: '500',
@@ -1748,7 +1670,8 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
   airportSelector: {
-    marginTop: 12,
+    marginTop: 8,
+    marginBottom: 12,
     borderRadius: 12,
     borderWidth: 1,
     padding: 12,
@@ -1810,31 +1733,38 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  expandedContent: {
-    overflow: 'hidden',
-    marginTop: 12,
-  },
-  expandedDetails: {
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(55, 164, 200, 0.2)',
-  },
-  viewEventButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
-  viewEventText: {
-    fontSize: 14,
+  eventMainInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  eventStatus: {
+    alignItems: 'flex-end',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '600',
+  },
+  eventDescriptionContainer: {
+    marginBottom: 16,
+  },
+  eventMetaContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  eventsListContent: {
+    paddingBottom: 20,
   },
   emptyContainer: {
     flex: 1,
@@ -1843,29 +1773,17 @@ const styles = StyleSheet.create({
     padding: 32,
     marginTop: 24,
   },
-  emptyText: {
-    fontSize: 18,
-    color: '#37a4c8',
-    textAlign: 'center',
-    fontWeight: "500",
-    letterSpacing: 0.3,
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+  createEventButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
     borderWidth: 1,
-    elevation: 2,
-    shadowColor: "#37a4c8",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    marginLeft: 8,
+    alignItems: 'center',
+  },
+  createEventText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -1945,9 +1863,24 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: "500",
   },
-  usersWrapper: {
-    position: 'relative',
-    minHeight: 200,
-    paddingBottom: 80,
+  loadMoreButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  searchClearButton: {
+    position: 'absolute',
+    right: 16,
+    top: 18,
+    zIndex: 1,
+  },
+  searchResultsSummary: {
+    padding: 16,
+    marginBottom: 16,
+  },
+  searchResultsText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 }); 

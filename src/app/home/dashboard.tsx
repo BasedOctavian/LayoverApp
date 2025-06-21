@@ -549,7 +549,7 @@ export default function Dashboard() {
     { 
       icon: <MaterialIcons name="event" size={24} color="#38a5c9" />, 
       title: "Events", 
-      screen: "home",
+      screen: "eventScreen",
       description: "Browse all events at your airport"
     },
     { 

@@ -35,6 +35,8 @@ import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
 import { DocumentData } from "firebase/firestore";
 import { ThemeContext } from "../../context/ThemeContext";
 import useNotificationCount from "../../hooks/useNotificationCount";
+import StatusSheet, { presetStatuses, PresetStatus } from "../../components/StatusSheet";
+import UserAvatar from "../../components/UserAvatar";
 
 interface UserData {
   name: string;
@@ -185,6 +187,12 @@ const Profile = () => {
   const buttonScaleAnim = useRef(new Animated.Value(1)).current;
   const buttonOpacityAnim = useRef(new Animated.Value(1)).current;
   const loadingRotationAnim = useRef(new Animated.Value(0)).current;
+
+  // StatusSheet state and animations
+  const [showStatusSheet, setShowStatusSheet] = useState(false);
+  const sheetAnim = useState(new Animated.Value(0))[0];
+  const [customStatus, setCustomStatus] = useState("");
+  const [updatingMood, setUpdatingMood] = useState(false);
 
   // Add dynamic font size calculation
   const getDynamicFontSize = (text: string, baseSize: number = 12) => {
@@ -814,8 +822,9 @@ const Profile = () => {
                     }]}
                     onPress={() => router.push(`/chat/${connection.id}`)}
                   >
-                    <Image
-                      source={{ uri: connection.otherUser.profilePicture || "https://via.placeholder.com/150" }}
+                    <UserAvatar
+                      user={connection.otherUser}
+                      size={50}
                       style={styles.connectionAvatar}
                     />
                     <View style={styles.connectionInfo}>
@@ -1443,6 +1452,43 @@ const Profile = () => {
     );
   };
 
+  // Handle mood status update
+  const handleUpdateMoodStatus = async (status: string) => {
+    if (!userId) return;
+    setUpdatingMood(true);
+    try {
+      const updatedData = {
+        moodStatus: status,
+        updatedAt: serverTimestamp(),
+      };
+      await updateDoc(doc(db, "users", userId), updatedData);
+      
+      // Update local state
+      setUserData((prev: UserData | null) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          moodStatus: status
+        };
+      });
+    } catch (error) {
+      console.error("Error updating mood status:", error);
+      Alert.alert("Error", "Failed to update mood status. Please try again.");
+    } finally {
+      setUpdatingMood(false);
+    }
+  };
+
+  // Toggle status sheet
+  const toggleStatusSheet = () => {
+    Animated.spring(sheetAnim, {
+      toValue: showStatusSheet ? 0 : 1,
+      useNativeDriver: true,
+      bounciness: 8,
+    }).start();
+    setShowStatusSheet(!showStatusSheet);
+  };
+
   if (authLoading || isLoadingProfile) {
     return (
       <SafeAreaView style={styles.flex} edges={["bottom"]}>
@@ -1532,8 +1578,9 @@ const Profile = () => {
                     <ActivityIndicator size="large" color={theme === "light" ? "#000000" : "#ffffff"} />
                   </View>
                 ) : (
-                  <Image
-                    source={{ uri: userData?.profilePicture || "https://via.placeholder.com/150" }}
+                  <UserAvatar
+                    user={userData || { name: 'User', profilePicture: null }}
+                    size={128}
                     style={[styles.profileImage, { borderColor: "#37a4c8" }]}
                   />
                 )}
@@ -1701,15 +1748,31 @@ const Profile = () => {
                       {userData?.age} years old
                     </Animated.Text>
                   </View>
-                  <View style={[styles.moodContainer, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
-                    borderColor: "#37a4c8"
-                  }]}>
-                    <MaterialIcons name="mood" size={16} color="#37a4c8" />
-                    <Animated.Text style={[styles.moodText, { color: "#37a4c8" }]} numberOfLines={1} ellipsizeMode="tail">
-                      {userData?.moodStatus || "No status set"}
-                    </Animated.Text>
-                  </View>
+                  {id === authUser?.uid ? (
+                    <TouchableOpacity
+                      style={[styles.moodContainer, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
+                        borderColor: "#37a4c8"
+                      }]}
+                      onPress={toggleStatusSheet}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="mood" size={16} color="#37a4c8" />
+                      <Animated.Text style={[styles.moodText, { color: "#37a4c8" }]} numberOfLines={1} ellipsizeMode="tail">
+                        {userData?.moodStatus || "No status set"}
+                      </Animated.Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.moodContainer, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
+                      borderColor: "#37a4c8"
+                    }]}>
+                      <MaterialIcons name="mood" size={16} color="#37a4c8" />
+                      <Animated.Text style={[styles.moodText, { color: "#37a4c8" }]} numberOfLines={1} ellipsizeMode="tail">
+                        {userData?.moodStatus || "No status set"}
+                      </Animated.Text>
+                    </View>
+                  )}
                 </View>
               </Animated.View>
             </Animated.View>
@@ -1839,7 +1902,7 @@ const Profile = () => {
               activeOpacity={0.8}
               onPress={() => router.push('/profile/editProfile')}
             >
-              <MaterialIcons name="edit" size={24} color="#e4fbfe" />
+              <MaterialIcons name="edit" size={24} color={theme === "light" ? "#ffffff" : "#ffffff"} />
             </TouchableOpacity>
           </Animated.View>
         ) : null}
@@ -1913,11 +1976,12 @@ const Profile = () => {
                       }}
                       activeOpacity={0.7}
                     >
-                      <Image
-                        source={{ uri: connection.otherUser.profilePicture || "https://via.placeholder.com/150" }}
-                        style={styles.connectionItemAvatar}
+                      <UserAvatar
+                        user={connection.otherUser}
+                        size={50}
+                        style={styles.connectionAvatar}
                       />
-                      <View style={styles.connectionItemInfo}>
+                      <View style={styles.connectionInfo}>
                         <Text style={[styles.connectionItemName, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
                           {connection.otherUser.name}
                         </Text>
@@ -1951,6 +2015,21 @@ const Profile = () => {
             </Animated.View>
           </TouchableOpacity>
         </Modal>
+
+        {/* Status Sheet Component */}
+        {showStatusSheet && (
+          <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.2)', zIndex: 1 }]} />
+        )}
+        <View style={{ zIndex: 2 }}>
+          <StatusSheet
+            showStatusSheet={showStatusSheet}
+            sheetAnim={sheetAnim}
+            customStatus={customStatus}
+            setCustomStatus={setCustomStatus}
+            handleUpdateMoodStatus={handleUpdateMoodStatus}
+            toggleStatusSheet={toggleStatusSheet}
+          />
+        </View>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -2294,7 +2373,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#37a4c8",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -2770,6 +2849,20 @@ const styles = StyleSheet.create({
     elevation: 4,
     minWidth: 180,
     height: 44,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
   },
 });
 

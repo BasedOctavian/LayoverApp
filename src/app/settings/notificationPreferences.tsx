@@ -404,7 +404,7 @@ export default function NotificationPreferences() {
 
   return (
     <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar onProfilePress={() => router.push(`/profile/${auth.currentUser?.uid}`)} />
+      <TopBar showBackButton={true} onProfilePress={() => router.push(`/profile/${auth.currentUser?.uid}`)} />
       <SafeAreaView style={[styles.container]} edges={["bottom"]}>
         <ScrollView 
           style={styles.scrollView}

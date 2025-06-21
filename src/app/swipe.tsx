@@ -8,8 +8,13 @@ import {
   Dimensions,
   TouchableOpacity,
   Alert,
+  StatusBar,
+  ScrollView,
+  TextInput,
+  Modal,
+  Pressable,
 } from "react-native";
-import { MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { MaterialIcons, Ionicons, FontAwesome5, Feather } from "@expo/vector-icons";
 import useUsers from "./../hooks/useUsers";
 import { arrayUnion, doc, onSnapshot, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { LinearGradient } from "expo-linear-gradient";
@@ -42,6 +47,7 @@ import {
 import { ThemeContext } from "../context/ThemeContext";
 import TopBar from "../components/TopBar";
 import useNotificationCount from "../hooks/useNotificationCount";
+import UserAvatar from "../components/UserAvatar";
 
 interface TravelHistory {
   id: string;
@@ -414,10 +420,10 @@ const SwipeCard = React.memo(({
             >
               <View style={styles.imageContainer}> 
                 <Animated.View style={[styles.profileImageContainer, imageStyle]}>
-                  <Image
-                    source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
+                  <UserAvatar
+                    user={user}
+                    size={400}
                     style={styles.profileImage}
-                    onLoad={() => setImageLoaded(true)}
                   />
                 </Animated.View>
                 <LinearGradient
@@ -1359,8 +1365,9 @@ const Swipe = () => {
         <View style={[styles.cardContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
           {/* Profile Image Section */}
           <View style={styles.imageContainer}>
-            <Image
-              source={{ uri: user.profilePicture || "https://via.placeholder.com/150" }}
+            <UserAvatar
+              user={user}
+              size={400}
               style={styles.profileImage}
             />
             <LinearGradient
@@ -1432,11 +1439,9 @@ const Swipe = () => {
     );
   };
 
-  const buttonStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: buttonScale.value }],
-    };
-  });
+  const buttonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: buttonScale.value }],
+  }));
 
   const resetSwipeHistory = async () => {
     try {
