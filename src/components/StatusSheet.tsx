@@ -334,7 +334,7 @@ export default function StatusSheet({
                 activeOpacity={0.7}
               >
                 <Text style={styles.statusEmoji}>{status.emoji}</Text>
-                <Text style={styles.statusText}>{status.label}</Text>
+                <Text style={styles.statusText} numberOfLines={3} ellipsizeMode="tail">{status.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -432,24 +432,29 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "space-between",
     marginBottom: 16,
+    gap: 8,
   },
   statusChip: {
     width: "48%",
-    padding: 12,
+    padding: 16,
     borderRadius: 12,
     marginBottom: 8,
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    minHeight: 80,
   },
   statusEmoji: {
-    fontSize: 18,
+    fontSize: 24,
+    marginBottom: 8,
   },
   statusText: {
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "600",
+    textAlign: 'center',
+    lineHeight: 18,
+    flexShrink: 1,
   },
   customStatusContainer: {
     flexDirection: "row",

@@ -65,6 +65,17 @@ type NearbyUser = {
   goals?: string[];
   pronouns?: string;
   lastLogin?: any;
+  availabilitySchedule?: {
+    [key: string]: {
+      start: string;
+      end: string;
+    };
+  };
+  linkRatingScore?: {
+    average: number;
+    count: number;
+  };
+  currentCity?: string;
 };
 
 interface UserData {
@@ -80,6 +91,17 @@ interface UserData {
   interests?: string[];
   goals?: string[];
   pronouns?: string;
+  availabilitySchedule?: {
+    [key: string]: {
+      start: string;
+      end: string;
+    };
+  };
+  linkRatingScore?: {
+    average: number;
+    count: number;
+  };
+  currentCity?: string;
 }
 
 function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
@@ -93,6 +115,76 @@ function haversineDistance(lat1: number, long1: number, lat2: number, long2: num
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
+
+// Helper function to check if user is currently available
+const isUserAvailable = (availabilitySchedule: any): boolean => {
+  if (!availabilitySchedule) return false;
+  
+  const now = new Date();
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const currentDay = days[now.getDay()];
+  const currentTime = now.toLocaleTimeString('en-US', { 
+    hour12: false, 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+  
+  const todaySchedule = availabilitySchedule[currentDay];
+  if (!todaySchedule) return false;
+  
+  const { start, end } = todaySchedule;
+  return currentTime >= start && currentTime <= end;
+};
+
+// Helper function to get availability time range for today
+const getTodayAvailability = (availabilitySchedule: any): string | null => {
+  if (!availabilitySchedule) return null;
+  
+  const now = new Date();
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const currentDay = days[now.getDay()];
+  const todaySchedule = availabilitySchedule[currentDay];
+  
+  if (!todaySchedule) return null;
+  
+  const { start, end } = todaySchedule;
+  return `${start} - ${end}`;
+};
+
+// Helper function to get remaining availability time
+const getRemainingTime = (availabilitySchedule: any): string | null => {
+  if (!availabilitySchedule) return null;
+  
+  const now = new Date();
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const currentDay = days[now.getDay()];
+  const todaySchedule = availabilitySchedule[currentDay];
+  
+  if (!todaySchedule) return null;
+  
+  const { end } = todaySchedule;
+  const [endHour, endMinute] = end.split(':').map(Number);
+  const endTime = new Date();
+  endTime.setHours(endHour, endMinute, 0, 0);
+  
+  const diffMs = endTime.getTime() - now.getTime();
+  if (diffMs <= 0) return null;
+  
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (diffHours > 0) {
+    return `${diffHours}h ${diffMinutes}m left`;
+  } else {
+    return `${diffMinutes}m left`;
+  }
+};
+
+// Helper function to format rating display
+const formatRating = (ratingScore: any): string => {
+  if (!ratingScore || !ratingScore.average) return 'No ratings';
+  return `${ratingScore.average.toFixed(1)} (${ratingScore.count})`;
+};
 
 type DashboardItem = {
   type: "section" | "feature" | "spacer";
@@ -456,6 +548,9 @@ export default function Dashboard() {
             goals: user.goals || [],
             pronouns: user.pronouns,
             lastLogin: user.lastLogin,
+            availabilitySchedule: user.availabilitySchedule,
+            linkRatingScore: user.linkRatingScore,
+            currentCity: user.currentCity,
           }));
 
         // Generate a unique timestamp for this batch of invite cards
@@ -478,7 +573,10 @@ export default function Dashboard() {
               interests: [], 
               goals: [],
               pronouns: undefined,
-              lastLogin: null
+              lastLogin: null,
+              availabilitySchedule: {},
+              linkRatingScore: { average: 0, count: 0 },
+              currentCity: '',
             }
           ];
         } else {
@@ -497,7 +595,10 @@ export default function Dashboard() {
               interests: [],
               goals: [],
               pronouns: undefined,
-              lastLogin: null
+              lastLogin: null,
+              availabilitySchedule: {},
+              linkRatingScore: { average: 0, count: 0 },
+              currentCity: '',
             }));
           finalUsers = [...formattedUsers, ...inviteFriendsCards];
         }
@@ -1165,8 +1266,24 @@ export default function Dashboard() {
                     return (
                       <View style={styles.section}>
                         <View style={styles.headerRow}>
+                          <View style={styles.headerLeft}>
                           <FontAwesome5 name="users" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
                           <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Nearby Users</Text>
+                          </View>
+                          <TouchableOpacity 
+                            style={[styles.filterButton, { 
+                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                              borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                              marginTop: 2,
+                            }]}
+                            onPress={() => router.push('/explore')}
+                            activeOpacity={0.7}
+                          >
+                            <Feather name="filter" size={14} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                            <Text style={[styles.filterButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                              Filter
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                         {loading ? (
                           <View style={styles.loadingContainer}>
@@ -1195,11 +1312,12 @@ export default function Dashboard() {
 
                               const renderUserCard = () => (
                                 <View style={styles.userInfo}>
+                                  {/* Avatar and Basic Info Section */}
                                   <View style={styles.userSection}>
                                     <View style={[styles.avatar, { 
                                       backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
                                       borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                                      marginBottom: 4,
+                                      marginBottom: 10,
                                     }]}>
                                       {user.profilePicture ? (
                                         <Image 
@@ -1210,39 +1328,93 @@ export default function Dashboard() {
                                         <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                                       )}
                                     </View>
-                                    <View style={styles.nameRow}>
-                                      <Text style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                    
+                                    {/* Name and Age Row */}
+                                    <View style={styles.nameAgeContainer}>
+                                      <Text 
+                                        style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
+                                        numberOfLines={1}
+                                        ellipsizeMode="tail"
+                                      >
                                         {user.name}
                                       </Text>
-                                      {user.pronouns && (
-                                        <Text style={[styles.pronouns, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                          {user.pronouns}
+                                      {user.age && (
+                                        <Text style={[styles.userAge, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                          {user.age}
                                         </Text>
                                       )}
                                     </View>
+                                    
+                                    {/* Available Tag */}
+                                    <View style={[styles.availableTag, { 
+                                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                    }]}>
+                                      <Feather name="check-circle" size={10} color="#FFFFFF" />
+                                      <Text style={styles.availableText}>Available</Text>
+                                    </View>
                                   </View>
 
-                                  {user.bio && (
+                                  {/* Meta Information Section */}
+                                  <View style={styles.userMetaContainer}>
+                                    {/* Availability Time */}
+                                    <View style={[styles.metaItem, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
+                                    }]}>
+                                      <Feather name="clock" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                                     <Text 
-                                      style={[styles.userBio, { 
-                                        color: theme === "light" ? "#38a5c9" : "#38a5c9",
-                                      }]}
-                                      numberOfLines={2}
+                                        style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
+                                        numberOfLines={1}
                                       ellipsizeMode="tail"
                                     >
-                                      {user.bio.trim()}
+                                        {getTodayAvailability(user.availabilitySchedule) || 'Not available'}
                                     </Text>
-                                  )}
+                                    </View>
 
-                                  <View style={styles.userMetaContainer}>
+                                    {/* Remaining Time */}
+                                    {getRemainingTime(user.availabilitySchedule) && (
+                                      <View style={[styles.metaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
+                                      }]}>
+                                        <Feather name="clock" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                        <Text 
+                                          style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}
+                                          numberOfLines={1}
+                                          ellipsizeMode="tail"
+                                        >
+                                          {getRemainingTime(user.availabilitySchedule)}
+                                        </Text>
+                                      </View>
+                                    )}
+
+                                    {/* Rating */}
                                     <View style={[styles.metaItem, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
                                     }]}>
-                                      <Feather name="heart" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                      <Text style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}>
-                                        {user.status}
+                                      <Feather name="star" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                      <Text 
+                                        style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
+                                        numberOfLines={1}
+                                        ellipsizeMode="tail"
+                                      >
+                                        {formatRating(user.linkRatingScore)}
                                       </Text>
                                     </View>
+
+                                    {/* Current City */}
+                                    {user.currentCity && (
+                                      <View style={[styles.metaItem, { 
+                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
+                                      }]}>
+                                        <Feather name="map-pin" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                        <Text 
+                                          style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
+                                          numberOfLines={1}
+                                          ellipsizeMode="tail"
+                                        >
+                                          {user.currentCity}
+                                        </Text>
+                                      </View>
+                                    )}
                                   </View>
                                 </View>
                               );
@@ -1527,10 +1699,13 @@ export default function Dashboard() {
                         marginBottom: 100 // Add space at the bottom to prevent scrolling past
                       }]}>
                         <Image
-                          source={require('../../../assets/adaptive-icon.png')}
+                          source={theme === "light" 
+                            ? require('../../../assets/images/splash-icon.png')
+                            : require('../../../assets/images/splash-icon-dark.png')
+                          }
                           style={[
-                            styles.footerLogo,
-                            { tintColor: theme === "light" ? "#0F172A" : "#e4fbfe" }
+                            styles.footerLogo
+                            
                           ]}
                           resizeMode="contain"
                         />
@@ -1642,64 +1817,69 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 20,
     paddingHorizontal: 4,
   },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   headerIcon: {
     marginRight: 12,
-    marginTop: -30,
   },
   sectionHeader: {
     fontSize: 22,
     fontWeight: "700",
     color: "#e4fbfe",
-    marginTop: -30,
     letterSpacing: 0.3,
   },
   userCard: {
     width: 168,
     backgroundColor: "#1a1a1a",
-    borderRadius: 12,
+    borderRadius: 16,
     marginRight: 8,
-    elevation: 4,
+    elevation: 6,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     borderWidth: 1,
     borderColor: "#38a5c9",
     marginBottom: 16,
     overflow: 'hidden',
   },
   userCardGradient: {
-    padding: 12,
+    padding: 18,
     alignItems: 'center',
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 8,
-    borderWidth: 1.5,
+    marginBottom: 10,
+    borderWidth: 2,
     borderColor: "#38a5c9",
     overflow: 'hidden',
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
   userInfo: {
-    padding: 12,
+    padding: 0,
     alignItems: 'center',
+    width: '100%',
   },
   userSection: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(55, 164, 200, 0.1)',
-    paddingBottom: 8,
-    marginBottom: 8,
+    borderBottomColor: 'rgba(55, 164, 200, 0.08)',
+    paddingBottom: 14,
+    marginBottom: 14,
     width: '100%',
     alignItems: 'center',
   },
@@ -1710,10 +1890,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 6,
   },
+  nameAgeContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    width: '100%',
+  },
   userName: {
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+    marginBottom: 2,
+  },
+  userAge: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   pronouns: {
     fontSize: 13,
@@ -1730,20 +1921,31 @@ const styles = StyleSheet.create({
   userMetaContainer: {
     width: '100%',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 0,
+    gap: 8,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 12,
-    gap: 4,
+    borderRadius: 14,
+    gap: 6,
+    minHeight: 28,
+    maxWidth: '100%',
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 1,
   },
   metaText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    flexShrink: 1,
+    letterSpacing: 0.1,
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -2073,7 +2275,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   filterButton: {
-    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    gap: 4,
+    borderWidth: 1,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   filterButtonInner: {
     flexDirection: "row",
@@ -2088,10 +2302,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   filterText: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 10,
-    letterSpacing: 0.3,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  filterButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   defaultSearchContainer: {
     marginHorizontal: 16,
@@ -2409,8 +2627,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   footerLogo: {
-    width: 80,
-    height: 80,
+    width: 95,
+    height: 95,
     marginBottom: 12,
   },
   copyrightText: {
@@ -2501,6 +2719,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: -0.2,
+  },
+  availableTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    gap: 5,
+    marginTop: 10,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  availableText: {
+    fontSize: 11,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });
 

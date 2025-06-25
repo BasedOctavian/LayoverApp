@@ -26,7 +26,7 @@ const TopBar: React.FC<TopBarProps> = ({
   onNotificationPress,
   notificationCount = 0,
   onBackPress
-}) => {
+}): React.JSX.Element => {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const { theme } = useContext(ThemeContext);
@@ -35,6 +35,7 @@ const TopBar: React.FC<TopBarProps> = ({
   const isNavigating = useRef(false);
   const [isLogoLoaded, setIsLogoLoaded] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const logoFadeAnim = useRef(new Animated.Value(1)).current;
 
   // Check if we're on a profile page
   const isOnProfilePage = pathname.startsWith('/profile/');
@@ -48,6 +49,23 @@ const TopBar: React.FC<TopBarProps> = ({
       }).start();
     }
   }, [isLogoLoaded]);
+
+  // Fade out and fade in when theme changes
+  useEffect(() => {
+    // Fade out
+    Animated.timing(logoFadeAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      // Fade in
+      Animated.timing(logoFadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [theme]);
 
   const handleNavigation = useCallback((route: string) => {
     if (isNavigating.current) return;
@@ -129,12 +147,15 @@ const TopBar: React.FC<TopBarProps> = ({
           onPress={handleLogoPress}
           activeOpacity={0.7}
         >
-          <Image
-            source={require('../../assets/adaptive-icon.png')}
+          <Animated.Image
+            source={theme === "light" 
+              ? require('../../assets/images/splash-icon.png')
+              : require('../../assets/images/splash-icon-dark.png')
+            }
             style={[
               styles.logo, 
               showBackButton && styles.logoWithBack,
-              { tintColor: theme === "light" ? "#0F172A" : "#ffffff" }
+              { opacity: logoFadeAnim }
             ]}
             resizeMode="contain"
             fadeDuration={0}
@@ -221,8 +242,8 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
   },
   logo: {
-    width: 85,
-    height: 85,
+    width: 95,
+    height: 95,
   },
   logoWithBack: {
     width: 65,
@@ -304,7 +325,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     paddingHorizontal: 4,
-  }
+  },
 });
 
 export default TopBar;

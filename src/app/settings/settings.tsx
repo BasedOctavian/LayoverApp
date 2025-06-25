@@ -24,7 +24,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { ThemeContext } from "../../context/ThemeContext";
 import TopBar from "../../components/TopBar";
 import * as Haptics from 'expo-haptics';
-import { doc, deleteDoc } from "firebase/firestore";
+import { doc, deleteDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 import * as LocalAuthentication from 'expo-local-authentication';
 import useNotificationCount from "../../hooks/useNotificationCount";
@@ -330,6 +330,86 @@ export default function Settings() {
     }
   };
 
+  // Handle update user document
+  const handleUpdateUserDoc = async () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    try {
+      if (!authUser) {
+        Alert.alert("Error", "No authenticated user found");
+        return;
+      }
+
+      // Get all users except the authUser
+      const usersRef = collection(db, "users");
+      const usersSnapshot = await getDocs(usersRef);
+      
+      const updatePromises = usersSnapshot.docs
+        .filter(doc => doc.id !== 'hDn74gYZCdZu0efr3jMGTIWGrRQ2') // Exclude authUser
+        .map(async (userDoc) => {
+          const userDocRef = doc(db, "users", userDoc.id);
+          
+          const updateData = {
+            currentCity: null,
+            connectionIntents: [],
+            personalTags: [],
+            availableNow: false,
+            availabilitySchedule: {
+              monday: { start: "00:00", end: "00:00" },
+              tuesday: { start: "00:00", end: "00:00" },
+              wednesday: { start: "00:00", end: "00:00" },
+              thursday: { start: "00:00", end: "00:00" },
+              friday: { start: "00:00", end: "00:00" },
+              saturday: { start: "00:00", end: "00:00" },
+              sunday: { start: "00:00", end: "00:00" }
+            },
+            groupAffiliations: [],
+            lastKnownCoordinates: null,
+            preferredMeetupRadius: null,
+            linkRatingScore: {
+              average: 0,
+              count: 0
+            },
+            reputationTags: [],
+            eventPreferences: {
+              prefersSmallGroups: null,
+              likesBars: null
+            }
+          };
+
+          return updateDoc(userDocRef, updateData);
+        });
+
+      await Promise.all(updatePromises);
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      Alert.alert(
+        "Success", 
+        `Updated ${updatePromises.length} user documents with default values!`,
+        [{ text: "OK" }]
+      );
+      
+      // Refresh user data
+      fetchUserData();
+      
+    } catch (error) {
+      console.error("Error updating user documents:", error);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      Alert.alert(
+        "Error",
+        "Failed to update user documents. Please try again.",
+        [{ text: "OK" }]
+      );
+    }
+  };
+
   // Show black screen during auth check
   if (!userId) {
     return <View style={{ flex: 1, backgroundColor: theme === "light" ? "#e6e6e6" : "#000000" }} />;
@@ -598,6 +678,22 @@ export default function Settings() {
                   <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
                 </View>
               </TouchableOpacity>
+              {/* Update User Doc Button */}
+              <TouchableOpacity
+                style={[styles.settingsItem, { 
+                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                  borderColor: "#37a4c8"
+                }]}
+                onPress={handleUpdateUserDoc}
+                accessibilityRole="button"
+                accessibilityLabel="Update user document with default values"
+              >
+                <View style={[styles.settingsGradient, { backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a" }]}>
+                  <Ionicons name="refresh" size={24} color="#37a4c8" />
+                  <Text style={[styles.settingsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>Update User Doc</Text>
+                  <Feather name="chevron-right" size={24} color="#37a4c8" style={styles.chevronIcon} />
+                </View>
+              </TouchableOpacity>
             </View>
 
             {/* Admin Tools Section - Only visible to admin users */}
@@ -670,10 +766,13 @@ export default function Settings() {
             {/* Logo and Copyright Section */}
             <View style={styles.footer}>
               <Image
-                source={require('../../../assets/adaptive-icon.png')}
+                source={theme === "light" 
+                  ? require('../../../assets/images/splash-icon.png')
+                  : require('../../../assets/images/splash-icon-dark.png')
+                }
                 style={[
-                  styles.footerLogo,
-                  { tintColor: theme === "light" ? "#0F172A" : "#e4fbfe" }
+                  styles.footerLogo
+                  
                 ]}
                 resizeMode="contain"
               />
@@ -869,9 +968,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   footerLogo: {
-    width: 80,
-    height: 80,
-    marginBottom: 12,
+    width: 95,
+    height: 95,
+    marginBottom: 0,
   },
   copyrightText: {
     fontSize: 14,

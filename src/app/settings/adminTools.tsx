@@ -1016,6 +1016,53 @@ interface TestUser {
   goals: string[];
   languages: string[];
   profilePicture: string;
+  currentCity: string;
+  connectionIntents: string[];
+  eventPreferences: {
+    likesBars: boolean;
+    prefersSmallGroups: boolean;
+  };
+  personalTags: string[];
+  preferredMeetupRadius: number;
+  availabilitySchedule: {
+    monday: { start: string; end: string };
+    tuesday: { start: string; end: string };
+    wednesday: { start: string; end: string };
+    thursday: { start: string; end: string };
+    friday: { start: string; end: string };
+    saturday: { start: string; end: string };
+    sunday: { start: string; end: string };
+  };
+  availableNow: boolean;
+  moodStatus: string;
+  groupAffiliations: string[];
+  lastKnownCoordinates: {
+    latitude: number;
+    longitude: number;
+  };
+  linkRatingScore: {
+    average: number;
+    count: number;
+  };
+  socialMedia: {
+    instagram: string;
+    linkedin: string;
+    twitter: string;
+  };
+  travelHistory: Array<{
+    id: string;
+    name: string;
+    updatedAt: Date;
+  }>;
+  notifications: Array<{
+    id: string;
+    title: string;
+    body: string;
+    type: string;
+    read: boolean;
+    timestamp: Date;
+    data: any;
+  }>;
 }
 
 const testUsers: TestUser[] = [
@@ -1024,110 +1071,735 @@ const testUsers: TestUser[] = [
     email: "sarah.j@test.com",
     age: 28,
     bio: "Adventure seeker and coffee enthusiast. Always planning my next trip!",
-    airportCode: "JFK",
+    airportCode: "BUF",
     interests: ["Photography", "Hiking", "Local Cuisine"],
     goals: ["Japan", "New Zealand", "Iceland"],
     languages: ["English", "Spanish"],
-    profilePicture: "https://randomuser.me/api/portraits/women/1.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/women/1.jpg",
+    currentCity: "Hamburg, NY",
+    connectionIntents: ["Adventure", "Photography", "Travel", "Coffee", "Culture"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Adventure Seeker", "Coffee Lover", "Photographer"],
+    preferredMeetupRadius: 15,
+    availabilitySchedule: {
+      monday: { start: "18:00", end: "23:00" },
+      tuesday: { start: "18:00", end: "23:00" },
+      wednesday: { start: "18:00", end: "23:00" },
+      thursday: { start: "18:00", end: "23:00" },
+      friday: { start: "17:00", end: "01:00" },
+      saturday: { start: "10:00", end: "02:00" },
+      sunday: { start: "10:00", end: "22:00" }
+    },
+    availableNow: true,
+    moodStatus: "Adventure Mode",
+    groupAffiliations: ["Travel Enthusiasts"],
+    lastKnownCoordinates: {
+      latitude: 42.7146805,
+      longitude: -78.8334241
+    },
+    linkRatingScore: {
+      average: 4.2,
+      count: 15
+    },
+    socialMedia: {
+      instagram: "@sarah_adventures",
+      linkedin: "sarah-johnson-travel",
+      twitter: "@sarahj_travels"
+    },
+    travelHistory: [
+      { id: "1", name: "Thailand", updatedAt: new Date() },
+      { id: "2", name: "Italy", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "Michael Chen",
     email: "michael.c@test.com",
     age: 32,
     bio: "Tech entrepreneur who loves exploring new cultures and meeting people.",
-    airportCode: "SFO",
+    airportCode: "BUF",
     interests: ["Technology", "Wine Tasting", "Museums"],
     goals: ["France", "Italy", "Greece"],
     languages: ["English", "Mandarin"],
-    profilePicture: "https://randomuser.me/api/portraits/men/2.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/men/2.jpg",
+    currentCity: "Buffalo, NY",
+    connectionIntents: ["Technology", "Business", "Wine", "Culture", "Networking"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: false
+    },
+    personalTags: ["Tech Entrepreneur", "Wine Enthusiast", "Culture Buff"],
+    preferredMeetupRadius: 20,
+    availabilitySchedule: {
+      monday: { start: "19:00", end: "23:00" },
+      tuesday: { start: "19:00", end: "23:00" },
+      wednesday: { start: "19:00", end: "23:00" },
+      thursday: { start: "19:00", end: "23:00" },
+      friday: { start: "18:00", end: "01:00" },
+      saturday: { start: "12:00", end: "02:00" },
+      sunday: { start: "12:00", end: "21:00" }
+    },
+    availableNow: false,
+    moodStatus: "Networking",
+    groupAffiliations: ["Tech Entrepreneurs", "Wine Club"],
+    lastKnownCoordinates: {
+      latitude: 42.8864,
+      longitude: -78.8784
+    },
+    linkRatingScore: {
+      average: 4.5,
+      count: 23
+    },
+    socialMedia: {
+      instagram: "@michael_tech",
+      linkedin: "michael-chen-tech",
+      twitter: "@mchen_entrepreneur"
+    },
+    travelHistory: [
+      { id: "3", name: "Japan", updatedAt: new Date() },
+      { id: "4", name: "Spain", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "Emma Rodriguez",
     email: "emma.r@test.com",
     age: 25,
     bio: "Travel blogger and foodie. Always looking for the next hidden gem!",
-    airportCode: "MIA",
+    airportCode: "BUF",
     interests: ["Food", "Beach", "Art"],
     goals: ["Thailand", "Vietnam", "Indonesia"],
     languages: ["English", "Spanish", "French"],
-    profilePicture: "https://randomuser.me/api/portraits/women/3.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/women/3.jpg",
+    currentCity: "Orchard Park, NY",
+    connectionIntents: ["Food", "Travel", "Beach", "Art", "Blogging"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Food Blogger", "Beach Lover", "Art Enthusiast"],
+    preferredMeetupRadius: 12,
+    availabilitySchedule: {
+      monday: { start: "17:00", end: "22:00" },
+      tuesday: { start: "17:00", end: "22:00" },
+      wednesday: { start: "17:00", end: "22:00" },
+      thursday: { start: "17:00", end: "22:00" },
+      friday: { start: "16:00", end: "01:00" },
+      saturday: { start: "10:00", end: "02:00" },
+      sunday: { start: "10:00", end: "20:00" }
+    },
+    availableNow: true,
+    moodStatus: "Foodie Mode",
+    groupAffiliations: ["Food Bloggers", "Travel Writers"],
+    lastKnownCoordinates: {
+      latitude: 42.7676,
+      longitude: -78.7439
+    },
+    linkRatingScore: {
+      average: 4.8,
+      count: 31
+    },
+    socialMedia: {
+      instagram: "@emma_foodie",
+      linkedin: "emma-rodriguez-blog",
+      twitter: "@emma_travels"
+    },
+    travelHistory: [
+      { id: "5", name: "Mexico", updatedAt: new Date() },
+      { id: "6", name: "Costa Rica", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "David Kim",
     email: "david.k@test.com",
     age: 30,
     bio: "Adventure photographer capturing moments around the world.",
-    airportCode: "LAX",
+    airportCode: "BUF",
     interests: ["Photography", "Hiking", "Surfing"],
     goals: ["Australia", "Fiji", "Hawaii"],
     languages: ["English", "Korean"],
-    profilePicture: "https://randomuser.me/api/portraits/men/4.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/men/4.jpg",
+    currentCity: "Williamsville, NY",
+    connectionIntents: ["Photography", "Adventure", "Nature", "Surfing", "Travel"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Adventure Photographer", "Surfer", "Nature Lover"],
+    preferredMeetupRadius: 25,
+    availabilitySchedule: {
+      monday: { start: "06:00", end: "22:00" },
+      tuesday: { start: "06:00", end: "22:00" },
+      wednesday: { start: "06:00", end: "22:00" },
+      thursday: { start: "06:00", end: "22:00" },
+      friday: { start: "06:00", end: "23:00" },
+      saturday: { start: "05:00", end: "23:00" },
+      sunday: { start: "05:00", end: "21:00" }
+    },
+    availableNow: true,
+    moodStatus: "Adventure Ready",
+    groupAffiliations: ["Adventure Photographers", "Surf Club"],
+    lastKnownCoordinates: {
+      latitude: 42.9634,
+      longitude: -78.7378
+    },
+    linkRatingScore: {
+      average: 4.6,
+      count: 28
+    },
+    socialMedia: {
+      instagram: "@david_adventure",
+      linkedin: "david-kim-photography",
+      twitter: "@dkim_photos"
+    },
+    travelHistory: [
+      { id: "7", name: "New Zealand", updatedAt: new Date() },
+      { id: "8", name: "Iceland", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "Sophie Anderson",
     email: "sophie.a@test.com",
     age: 27,
     bio: "Environmental scientist passionate about sustainable travel.",
-    airportCode: "SEA",
+    airportCode: "BUF",
     interests: ["Nature", "Camping", "Wildlife"],
     goals: ["Costa Rica", "Galapagos", "Amazon"],
     languages: ["English", "German"],
-    profilePicture: "https://randomuser.me/api/portraits/women/5.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/women/5.jpg",
+    currentCity: "East Aurora, NY",
+    connectionIntents: ["Environment", "Nature", "Sustainability", "Wildlife", "Science"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Environmentalist", "Nature Lover", "Scientist"],
+    preferredMeetupRadius: 18,
+    availabilitySchedule: {
+      monday: { start: "17:00", end: "21:00" },
+      tuesday: { start: "17:00", end: "21:00" },
+      wednesday: { start: "17:00", end: "21:00" },
+      thursday: { start: "17:00", end: "21:00" },
+      friday: { start: "16:00", end: "22:00" },
+      saturday: { start: "08:00", end: "20:00" },
+      sunday: { start: "08:00", end: "18:00" }
+    },
+    availableNow: false,
+    moodStatus: "Eco-Friendly",
+    groupAffiliations: ["Environmental Scientists", "Nature Conservation"],
+    lastKnownCoordinates: {
+      latitude: 42.7678,
+      longitude: -78.6134
+    },
+    linkRatingScore: {
+      average: 4.3,
+      count: 19
+    },
+    socialMedia: {
+      instagram: "@sophie_eco",
+      linkedin: "sophie-anderson-env",
+      twitter: "@sophie_environment"
+    },
+    travelHistory: [
+      { id: "9", name: "Costa Rica", updatedAt: new Date() },
+      { id: "10", name: "Norway", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "James Wilson",
     email: "james.w@test.com",
     age: 35,
     bio: "Business consultant who loves exploring new cities and cultures.",
-    airportCode: "ORD",
+    airportCode: "BUF",
     interests: ["Architecture", "History", "Food"],
     goals: ["Spain", "Portugal", "Morocco"],
     languages: ["English", "French"],
-    profilePicture: "https://randomuser.me/api/portraits/men/6.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/men/6.jpg",
+    currentCity: "Amherst, NY",
+    connectionIntents: ["Business", "Architecture", "History", "Culture", "Networking"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: false
+    },
+    personalTags: ["Business Consultant", "Architecture Buff", "History Lover"],
+    preferredMeetupRadius: 15,
+    availabilitySchedule: {
+      monday: { start: "18:00", end: "23:00" },
+      tuesday: { start: "18:00", end: "23:00" },
+      wednesday: { start: "18:00", end: "23:00" },
+      thursday: { start: "18:00", end: "23:00" },
+      friday: { start: "17:00", end: "01:00" },
+      saturday: { start: "11:00", end: "02:00" },
+      sunday: { start: "11:00", end: "21:00" }
+    },
+    availableNow: true,
+    moodStatus: "Professional",
+    groupAffiliations: ["Business Consultants", "Architecture Society"],
+    lastKnownCoordinates: {
+      latitude: 42.9784,
+      longitude: -78.7997
+    },
+    linkRatingScore: {
+      average: 4.4,
+      count: 26
+    },
+    socialMedia: {
+      instagram: "@james_business",
+      linkedin: "james-wilson-consulting",
+      twitter: "@jwilson_business"
+    },
+    travelHistory: [
+      { id: "11", name: "France", updatedAt: new Date() },
+      { id: "12", name: "Italy", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "Olivia Martinez",
     email: "olivia.m@test.com",
     age: 24,
     bio: "Yoga instructor and wellness enthusiast. Always seeking new experiences.",
-    airportCode: "DEN",
+    airportCode: "BUF",
     interests: ["Yoga", "Meditation", "Healthy Food"],
     goals: ["India", "Bali", "Thailand"],
     languages: ["English", "Spanish"],
-    profilePicture: "https://randomuser.me/api/portraits/women/7.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/women/7.jpg",
+    currentCity: "Kenmore, NY",
+    connectionIntents: ["Wellness", "Yoga", "Meditation", "Healthy Living", "Spirituality"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Yoga Instructor", "Wellness Coach", "Spiritual Seeker"],
+    preferredMeetupRadius: 10,
+    availabilitySchedule: {
+      monday: { start: "06:00", end: "21:00" },
+      tuesday: { start: "06:00", end: "21:00" },
+      wednesday: { start: "06:00", end: "21:00" },
+      thursday: { start: "06:00", end: "21:00" },
+      friday: { start: "06:00", end: "22:00" },
+      saturday: { start: "07:00", end: "20:00" },
+      sunday: { start: "07:00", end: "19:00" }
+    },
+    availableNow: true,
+    moodStatus: "Zen Mode",
+    groupAffiliations: ["Yoga Community", "Wellness Warriors"],
+    lastKnownCoordinates: {
+      latitude: 42.9653,
+      longitude: -78.8700
+    },
+    linkRatingScore: {
+      average: 4.7,
+      count: 22
+    },
+    socialMedia: {
+      instagram: "@olivia_yoga",
+      linkedin: "olivia-martinez-wellness",
+      twitter: "@olivia_zen"
+    },
+    travelHistory: [
+      { id: "13", name: "Bali", updatedAt: new Date() },
+      { id: "14", name: "Thailand", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "Alex Thompson",
     email: "alex.t@test.com",
     age: 29,
     bio: "Music producer who loves discovering local music scenes.",
-    airportCode: "ATL",
+    airportCode: "BUF",
     interests: ["Music", "Nightlife", "Art"],
     goals: ["Brazil", "Cuba", "Jamaica"],
     languages: ["English", "Portuguese"],
-    profilePicture: "https://randomuser.me/api/portraits/men/8.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/men/8.jpg",
+    currentCity: "North Tonawanda, NY",
+    connectionIntents: ["Music", "Nightlife", "Art", "Culture", "Entertainment"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: false
+    },
+    personalTags: ["Music Producer", "Night Owl", "Art Enthusiast"],
+    preferredMeetupRadius: 20,
+    availabilitySchedule: {
+      monday: { start: "20:00", end: "02:00" },
+      tuesday: { start: "20:00", end: "02:00" },
+      wednesday: { start: "20:00", end: "02:00" },
+      thursday: { start: "20:00", end: "02:00" },
+      friday: { start: "19:00", end: "03:00" },
+      saturday: { start: "18:00", end: "03:00" },
+      sunday: { start: "18:00", end: "01:00" }
+    },
+    availableNow: false,
+    moodStatus: "Creative Flow",
+    groupAffiliations: ["Music Producers", "Art Collective"],
+    lastKnownCoordinates: {
+      latitude: 43.0387,
+      longitude: -78.8642
+    },
+    linkRatingScore: {
+      average: 4.1,
+      count: 17
+    },
+    socialMedia: {
+      instagram: "@alex_music",
+      linkedin: "alex-thompson-producer",
+      twitter: "@alex_produces"
+    },
+    travelHistory: [
+      { id: "15", name: "Brazil", updatedAt: new Date() },
+      { id: "16", name: "Mexico", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "Isabella Lee",
     email: "isabella.l@test.com",
     age: 26,
     bio: "Fashion designer inspired by global styles and traditions.",
-    airportCode: "DFW",
+    airportCode: "BUF",
     interests: ["Fashion", "Shopping", "Art"],
     goals: ["France", "Italy", "Japan"],
     languages: ["English", "Chinese"],
-    profilePicture: "https://randomuser.me/api/portraits/women/9.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/women/9.jpg",
+    currentCity: "Lancaster, NY",
+    connectionIntents: ["Fashion", "Art", "Design", "Culture", "Style"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Fashion Designer", "Style Icon", "Art Lover"],
+    preferredMeetupRadius: 12,
+    availabilitySchedule: {
+      monday: { start: "17:00", end: "22:00" },
+      tuesday: { start: "17:00", end: "22:00" },
+      wednesday: { start: "17:00", end: "22:00" },
+      thursday: { start: "17:00", end: "22:00" },
+      friday: { start: "16:00", end: "01:00" },
+      saturday: { start: "10:00", end: "02:00" },
+      sunday: { start: "10:00", end: "20:00" }
+    },
+    availableNow: true,
+    moodStatus: "Fashion Forward",
+    groupAffiliations: ["Fashion Designers", "Art Community"],
+    lastKnownCoordinates: {
+      latitude: 42.9006,
+      longitude: -78.6703
+    },
+    linkRatingScore: {
+      average: 4.6,
+      count: 24
+    },
+    socialMedia: {
+      instagram: "@isabella_fashion",
+      linkedin: "isabella-lee-design",
+      twitter: "@isabella_style"
+    },
+    travelHistory: [
+      { id: "17", name: "France", updatedAt: new Date() },
+      { id: "18", name: "Japan", updatedAt: new Date() }
+    ],
+    notifications: []
   },
   {
     name: "Ryan Cooper",
     email: "ryan.c@test.com",
     age: 31,
     bio: "Sports enthusiast and adventure seeker. Always up for a challenge!",
-    airportCode: "BOS",
+    airportCode: "BUF",
     interests: ["Sports", "Hiking", "Water Sports"],
     goals: ["New Zealand", "Australia", "South Africa"],
     languages: ["English"],
-    profilePicture: "https://randomuser.me/api/portraits/men/10.jpg"
+    profilePicture: "https://randomuser.me/api/portraits/men/10.jpg",
+    currentCity: "West Seneca, NY",
+    connectionIntents: ["Sports", "Adventure", "Fitness", "Outdoors", "Challenge"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: false
+    },
+    personalTags: ["Sports Enthusiast", "Adventure Seeker", "Fitness Freak"],
+    preferredMeetupRadius: 25,
+    availabilitySchedule: {
+      monday: { start: "06:00", end: "22:00" },
+      tuesday: { start: "06:00", end: "22:00" },
+      wednesday: { start: "06:00", end: "22:00" },
+      thursday: { start: "06:00", end: "22:00" },
+      friday: { start: "06:00", end: "23:00" },
+      saturday: { start: "07:00", end: "23:00" },
+      sunday: { start: "07:00", end: "21:00" }
+    },
+    availableNow: true,
+    moodStatus: "Ready for Action",
+    groupAffiliations: ["Sports Club", "Adventure Group"],
+    lastKnownCoordinates: {
+      latitude: 42.8501,
+      longitude: -78.7997
+    },
+    linkRatingScore: {
+      average: 4.4,
+      count: 20
+    },
+    socialMedia: {
+      instagram: "@ryan_sports",
+      linkedin: "ryan-cooper-fitness",
+      twitter: "@ryan_adventure"
+    },
+    travelHistory: [
+      { id: "19", name: "Australia", updatedAt: new Date() },
+      { id: "20", name: "New Zealand", updatedAt: new Date() }
+    ],
+    notifications: []
+  },
+  {
+    name: "Maya Patel",
+    email: "maya.p@test.com",
+    age: 23,
+    bio: "Digital nomad and tech startup founder. Living life on my own terms!",
+    airportCode: "BUF",
+    interests: ["Technology", "Travel", "Startups"],
+    goals: ["Bali", "Thailand", "Vietnam"],
+    languages: ["English", "Hindi"],
+    profilePicture: "https://randomuser.me/api/portraits/women/11.jpg",
+    currentCity: "Cheektowaga, NY",
+    connectionIntents: ["Technology", "Startups", "Digital Nomad", "Innovation", "Travel"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Digital Nomad", "Tech Founder", "Innovator"],
+    preferredMeetupRadius: 18,
+    availabilitySchedule: {
+      monday: { start: "09:00", end: "23:00" },
+      tuesday: { start: "09:00", end: "23:00" },
+      wednesday: { start: "09:00", end: "23:00" },
+      thursday: { start: "09:00", end: "23:00" },
+      friday: { start: "09:00", end: "01:00" },
+      saturday: { start: "10:00", end: "02:00" },
+      sunday: { start: "10:00", end: "22:00" }
+    },
+    availableNow: true,
+    moodStatus: "Innovation Mode",
+    groupAffiliations: ["Tech Startups", "Digital Nomads"],
+    lastKnownCoordinates: {
+      latitude: 42.9034,
+      longitude: -78.7547
+    },
+    linkRatingScore: {
+      average: 4.8,
+      count: 29
+    },
+    socialMedia: {
+      instagram: "@maya_nomad",
+      linkedin: "maya-patel-startup",
+      twitter: "@maya_innovates"
+    },
+    travelHistory: [
+      { id: "21", name: "Thailand", updatedAt: new Date() },
+      { id: "22", name: "Vietnam", updatedAt: new Date() }
+    ],
+    notifications: []
+  },
+  {
+    name: "Carlos Rodriguez",
+    email: "carlos.r@test.com",
+    age: 33,
+    bio: "Chef and food culture explorer. Bringing flavors from around the world.",
+    airportCode: "BUF",
+    interests: ["Cooking", "Food Culture", "Wine"],
+    goals: ["Spain", "Italy", "France"],
+    languages: ["English", "Spanish", "Italian"],
+    profilePicture: "https://randomuser.me/api/portraits/men/12.jpg",
+    currentCity: "Tonawanda, NY",
+    connectionIntents: ["Food", "Cooking", "Culture", "Wine", "Travel"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Chef", "Food Explorer", "Wine Connoisseur"],
+    preferredMeetupRadius: 15,
+    availabilitySchedule: {
+      monday: { start: "16:00", end: "23:00" },
+      tuesday: { start: "16:00", end: "23:00" },
+      wednesday: { start: "16:00", end: "23:00" },
+      thursday: { start: "16:00", end: "23:00" },
+      friday: { start: "15:00", end: "01:00" },
+      saturday: { start: "12:00", end: "02:00" },
+      sunday: { start: "12:00", end: "21:00" }
+    },
+    availableNow: false,
+    moodStatus: "Culinary Artist",
+    groupAffiliations: ["Chef Network", "Wine Society"],
+    lastKnownCoordinates: {
+      latitude: 43.0203,
+      longitude: -78.8803
+    },
+    linkRatingScore: {
+      average: 4.9,
+      count: 35
+    },
+    socialMedia: {
+      instagram: "@carlos_chef",
+      linkedin: "carlos-rodriguez-culinary",
+      twitter: "@carlos_cooks"
+    },
+    travelHistory: [
+      { id: "23", name: "Spain", updatedAt: new Date() },
+      { id: "24", name: "Italy", updatedAt: new Date() }
+    ],
+    notifications: []
+  },
+  {
+    name: "Zoe Williams",
+    email: "zoe.w@test.com",
+    age: 25,
+    bio: "Environmental activist and sustainable living advocate.",
+    airportCode: "BUF",
+    interests: ["Sustainability", "Zero Waste", "Community"],
+    goals: ["Costa Rica", "Norway", "New Zealand"],
+    languages: ["English", "French"],
+    profilePicture: "https://randomuser.me/api/portraits/women/13.jpg",
+    currentCity: "Grand Island, NY",
+    connectionIntents: ["Sustainability", "Environment", "Community", "Activism", "Green Living"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Environmentalist", "Zero Waste", "Community Leader"],
+    preferredMeetupRadius: 10,
+    availabilitySchedule: {
+      monday: { start: "17:00", end: "21:00" },
+      tuesday: { start: "17:00", end: "21:00" },
+      wednesday: { start: "17:00", end: "21:00" },
+      thursday: { start: "17:00", end: "21:00" },
+      friday: { start: "16:00", end: "22:00" },
+      saturday: { start: "09:00", end: "18:00" },
+      sunday: { start: "09:00", end: "17:00" }
+    },
+    availableNow: true,
+    moodStatus: "Eco Warrior",
+    groupAffiliations: ["Environmental Activists", "Zero Waste Community"],
+    lastKnownCoordinates: {
+      latitude: 43.0334,
+      longitude: -78.9628
+    },
+    linkRatingScore: {
+      average: 4.5,
+      count: 18
+    },
+    socialMedia: {
+      instagram: "@zoe_eco",
+      linkedin: "zoe-williams-sustainability",
+      twitter: "@zoe_environment"
+    },
+    travelHistory: [
+      { id: "25", name: "Costa Rica", updatedAt: new Date() },
+      { id: "26", name: "Norway", updatedAt: new Date() }
+    ],
+    notifications: []
+  },
+  {
+    name: "Marcus Johnson",
+    email: "marcus.j@test.com",
+    age: 28,
+    bio: "Professional athlete and motivational speaker. Inspiring others to reach their potential.",
+    airportCode: "BUF",
+    interests: ["Fitness", "Motivation", "Leadership"],
+    goals: ["Australia", "South Africa", "Brazil"],
+    languages: ["English"],
+    profilePicture: "https://randomuser.me/api/portraits/men/14.jpg",
+    currentCity: "Depew, NY",
+    connectionIntents: ["Fitness", "Motivation", "Leadership", "Sports", "Inspiration"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: false
+    },
+    personalTags: ["Athlete", "Motivational Speaker", "Leader"],
+    preferredMeetupRadius: 20,
+    availabilitySchedule: {
+      monday: { start: "05:00", end: "22:00" },
+      tuesday: { start: "05:00", end: "22:00" },
+      wednesday: { start: "05:00", end: "22:00" },
+      thursday: { start: "05:00", end: "22:00" },
+      friday: { start: "05:00", end: "23:00" },
+      saturday: { start: "06:00", end: "23:00" },
+      sunday: { start: "06:00", end: "21:00" }
+    },
+    availableNow: true,
+    moodStatus: "Motivated",
+    groupAffiliations: ["Professional Athletes", "Leadership Network"],
+    lastKnownCoordinates: {
+      latitude: 42.9039,
+      longitude: -78.6923
+    },
+    linkRatingScore: {
+      average: 4.7,
+      count: 42
+    },
+    socialMedia: {
+      instagram: "@marcus_athlete",
+      linkedin: "marcus-johnson-sports",
+      twitter: "@marcus_motivates"
+    },
+    travelHistory: [
+      { id: "27", name: "Australia", updatedAt: new Date() },
+      { id: "28", name: "South Africa", updatedAt: new Date() }
+    ],
+    notifications: []
+  },
+  {
+    name: "Aria Chen",
+    email: "aria.c@test.com",
+    age: 26,
+    bio: "Classical musician and cultural ambassador. Bridging worlds through music.",
+    airportCode: "BUF",
+    interests: ["Classical Music", "Culture", "Education"],
+    goals: ["Austria", "Germany", "Czech Republic"],
+    languages: ["English", "Mandarin", "German"],
+    profilePicture: "https://randomuser.me/api/portraits/women/15.jpg",
+    currentCity: "Lockport, NY",
+    connectionIntents: ["Music", "Culture", "Education", "Classical", "Arts"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true
+    },
+    personalTags: ["Classical Musician", "Cultural Ambassador", "Educator"],
+    preferredMeetupRadius: 12,
+    availabilitySchedule: {
+      monday: { start: "18:00", end: "22:00" },
+      tuesday: { start: "18:00", end: "22:00" },
+      wednesday: { start: "18:00", end: "22:00" },
+      thursday: { start: "18:00", end: "22:00" },
+      friday: { start: "17:00", end: "23:00" },
+      saturday: { start: "14:00", end: "22:00" },
+      sunday: { start: "14:00", end: "20:00" }
+    },
+    availableNow: false,
+    moodStatus: "Harmonious",
+    groupAffiliations: ["Classical Musicians", "Cultural Exchange"],
+    lastKnownCoordinates: {
+      latitude: 43.1706,
+      longitude: -78.6903
+    },
+    linkRatingScore: {
+      average: 4.6,
+      count: 25
+    },
+    socialMedia: {
+      instagram: "@aria_music",
+      linkedin: "aria-chen-music",
+      twitter: "@aria_classical"
+    },
+    travelHistory: [
+      { id: "29", name: "Austria", updatedAt: new Date() },
+      { id: "30", name: "Germany", updatedAt: new Date() }
+    ],
+    notifications: []
   }
 ];
 
@@ -1207,8 +1879,8 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
   };
 
   const generateTestUsers = async () => {
-    if (userCount < 1 || userCount > 10) {
-      Alert.alert('Error', 'Please select between 1 and 10 users');
+    if (userCount < 1 || userCount > 15) {
+      Alert.alert('Error', 'Please select between 1 and 15 users');
       return;
     }
 
@@ -1238,6 +1910,32 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
         const dateOfBirth = new Date();
         dateOfBirth.setFullYear(dateOfBirth.getFullYear() - user.age);
 
+        // Generate some recent activity notifications
+        const recentNotifications = [
+          {
+            id: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            title: "Welcome to Layover! 🎉",
+            body: "Start exploring and connecting with travelers around you.",
+            type: "welcome",
+            read: false,
+            timestamp: Timestamp.fromDate(new Date(Date.now() - Math.random() * 86400000)), // Random time in last 24 hours
+            data: { type: "welcome" }
+          }
+        ];
+
+        // Add some random recent activity
+        if (Math.random() > 0.5) {
+          recentNotifications.push({
+            id: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            title: "New Event Nearby! 📅",
+            body: "There's a new event happening near your airport. Check it out!",
+            type: "event",
+            read: false,
+            timestamp: Timestamp.fromDate(new Date(Date.now() - Math.random() * 3600000)), // Random time in last hour
+            data: { type: "event" }
+          });
+        }
+
         const userData = {
           ...user,
           acceptedEula: true,
@@ -1249,7 +1947,8 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
           isAnonymous: false,
           lastLogin: now,
           likedUsers: [],
-          moodStatus: "neutral",
+          blockedUsers: [],
+          dislikedUsers: [],
           notificationPreferences: {
             announcements: true,
             chats: true,
@@ -1257,10 +1956,27 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
             events: true,
             notificationsEnabled: true
           },
-          notifications: [],
+          notifications: recentNotifications,
           testUser: true,
-          travelHistory: [],
-          updatedAt: now
+          updatedAt: now,
+          // Add missing fields from the new structure
+          reputationTags: [],
+          personalTags: user.personalTags || [],
+          groupAffiliations: user.groupAffiliations || [],
+          linkRatingScore: user.linkRatingScore || { average: 0, count: 0 },
+          socialMedia: user.socialMedia || { instagram: "", linkedin: "", twitter: "" },
+          travelHistory: user.travelHistory.map(trip => ({
+            ...trip,
+            updatedAt: Timestamp.fromDate(trip.updatedAt)
+          })),
+          lastKnownCoordinates: user.lastKnownCoordinates,
+          preferredMeetupRadius: user.preferredMeetupRadius || 15,
+          connectionIntents: user.connectionIntents || [],
+          eventPreferences: user.eventPreferences || { likesBars: true, prefersSmallGroups: true },
+          availabilitySchedule: user.availabilitySchedule,
+          availableNow: user.availableNow,
+          moodStatus: user.moodStatus || "neutral",
+          currentCity: user.currentCity || `${user.airportCode} Area`
         };
 
         batch.set(userRef, userData);
@@ -1303,8 +2019,8 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
             <Text style={[styles.userCount, { color: textColor }]}>{userCount}</Text>
             <TouchableOpacity
               style={[styles.userCountButton, { borderColor: textColor }]}
-              onPress={() => setUserCount(Math.min(10, userCount + 1))}
-              disabled={userCount >= 10}
+              onPress={() => setUserCount(Math.min(15, userCount + 1))}
+              disabled={userCount >= 15}
             >
               <MaterialIcons name="add" size={20} color={textColor} />
             </TouchableOpacity>

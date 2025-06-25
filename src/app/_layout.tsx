@@ -6,8 +6,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import "../../global.css";
 import { ThemeProvider } from "../context/ThemeContext";
 import BottomNavBar from "../components/BottomNavBar";
-import { useContext } from "react";
+import React, { useContext, useEffect, useCallback } from "react";
 import { ThemeContext } from "../context/ThemeContext";
+import { initializeExternalRoutes } from "../utils/externalRoutes";
+import * as SplashScreen from 'expo-splash-screen';
+
+// Prevent the splash screen from auto-hiding.
+SplashScreen.preventAutoHideAsync();
 
 // Create a wrapper component that uses ThemeContext
 const ThemeAwareStatusBar = () => {
@@ -301,7 +306,29 @@ const ThemeAwareStack = () => {
   );
 };
 
-export default function RootLayout() {
+function AppContent() {
+  const { theme } = useContext(ThemeContext);
+
+  const onLayoutRootView = useCallback(async () => {
+    if (theme) {
+      // This will hide the splash screen once the theme is loaded
+      await SplashScreen.hideAsync();
+    }
+  }, [theme]);
+
+  if (!theme) {
+    return null;
+  }
+
+  return (
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <ThemeAwareStatusBar />
+      <MainLayout />
+    </View>
+  );
+}
+
+function MainLayout() {
   const pathname = usePathname();
   
   // Define routes where bottom nav should be hidden
@@ -311,15 +338,36 @@ export default function RootLayout() {
     !pathname.startsWith('/event/eventChat/') && 
     !pathname.includes('loading');
 
+  // Initialize external routes handler
+  useEffect(() => {
+    const initExternalRoutes = async () => {
+      try {
+        // Add a small delay to ensure app is loaded
+        setTimeout(async () => {
+          await initializeExternalRoutes();
+        }, 500);
+      } catch (error) {
+        console.error('Failed to initialize external routes:', error);
+      }
+    };
+
+    initExternalRoutes();
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <ThemeAwareStack />
+      {shouldShowBottomNav && <BottomNavBar />}
+    </View>
+  );
+}
+
+export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider>
-          <ThemeAwareStatusBar />
-          <View style={styles.container}>
-            <ThemeAwareStack />
-            {shouldShowBottomNav && <BottomNavBar />}
-          </View>
+          <AppContent />
         </ThemeProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
