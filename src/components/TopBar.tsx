@@ -6,6 +6,7 @@ import { router, usePathname } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemeContext } from '../context/ThemeContext';
 import useAuth from '../hooks/auth';
+import useUsers from '../hooks/useUsers';
 
 // Define props interface
 interface TopBarProps {
@@ -31,14 +32,38 @@ const TopBar: React.FC<TopBarProps> = ({
   const topBarHeight = 50 + insets.top;
   const { theme } = useContext(ThemeContext);
   const { user } = useAuth();
+  const { getUser } = useUsers();
   const pathname = usePathname();
   const isNavigating = useRef(false);
   const [isLogoLoaded, setIsLogoLoaded] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
+  const [isLoadingUserData, setIsLoadingUserData] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const logoFadeAnim = useRef(new Animated.Value(1)).current;
 
   // Check if we're on a profile page
   const isOnProfilePage = pathname.startsWith('/profile/');
+
+  // Fetch user data when user changes
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (user?.uid) {
+        setIsLoadingUserData(true);
+        try {
+          const data = await getUser(user.uid);
+          setUserData(data);
+        } catch (error) {
+          console.error('Error fetching user data for TopBar:', error);
+        } finally {
+          setIsLoadingUserData(false);
+        }
+      } else {
+        setUserData(null);
+      }
+    };
+
+    fetchUserData();
+  }, [user?.uid, getUser]);
 
   useEffect(() => {
     if (isLogoLoaded) {
@@ -196,16 +221,29 @@ const TopBar: React.FC<TopBarProps> = ({
           activeOpacity={0.7}
         >
           <View style={styles.avatarContainer}>
-            <View style={[styles.profilePlaceholder, { 
-              backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
-              borderColor: isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#E2E8F0" : "#38a5c9")
-            }]}>
-              <Ionicons 
-                name="person" 
-                size={20} 
-                color={isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#0F172A" : "#ffffff")} 
+            {userData?.profilePicture ? (
+              <Image
+                source={{ uri: userData.profilePicture }}
+                style={[
+                  styles.profileImage,
+                  { 
+                    borderColor: isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#E2E8F0" : "#38a5c9")
+                  }
+                ]}
+                resizeMode="cover"
               />
-            </View>
+            ) : (
+              <View style={[styles.profilePlaceholder, { 
+                backgroundColor: theme === "light" ? "#F8FAFC" : "#1a1a1a",
+                borderColor: isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#E2E8F0" : "#38a5c9")
+              }]}>
+                <Ionicons 
+                  name="person" 
+                  size={20} 
+                  color={isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#0F172A" : "#ffffff")} 
+                />
+              </View>
+            )}
             <View style={[styles.statusIndicator, { 
               borderColor: theme === "light" ? "#FFFFFF" : "#000000",
               backgroundColor: "#37a4c8"

@@ -106,14 +106,13 @@ const useUsers = () => {
   };
 
   // New function to get nearby users
-  const getNearbyUsers = async (airportCode: string, fortyMinutesAgo: Date) => {
+  const getNearbyUsers = async (airportCode: string) => {
     setLoading(true);
     try {
       const usersCollection = collection(db, "users");
       const q = query(
         usersCollection,
-        where("airportCode", "==", airportCode),
-        where("lastLogin", ">=", fortyMinutesAgo)
+        where("airportCode", "==", airportCode)
       );
       const snapshot = await getDocs(q);
       const users = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));

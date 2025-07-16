@@ -139,7 +139,7 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          <MaterialIcons name="flight-takeoff" size={size * 0.4} color="#FFF" />
+          <MaterialIcons name="flight" size={size * 0.4} color="#FFF" />
         </LinearGradient>
       </Animated.View>
       

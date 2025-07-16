@@ -27,6 +27,7 @@ import useEvents from "../hooks/useEvents";
 import useUsers from "../hooks/useUsers";
 import useAuth from "../hooks/auth";
 import useConnections from "../hooks/useConnections";
+import usePings from "../hooks/usePings";
 import * as Location from "expo-location";
 import TopBar from "../components/TopBar";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,6 +41,7 @@ import useLoadingMessages from "../hooks/useLoadingMessages";
 import LoadingScreen from "../components/LoadingScreen";
 import useNotificationCount from "../hooks/useNotificationCount";
 import UserAvatar from "../components/UserAvatar";
+import ExploreMap from "../components/ExploreMap";
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2; // 2 columns with padding
@@ -68,6 +70,31 @@ interface Event {
   updatedAt: Date;
 }
 
+interface Ping {
+  id: string;
+  creatorId: string;
+  creatorName: string;
+  title: string;
+  description: string;
+  location: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  category: string;
+  template: string;
+  duration: string;
+  maxParticipants: string;
+  pingType: string;
+  visibilityRadius: string;
+  connectionIntents: string[];
+  eventPreferences: any;
+  createdAt: any;
+  status: string;
+  participants: string[];
+  participantCount: number;
+}
+
 interface User {
   id: string;
   name: string;
@@ -80,6 +107,19 @@ interface User {
   languages?: string[];
   goals?: string[];
   travelHistory?: string[];
+  availabilitySchedule?: {
+    monday?: { start: string; end: string };
+    tuesday?: { start: string; end: string };
+    wednesday?: { start: string; end: string };
+    thursday?: { start: string; end: string };
+    friday?: { start: string; end: string };
+    saturday?: { start: string; end: string };
+    sunday?: { start: string; end: string };
+  };
+  lastKnownCoordinates?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 // Haversine formula for distance calculation
@@ -94,6 +134,53 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
     Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+};
+
+// Helper function to check if user is currently available based on schedule
+const isUserCurrentlyAvailable = (availabilitySchedule: any): boolean => {
+  if (!availabilitySchedule) return false;
+  
+  const now = new Date();
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const currentDay = days[now.getDay()];
+  const currentTime = now.toLocaleTimeString('en-US', { 
+    hour12: false, 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+  
+  const todaySchedule = availabilitySchedule[currentDay];
+  if (!todaySchedule) return false;
+  
+  const { start, end } = todaySchedule;
+  
+  // Check for invalid or zero times
+  if (!start || !end || start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
+    return false;
+  }
+  
+  // Check if start and end are the same (no availability window)
+  if (start === end) return false;
+  
+  // Normalize time formats to ensure consistent comparison
+  const normalizeTime = (timeStr: string): string => {
+    // Handle both "H:MM" and "HH:MM" formats
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  };
+  
+  const normalizedStart = normalizeTime(start);
+  const normalizedEnd = normalizeTime(end);
+  const normalizedCurrent = normalizeTime(currentTime);
+  
+  // Handle cases where availability spans midnight (e.g., 22:00 to 02:00)
+  if (normalizedStart > normalizedEnd) {
+    // Availability spans midnight, so check if current time is after start OR before end
+    return normalizedCurrent >= normalizedStart || normalizedCurrent <= normalizedEnd;
+  } else {
+    // Normal case: availability within same day
+    return normalizedCurrent >= normalizedStart && normalizedCurrent <= normalizedEnd;
+  }
 };
 
 const CountdownTimer = ({ startTime }: { startTime: Date | null }) => {
@@ -215,6 +302,7 @@ export default function Explore() {
   const { getAirports } = useAirports();
   const { user } = useAuth();
   const { checkConnection } = useConnections();
+  const { getPings } = usePings({ user });
   const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
   
@@ -222,6 +310,7 @@ export default function Explore() {
   const notificationCount = useNotificationCount(user?.uid || null);
   
   const [events, setEvents] = useState<Event[]>([]);
+  const [pings, setPings] = useState<Ping[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -241,6 +330,7 @@ export default function Explore() {
   const [visibleUsersCount, setVisibleUsersCount] = useState(3);
   const [userConnectionStatus, setUserConnectionStatus] = useState<{[key: string]: 'connected' | 'pending' | 'none'}>({});
   const [isCheckingConnections, setIsCheckingConnections] = useState(false);
+  const [availableUsersCount, setAvailableUsersCount] = useState(0);
   
   // Animation values
   const contentBounceAnim = useRef(new Animated.Value(0)).current;
@@ -328,6 +418,12 @@ export default function Explore() {
           const validEvents = eventsWithOrganizerNames.filter((event): event is Event => event !== null);
           setEvents(validEvents);
         }
+
+        // Fetch pings
+        const fetchedPings = await getPings();
+        if (fetchedPings && Array.isArray(fetchedPings)) {
+          setPings(fetchedPings);
+        }
       } catch (error) {
         console.error("Error initializing data:", error);
         setError("Failed to load data. Please try again.");
@@ -361,7 +457,9 @@ export default function Explore() {
             moodStatus: userDoc.moodStatus || 'neutral',
             languages: userDoc.languages || [],
             goals: userDoc.goals || [],
-            travelHistory: userDoc.travelHistory || []
+            travelHistory: userDoc.travelHistory || [],
+            availabilitySchedule: userDoc.availabilitySchedule || null,
+            lastKnownCoordinates: userDoc.lastKnownCoordinates || null
           }))
           .sort((a, b) => {
             // Sort users with profile pictures first
@@ -373,6 +471,29 @@ export default function Explore() {
             return 0;
           });
         setUsers(filteredUsers);
+        
+        // Calculate available users count (within 20 miles and currently available)
+        const availableCount = filteredUsers.filter(user => {
+          // Check if user is currently available
+          const isAvailable = isUserCurrentlyAvailable(user.availabilitySchedule);
+          if (!isAvailable) return false;
+          
+          // Check if user has coordinates and is within 20 miles
+          if (!user.lastKnownCoordinates || !currentLocation) return false;
+          
+          const distance = calculateDistance(
+            currentLocation.latitude,
+            currentLocation.longitude,
+            user.lastKnownCoordinates.latitude,
+            user.lastKnownCoordinates.longitude
+          );
+          
+          // Convert meters to miles (1 mile = 1609.34 meters)
+          const distanceInMiles = distance / 1609.34;
+          
+          return distanceInMiles <= 20;
+        }).length;
+        setAvailableUsersCount(availableCount);
         
         // Check connection status for all users
         if (user?.uid) {
@@ -462,6 +583,100 @@ export default function Explore() {
     );
   }, [sortedEvents, searchQuery]);
 
+  // Filter pings based on search query, distance, and participant availability
+  const filteredPings = useMemo(() => {
+    let filtered = pings;
+    
+    // Filter by participant availability first
+    filtered = pings.filter(ping => {
+      // Extract max participants number (e.g., "4 people" -> 4)
+      const maxParticipantsMatch = ping.maxParticipants.match(/(\d+)/);
+      const maxParticipants = maxParticipantsMatch ? parseInt(maxParticipantsMatch[1]) : 0;
+      const currentParticipants = ping.participantCount || 0;
+      
+      const needsMorePeople = currentParticipants < maxParticipants;
+      console.log(`Ping ${ping.title}: ${currentParticipants}/${maxParticipants} people = ${needsMorePeople ? 'NEEDS MORE' : 'FULL'}`);
+      
+      return needsMorePeople;
+    });
+
+    // Filter by time (remove expired pings)
+    filtered = filtered.filter(ping => {
+      const now = new Date();
+      const createdAt = ping.createdAt?.toDate ? ping.createdAt.toDate() : new Date(ping.createdAt);
+      
+      // Calculate end time based on duration
+      let endTime = new Date(createdAt);
+      const duration = ping.duration;
+      
+      if (duration === '30 minutes') {
+        endTime.setMinutes(endTime.getMinutes() + 30);
+      } else if (duration === '1 hour') {
+        endTime.setHours(endTime.getHours() + 1);
+      } else if (duration === '2 hours') {
+        endTime.setHours(endTime.getHours() + 2);
+      } else if (duration === '3 hours') {
+        endTime.setHours(endTime.getHours() + 3);
+      } else if (duration === '4 hours') {
+        endTime.setHours(endTime.getHours() + 4);
+      } else if (duration === 'All day') {
+        // For "All day", consider it expired after 24 hours
+        endTime.setHours(endTime.getHours() + 24);
+      } else {
+        // Default to 1 hour if duration is unknown
+        endTime.setHours(endTime.getHours() + 1);
+      }
+      
+      const isExpired = now > endTime;
+      console.log(`Ping ${ping.title}: ${duration} (${createdAt.toLocaleTimeString()} - ${endTime.toLocaleTimeString()}) = ${isExpired ? 'EXPIRED' : 'ACTIVE'}`);
+      
+      return !isExpired;
+    });
+    
+    // Filter by distance
+    if (currentLocation) {
+      filtered = filtered.filter(ping => {
+        if (!ping.coordinates) {
+          console.log(`Ping ${ping.title}: No coordinates, filtered out`);
+          return false;
+        }
+        
+        const distance = calculateDistance(
+          currentLocation.latitude,
+          currentLocation.longitude,
+          ping.coordinates.latitude,
+          ping.coordinates.longitude
+        );
+        
+        // Convert meters to miles
+        const distanceInMiles = distance / 1609.34;
+        
+        // Extract radius value (e.g., "15 miles" -> 15)
+        const radiusValue = parseInt(ping.visibilityRadius.split(' ')[0]);
+        
+        const isWithinRadius = distanceInMiles <= radiusValue;
+        console.log(`Ping ${ping.title}: ${distanceInMiles.toFixed(1)}mi/${radiusValue}mi = ${isWithinRadius ? 'SHOW' : 'HIDE'}`);
+        
+        return isWithinRadius;
+      });
+    }
+    
+    // Then filter by search query if needed
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(ping => 
+        (ping.title?.toLowerCase() || '').includes(query) ||
+        (ping.description?.toLowerCase() || '').includes(query) ||
+        (ping.creatorName?.toLowerCase() || '').includes(query) ||
+        (ping.location?.toLowerCase() || '').includes(query) ||
+        (ping.category?.toLowerCase() || '').includes(query) ||
+        (ping.template?.toLowerCase() || '').includes(query)
+      );
+    }
+    
+    return filtered;
+  }, [pings, searchQuery, currentLocation]);
+
   const filteredUsers = useMemo(() => {
     if (!searchQuery.trim()) return users;
     
@@ -481,7 +696,7 @@ export default function Explore() {
 
   // Check if we're actively searching
   const isActivelySearching = searchQuery.trim().length > 0;
-  const hasSearchResults = filteredEvents.length > 0 || filteredUsers.length > 0;
+  const hasSearchResults = filteredEvents.length > 0 || filteredPings.length > 0 || filteredUsers.length > 0;
 
   // Handle search focus
   const handleSearchFocus = useCallback(() => {
@@ -749,6 +964,75 @@ export default function Explore() {
     );
   }
 
+  // Ping card component
+  const PingCard = ({ item, index }: { item: Ping; index: number }) => {
+    const { theme } = React.useContext(ThemeContext);
+
+    if (!item) return null;
+
+    return (
+      <View style={[styles.eventCard, { 
+        backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+        borderColor: theme === "light" ? "#E2E8F0" : "#374151",
+        shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
+      }]}>
+        <View style={styles.eventCardContent}>
+          <View style={styles.eventHeader}>
+            <View style={styles.eventMainInfo}>
+              <View style={styles.pingBadge}>
+                <Ionicons name="flash" size={12} color="#FFFFFF" />
+                <Text style={styles.pingBadgeText}>PING</Text>
+              </View>
+              <Text style={[styles.eventTitle, { 
+                color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+              }]} numberOfLines={1}>
+                {item.title}
+              </Text>
+              <View style={styles.organizerContainer}>
+                <Ionicons name="person" size={14} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                <Text style={[styles.organizerText, { 
+                  color: theme === "light" ? "#64748B" : "#94A3B8" 
+                }]}>
+                  {item.creatorName}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.eventStatus}>
+              <View style={[styles.statusBadge, { backgroundColor: '#37a4c8' }]}>
+                <Text style={styles.statusText}>
+                  {item.participantCount}/{item.maxParticipants}
+                </Text>
+              </View>
+            </View>
+          </View>
+          
+          <View style={styles.eventDescriptionContainer}>
+            <Text style={[styles.eventDescription, { 
+              color: theme === "light" ? "#64748B" : "#94A3B8" 
+            }]} numberOfLines={2}>
+              {item.description}
+            </Text>
+          </View>
+
+          <View style={styles.eventMetaContainer}>
+            <View style={styles.metaItem}>
+              <Ionicons name="location" size={16} color="#37a4c8" />
+              <Text style={[styles.metaText, { color: "#37a4c8" }]}>
+                {item.location}
+              </Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Ionicons name="time" size={16} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+              <Text style={[styles.metaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                {item.duration}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   // Regular card component without animations
   const EventCard = ({ item, index }: { item: Event; index: number }) => {
     const { theme } = React.useContext(ThemeContext);
@@ -981,24 +1265,6 @@ export default function Explore() {
                   }
                 >
                   <View style={styles.headerSection}>
-                    <TouchableOpacity
-                      style={[styles.airportSelector, {
-                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
-                      }]}
-                      onPress={handleAirportSelectorPress}
-                    >
-                      <View style={styles.airportSelectorContent}>
-                        <Ionicons name="airplane" size={20} color="#37a4c8" />
-                        <Text style={[styles.airportSelectorText, { 
-                          color: theme === "light" ? "#0F172A" : "#e4fbfe" 
-                        }]}>
-                          {selectedAirport ? selectedAirport.name : "Select Airport"}
-                        </Text>
-                        <Ionicons name="chevron-down" size={20} color="#37a4c8" />
-                      </View>
-                    </TouchableOpacity>
-
                     <View style={styles.searchContainer}>
                       <Ionicons name="search" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.searchIcon} />
                       <TextInput
@@ -1011,7 +1277,7 @@ export default function Explore() {
                             borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
                           }
                         ]}
-                        placeholder="Search events and travelers..."
+                        placeholder="Search users or activities..."
                         placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
@@ -1028,6 +1294,40 @@ export default function Explore() {
                       ) : null}
                     </View>
                   </View>
+
+                  {/* Map Component */}
+                  {!isActivelySearching && (
+                    <ExploreMap
+                      events={filteredEvents}
+                      airports={allAirports}
+                      selectedAirport={selectedAirport}
+                      onAirportSelect={handleAirportSelect}
+                      onEventPress={(event) => router.push("/event/" + event.id)}
+                      currentUserId={user?.uid}
+                    />
+                  )}
+
+                  {/* Available Users Count */}
+                  {!isActivelySearching && selectedAirport && (
+                    <View style={[styles.availableUsersContainer, {
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                    }]}>
+                      <View style={styles.availableUsersContent}>
+                        <Ionicons name="people" size={20} color="#37a4c8" />
+                        <View style={styles.availableUsersTextContainer}>
+                          <Text style={[styles.availableUsersTitle, { 
+                            color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+                          }]}>
+                            Available Now
+                          </Text>
+                          <Text style={[styles.availableUsersCount, { color: "#37a4c8" }]}>
+                            {availableUsersCount} {availableUsersCount === 1 ? 'user' : 'users'} nearby
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
 
                   {/* Search Results Summary */}
                   {isActivelySearching && (
@@ -1046,14 +1346,14 @@ export default function Explore() {
                       <Text style={[styles.headerText, { 
                         color: theme === "light" ? "#0F172A" : "#e4fbfe"
                       }]}>
-                        {isActivelySearching ? "Search Results" : "Explore Events"}
+                        {isActivelySearching ? "Search Results" : "What's Happening?"}
                       </Text>
                       <Text style={[styles.sectionSubtitle, { 
                         color: theme === "light" ? "#475569" : "#94A3B8" 
                       }]}>
                         {isActivelySearching 
-                          ? `${filteredEvents.length} events found`
-                          : `${filteredEvents.length} events available`
+                          ? `${filteredEvents.length + filteredPings.length} activities found`
+                          : `${filteredEvents.length + filteredPings.length} activities available`
                         }
                       </Text>
                     </View>
@@ -1072,8 +1372,20 @@ export default function Explore() {
                   </View>
 
                   <View style={styles.gridContent}>
-                    {filteredEvents.length > 0 ? (
+                    {(filteredEvents.length > 0 || filteredPings.length > 0) ? (
                       <View>
+                        {/* Render pings first (with priority) */}
+                        {filteredPings.slice(0, visibleEventsCount).map((ping, index) => (
+                          <TouchableOpacity
+                            key={`ping-${ping.id}`}
+                            onPress={() => router.push(`/ping/${ping.id}`)}
+                            activeOpacity={0.7}
+                          >
+                            <PingCard item={ping} index={index} />
+                          </TouchableOpacity>
+                        ))}
+                        
+                        {/* Then render events */}
                         {filteredEvents.slice(0, visibleEventsCount).map((item, index) => (
                           <TouchableOpacity
                             key={`event-${item.id}`}
@@ -1151,7 +1463,7 @@ export default function Explore() {
                           </TouchableOpacity>
                         ))}
                         
-                        {filteredEvents.length > visibleEventsCount && (
+                        {(filteredEvents.length + filteredPings.length) > visibleEventsCount && (
                           <TouchableOpacity
                             style={[styles.loadMoreButton, {
                               backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
@@ -1204,7 +1516,7 @@ export default function Explore() {
                       <Text style={[styles.headerText, { 
                         color: theme === "light" ? "#0F172A" : "#e4fbfe"
                       }]}>
-                        {isActivelySearching ? "Search Results" : "Nearby Travelers"}
+                        {isActivelySearching ? "Search Results" : "Nearby Users"}
                       </Text>
                       <Text style={[styles.sectionSubtitle, { 
                         color: theme === "light" ? "#475569" : "#94A3B8" 
@@ -1463,7 +1775,7 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   headerText: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "700",
     letterSpacing: 0.5,
     marginRight: 12,
@@ -2004,5 +2316,50 @@ const styles = StyleSheet.create({
   searchResultsText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  availableUsersContainer: {
+    marginHorizontal: 16,
+    marginVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  availableUsersContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  availableUsersTextContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  availableUsersTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  availableUsersCount: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  pingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#37a4c8',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginBottom: 4,
+    alignSelf: 'flex-start',
+  },
+  pingBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 2,
   },
 }); 

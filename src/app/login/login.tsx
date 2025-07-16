@@ -156,7 +156,7 @@ const Login = () => {
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.contentContainer}>
-              <Text style={styles.title}>Welcome Back! ✈️</Text>
+              <Text style={styles.title}>Welcome Back!</Text>
 
               <TouchableOpacity
                 style={styles.fieldContainer}
@@ -245,7 +245,7 @@ const Login = () => {
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <LinearGradient
-                    colors={["#38a5c9", "#38a5c9"]}
+                    colors={["#38a5c9", "#2d8ba8"]}
                     style={styles.buttonGradient}
                   >
                     <Text style={styles.buttonText}>Login</Text>
@@ -342,15 +342,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#38a5c9",
     minHeight: 56,
+    shadowColor: "#38a5c9",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   buttonGradient: {
     paddingVertical: 20,
     alignItems: "center",
+    justifyContent: "center",
   },
   buttonText: {
     color: "#000000",
     fontFamily: "Inter-Bold",
     fontSize: 16,
+    letterSpacing: 0.5,
   },
   signUpText: {
     color: "#38a5c9",

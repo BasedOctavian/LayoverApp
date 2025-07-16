@@ -6,9 +6,12 @@ import { ThemeContext } from '../../context/ThemeContext';
 import TopBar from '../../components/TopBar';
 import { MaterialIcons } from '@expo/vector-icons';
 import useUsers from '../../hooks/useUsers';
-import { collection, getDocs, doc, updateDoc, query, orderBy, Timestamp, deleteDoc, writeBatch, where } from 'firebase/firestore';
+import useAuth from '../../hooks/auth';
+import { collection, getDocs, doc, updateDoc, query, orderBy, Timestamp, deleteDoc, writeBatch, where, getDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebaseConfig';
 import { useRouter } from 'expo-router';
+import { PING_CATEGORIES } from '../../constants/pingCategories';
+import { haversineDistance } from '../../utils/haversineDistance';
 
 interface NotificationPreferences {
   announcements: boolean;
@@ -1021,6 +1024,16 @@ interface TestUser {
   eventPreferences: {
     likesBars: boolean;
     prefersSmallGroups: boolean;
+    prefersWeekendEvents: boolean;
+    prefersEveningEvents: boolean;
+    prefersIndoorVenues: boolean;
+    prefersStructuredActivities: boolean;
+    prefersSpontaneousPlans: boolean;
+    prefersLocalMeetups: boolean;
+    prefersTravelEvents: boolean;
+    prefersQuietEnvironments: boolean;
+    prefersActiveLifestyles: boolean;
+    prefersIntellectualDiscussions: boolean
   };
   personalTags: string[];
   preferredMeetupRadius: number;
@@ -1077,12 +1090,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Spanish"],
     profilePicture: "https://randomuser.me/api/portraits/women/1.jpg",
     currentCity: "Hamburg, NY",
-    connectionIntents: ["Adventure", "Photography", "Travel", "Coffee", "Culture"],
+    connectionIntents: ["Outdoor Adventures", "Photography & Media", "Travel & Exploration", "Coffee & Casual Meetups", "Art & Culture"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: false,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Adventure Seeker", "Coffee Lover", "Photographer"],
+    personalTags: ["Adventure Seeker", "Coffee Addict", "Photographer", "Extroverted", "Early Bird"],
     preferredMeetupRadius: 15,
     availabilitySchedule: {
       monday: { start: "18:00", end: "23:00" },
@@ -1126,12 +1149,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Mandarin"],
     profilePicture: "https://randomuser.me/api/portraits/men/2.jpg",
     currentCity: "Buffalo, NY",
-    connectionIntents: ["Technology", "Business", "Wine", "Culture", "Networking"],
+    connectionIntents: ["Technology & Innovation", "Networking & Business", "Art & Culture", "Deep Discussions", "Food & Dining"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: false
+      prefersSmallGroups: false,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true
     },
-    personalTags: ["Tech Entrepreneur", "Wine Enthusiast", "Culture Buff"],
+    personalTags: ["Entrepreneur", "Tech-Savvy", "Analytical", "Career-Focused", "Leader"],
     preferredMeetupRadius: 20,
     availabilitySchedule: {
       monday: { start: "19:00", end: "23:00" },
@@ -1175,12 +1208,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Spanish", "French"],
     profilePicture: "https://randomuser.me/api/portraits/women/3.jpg",
     currentCity: "Orchard Park, NY",
-    connectionIntents: ["Food", "Travel", "Beach", "Art", "Blogging"],
+    connectionIntents: ["Food & Dining", "Travel & Exploration", "Art & Culture", "Photography & Media", "Coffee & Casual Meetups"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Food Blogger", "Beach Lover", "Art Enthusiast"],
+    personalTags: ["Foodie", "Writer", "Creative", "Extroverted", "Adventure Seeker"],
     preferredMeetupRadius: 12,
     availabilitySchedule: {
       monday: { start: "17:00", end: "22:00" },
@@ -1224,12 +1267,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Korean"],
     profilePicture: "https://randomuser.me/api/portraits/men/4.jpg",
     currentCity: "Williamsville, NY",
-    connectionIntents: ["Photography", "Adventure", "Nature", "Surfing", "Travel"],
+    connectionIntents: ["Photography & Media", "Outdoor Adventures", "Fitness & Wellness", "Travel & Exploration", "Art & Culture"],
     eventPreferences: {
       likesBars: false,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Adventure Photographer", "Surfer", "Nature Lover"],
+    personalTags: ["Photographer", "Adventure Seeker", "Gym Rat", "Introverted", "Early Bird"],
     preferredMeetupRadius: 25,
     availabilitySchedule: {
       monday: { start: "06:00", end: "22:00" },
@@ -1273,12 +1326,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "German"],
     profilePicture: "https://randomuser.me/api/portraits/women/5.jpg",
     currentCity: "East Aurora, NY",
-    connectionIntents: ["Environment", "Nature", "Sustainability", "Wildlife", "Science"],
+    connectionIntents: ["Volunteering & Community", "Outdoor Adventures", "Learning & Education", "Deep Discussions", "Art & Culture"],
     eventPreferences: {
       likesBars: false,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: true
     },
-    personalTags: ["Environmentalist", "Nature Lover", "Scientist"],
+    personalTags: ["Deep Thinker", "Analytical", "Minimalist", "Introverted", "Early Bird"],
     preferredMeetupRadius: 18,
     availabilitySchedule: {
       monday: { start: "17:00", end: "21:00" },
@@ -1322,12 +1385,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "French"],
     profilePicture: "https://randomuser.me/api/portraits/men/6.jpg",
     currentCity: "Amherst, NY",
-    connectionIntents: ["Business", "Architecture", "History", "Culture", "Networking"],
+    connectionIntents: ["Networking & Business", "Art & Culture", "Deep Discussions", "Food & Dining", "Learning & Education"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: false
+      prefersSmallGroups: false,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true
     },
-    personalTags: ["Business Consultant", "Architecture Buff", "History Lover"],
+    personalTags: ["Career-Focused", "Analytical", "Leader", "Extroverted", "Planner"],
     preferredMeetupRadius: 15,
     availabilitySchedule: {
       monday: { start: "18:00", end: "23:00" },
@@ -1371,12 +1444,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Spanish"],
     profilePicture: "https://randomuser.me/api/portraits/women/7.jpg",
     currentCity: "Kenmore, NY",
-    connectionIntents: ["Wellness", "Yoga", "Meditation", "Healthy Living", "Spirituality"],
+    connectionIntents: ["Fitness & Wellness", "Learning & Education", "Deep Discussions", "Coffee & Casual Meetups", "Volunteering & Community"],
     eventPreferences: {
       likesBars: false,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: true
     },
-    personalTags: ["Yoga Instructor", "Wellness Coach", "Spiritual Seeker"],
+    personalTags: ["Yoga Practitioner", "Meditation", "Vegan", "Early Bird", "Minimalist"],
     preferredMeetupRadius: 10,
     availabilitySchedule: {
       monday: { start: "06:00", end: "21:00" },
@@ -1420,12 +1503,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Portuguese"],
     profilePicture: "https://randomuser.me/api/portraits/men/8.jpg",
     currentCity: "North Tonawanda, NY",
-    connectionIntents: ["Music", "Nightlife", "Art", "Culture", "Entertainment"],
+    connectionIntents: ["Music & Concerts", "Bar Hopping & Nightlife", "Art & Culture", "Creative Projects", "Dancing & Social Events"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: false
+      prefersSmallGroups: false,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Music Producer", "Night Owl", "Art Enthusiast"],
+    personalTags: ["Musician", "Night Owl", "Creative", "Extroverted", "Spontaneous"],
     preferredMeetupRadius: 20,
     availabilitySchedule: {
       monday: { start: "20:00", end: "02:00" },
@@ -1469,12 +1562,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Chinese"],
     profilePicture: "https://randomuser.me/api/portraits/women/9.jpg",
     currentCity: "Lancaster, NY",
-    connectionIntents: ["Fashion", "Art", "Design", "Culture", "Style"],
+    connectionIntents: ["Art & Culture", "Creative Projects", "Fashion & Style", "Coffee & Casual Meetups", "Festivals & Events"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Fashion Designer", "Style Icon", "Art Lover"],
+    personalTags: ["Artist", "Fashion-Forward", "Creative", "Extroverted", "Luxury Lover"],
     preferredMeetupRadius: 12,
     availabilitySchedule: {
       monday: { start: "17:00", end: "22:00" },
@@ -1518,12 +1621,22 @@ const testUsers: TestUser[] = [
     languages: ["English"],
     profilePicture: "https://randomuser.me/api/portraits/men/10.jpg",
     currentCity: "West Seneca, NY",
-    connectionIntents: ["Sports", "Adventure", "Fitness", "Outdoors", "Challenge"],
+    connectionIntents: ["Sports & Athletics", "Outdoor Adventures", "Fitness & Wellness", "Bar Hopping & Nightlife", "Gaming & Entertainment"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: false
+      prefersSmallGroups: false,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Sports Enthusiast", "Adventure Seeker", "Fitness Freak"],
+    personalTags: ["Gym Rat", "Adventure Seeker", "Extroverted", "Early Bird", "Action-Oriented"],
     preferredMeetupRadius: 25,
     availabilitySchedule: {
       monday: { start: "06:00", end: "22:00" },
@@ -1567,12 +1680,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Hindi"],
     profilePicture: "https://randomuser.me/api/portraits/women/11.jpg",
     currentCity: "Cheektowaga, NY",
-    connectionIntents: ["Technology", "Startups", "Digital Nomad", "Innovation", "Travel"],
+    connectionIntents: ["Technology & Innovation", "Creative Projects", "Networking & Business", "Travel & Exploration", "Learning & Education"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: false,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true
     },
-    personalTags: ["Digital Nomad", "Tech Founder", "Innovator"],
+    personalTags: ["Entrepreneur", "Tech-Savvy", "Independent", "Career-Focused", "Analytical"],
     preferredMeetupRadius: 18,
     availabilitySchedule: {
       monday: { start: "09:00", end: "23:00" },
@@ -1616,12 +1739,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Spanish", "Italian"],
     profilePicture: "https://randomuser.me/api/portraits/men/12.jpg",
     currentCity: "Tonawanda, NY",
-    connectionIntents: ["Food", "Cooking", "Culture", "Wine", "Travel"],
+    connectionIntents: ["Food & Dining", "Art & Culture", "Creative Projects", "Coffee & Casual Meetups", "Festivals & Events"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Chef", "Food Explorer", "Wine Connoisseur"],
+    personalTags: ["Foodie", "Creative", "Extroverted", "Luxury Lover", "Team Player"],
     preferredMeetupRadius: 15,
     availabilitySchedule: {
       monday: { start: "16:00", end: "23:00" },
@@ -1665,12 +1798,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "French"],
     profilePicture: "https://randomuser.me/api/portraits/women/13.jpg",
     currentCity: "Grand Island, NY",
-    connectionIntents: ["Sustainability", "Environment", "Community", "Activism", "Green Living"],
+    connectionIntents: ["Volunteering & Community", "Learning & Education", "Deep Discussions", "Outdoor Adventures", "Art & Culture"],
     eventPreferences: {
       likesBars: false,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: true
     },
-    personalTags: ["Environmentalist", "Zero Waste", "Community Leader"],
+    personalTags: ["Minimalist", "Deep Thinker", "Empathetic", "Introverted", "Early Bird"],
     preferredMeetupRadius: 10,
     availabilitySchedule: {
       monday: { start: "17:00", end: "21:00" },
@@ -1714,12 +1857,22 @@ const testUsers: TestUser[] = [
     languages: ["English"],
     profilePicture: "https://randomuser.me/api/portraits/men/14.jpg",
     currentCity: "Depew, NY",
-    connectionIntents: ["Fitness", "Motivation", "Leadership", "Sports", "Inspiration"],
+    connectionIntents: ["Fitness & Wellness", "Sports & Athletics", "Learning & Education", "Networking & Business", "Volunteering & Community"],
     eventPreferences: {
       likesBars: true,
-      prefersSmallGroups: false
+      prefersSmallGroups: false,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: false
     },
-    personalTags: ["Athlete", "Motivational Speaker", "Leader"],
+    personalTags: ["Gym Rat", "Leader", "Extroverted", "Early Bird", "Action-Oriented"],
     preferredMeetupRadius: 20,
     availabilitySchedule: {
       monday: { start: "05:00", end: "22:00" },
@@ -1763,12 +1916,22 @@ const testUsers: TestUser[] = [
     languages: ["English", "Mandarin", "German"],
     profilePicture: "https://randomuser.me/api/portraits/women/15.jpg",
     currentCity: "Lockport, NY",
-    connectionIntents: ["Music", "Culture", "Education", "Classical", "Arts"],
+    connectionIntents: ["Music & Concerts", "Art & Culture", "Learning & Education", "Deep Discussions", "Coffee & Casual Meetups"],
     eventPreferences: {
       likesBars: false,
-      prefersSmallGroups: true
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true
     },
-    personalTags: ["Classical Musician", "Cultural Ambassador", "Educator"],
+    personalTags: ["Musician", "Deep Thinker", "Introverted", "Early Bird", "Analytical"],
     preferredMeetupRadius: 12,
     availabilitySchedule: {
       monday: { start: "18:00", end: "22:00" },
@@ -1805,6 +1968,7 @@ const testUsers: TestUser[] = [
 
 const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> = ({ textColor, sectionBgColor }) => {
   const router = useRouter();
+  const { user: authUser } = useAuth();
   const [isGenerating, setIsGenerating] = useState(false);
   const [userCount, setUserCount] = useState(1);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
@@ -1884,13 +2048,34 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
       return;
     }
 
+    if (!authUser?.uid) {
+      Alert.alert('Error', 'You must be logged in to generate test users');
+      return;
+    }
+
     setIsGenerating(true);
-    setGenerationStatus('Generating test users...');
+    setGenerationStatus('Getting current user\'s push token...');
 
     try {
+      // Get the current authenticated user's push token
+      const currentUserDoc = await getDoc(doc(db, 'users', authUser.uid));
+      if (!currentUserDoc.exists()) {
+        Alert.alert('Error', 'Current user document not found');
+        return;
+      }
+
+      const currentUserData = currentUserDoc.data();
+      const currentUserPushToken = currentUserData.expoPushToken;
+
+      if (!currentUserPushToken) {
+        Alert.alert('Error', 'Current user does not have a push token. Please enable notifications first.');
+        return;
+      }
+
+      setGenerationStatus('Cleaning up existing test users...');
+
       // First, delete all existing test users
       if (existingTestUsers.length > 0) {
-        setGenerationStatus('Cleaning up existing test users...');
         const deleteBatch = writeBatch(db);
         existingTestUsers.forEach(user => {
           const userRef = doc(db, 'users', user.id);
@@ -1942,7 +2127,7 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
           createdAt: now,
           dateOfBirth: Timestamp.fromDate(dateOfBirth),
           eulaAcceptedAt: now,
-          expoPushToken: `ExponentPushToken[test-${Math.random().toString(36).substring(7)}]`,
+          expoPushToken: currentUserPushToken, // Use the current user's push token
           hasMeBlocked: [],
           isAnonymous: false,
           lastLogin: now,
@@ -1983,7 +2168,7 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
       }
 
       await batch.commit();
-      setGenerationStatus(`Successfully generated ${userCount} test users!`);
+      setGenerationStatus(`Successfully generated ${userCount} test users with your push token!`);
       fetchExistingTestUsers(); // Refresh the list after generating new users
     } catch (error) {
       console.error('Error generating test users:', error);
@@ -2003,7 +2188,7 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
       
       <View style={styles.testDataContent}>
         <Text style={[styles.testDataDescription, { color: textColor }]}>
-          Generate test users with realistic data for development and testing purposes.
+          Generate test users with realistic data for development and testing purposes. All test users will use your current push token for notifications.
         </Text>
 
         <View style={styles.userCountContainer}>
@@ -2102,6 +2287,588 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
                   <TouchableOpacity
                     style={[styles.deleteButton, { borderColor: textColor }]}
                     onPress={() => deleteTestUser(user.id)}
+                  >
+                    <MaterialIcons name="delete" size={20} color={textColor} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// Add test ping data interface
+interface TestPing {
+  title: string;
+  description: string;
+  location: string;
+  category: string;
+  template: string;
+  duration: string;
+  maxParticipants: string;
+  pingType: string;
+  visibilityRadius: string;
+  connectionIntents: string[];
+  eventPreferences: any;
+}
+
+const testPings: TestPing[] = [
+  {
+    title: "Coffee & Chat",
+    description: "Looking for someone to grab coffee and have a good conversation. Perfect for networking or just making new friends!",
+    location: "Local Coffee Shop",
+    category: "food",
+    template: "coffee",
+    duration: "1 hour",
+    maxParticipants: "4 people",
+    pingType: "open",
+    visibilityRadius: "10 miles",
+    connectionIntents: ["Coffee & Casual Meetups", "Deep Discussions"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true,
+      prefersWeekendEvents: false,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true,
+    }
+  },
+  {
+    title: "Pickup Basketball",
+    description: "Need players for a casual pickup basketball game. All skill levels welcome!",
+    location: "Local Basketball Court",
+    category: "sports",
+    template: "basketball",
+    duration: "2 hours",
+    maxParticipants: "10 people",
+    pingType: "open",
+    visibilityRadius: "15 miles",
+    connectionIntents: ["Sports & Athletics", "Fitness & Wellness"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: false,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: false,
+    }
+  },
+  {
+    title: "Dinner Plans",
+    description: "Looking for dinner companions to try out a new restaurant. Great opportunity to meet new people!",
+    location: "New Restaurant Downtown",
+    category: "food",
+    template: "dinner",
+    duration: "2 hours",
+    maxParticipants: "6 people",
+    pingType: "open",
+    visibilityRadius: "20 miles",
+    connectionIntents: ["Food & Dining", "Coffee & Casual Meetups"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: false,
+    }
+  },
+  {
+    title: "Hiking Adventure",
+    description: "Planning a hiking trip to explore local trails. Perfect for nature lovers and adventure seekers!",
+    location: "Local Hiking Trail",
+    category: "wellness",
+    template: "hiking",
+    duration: "4 hours",
+    maxParticipants: "8 people",
+    pingType: "open",
+    visibilityRadius: "25 miles",
+    connectionIntents: ["Outdoor Adventures", "Fitness & Wellness"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: false,
+      prefersTravelEvents: true,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: false,
+    }
+  },
+  {
+    title: "Board Game Night",
+    description: "Hosting a board game night. Bring your favorite games or learn new ones!",
+    location: "Local Community Center",
+    category: "social",
+    template: "board-games",
+    duration: "3 hours",
+    maxParticipants: "8 people",
+    pingType: "open",
+    visibilityRadius: "12 miles",
+    connectionIntents: ["Coffee & Casual Meetups", "Deep Discussions"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true,
+    }
+  },
+  {
+    title: "Networking Meetup",
+    description: "Professional networking event for entrepreneurs and professionals. Great for building connections!",
+    location: "Downtown Business Center",
+    category: "business",
+    template: "networking",
+    duration: "2 hours",
+    maxParticipants: "15 people",
+    pingType: "open",
+    visibilityRadius: "30 miles",
+    connectionIntents: ["Networking & Business", "Technology & Innovation"],
+    eventPreferences: {
+      likesBars: true,
+      prefersSmallGroups: false,
+      prefersWeekendEvents: false,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: false,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true,
+    }
+  },
+  {
+    title: "Movie Night",
+    description: "Going to see the latest blockbuster. Looking for movie buddies!",
+    location: "Local Movie Theater",
+    category: "entertainment",
+    template: "movie",
+    duration: "3 hours",
+    maxParticipants: "6 people",
+    pingType: "open",
+    visibilityRadius: "15 miles",
+    connectionIntents: ["Music & Concerts", "Gaming & Entertainment"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: true,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: false,
+    }
+  },
+  {
+    title: "Yoga Session",
+    description: "Group yoga session for all levels. Bring your own mat and positive energy!",
+    location: "Local Park",
+    category: "wellness",
+    template: "yoga",
+    duration: "1 hour",
+    maxParticipants: "12 people",
+    pingType: "open",
+    visibilityRadius: "10 miles",
+    connectionIntents: ["Fitness & Wellness", "Outdoor Adventures"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: false,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: true,
+      prefersIntellectualDiscussions: false,
+    }
+  },
+  {
+    title: "Language Exchange",
+    description: "Spanish-English language exchange. Practice speaking and make new friends!",
+    location: "Local Library",
+    category: "learning",
+    template: "language",
+    duration: "2 hours",
+    maxParticipants: "6 people",
+    pingType: "open",
+    visibilityRadius: "18 miles",
+    connectionIntents: ["Learning & Education", "Deep Discussions"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true,
+      prefersWeekendEvents: false,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: true,
+      prefersStructuredActivities: true,
+      prefersSpontaneousPlans: false,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true,
+    }
+  },
+  {
+    title: "Photography Walk",
+    description: "Photography enthusiasts wanted! Let's explore the city and capture some amazing shots together.",
+    location: "Downtown Area",
+    category: "other",
+    template: "photography",
+    duration: "3 hours",
+    maxParticipants: "8 people",
+    pingType: "open",
+    visibilityRadius: "20 miles",
+    connectionIntents: ["Photography & Media", "Art & Culture"],
+    eventPreferences: {
+      likesBars: false,
+      prefersSmallGroups: true,
+      prefersWeekendEvents: true,
+      prefersEveningEvents: false,
+      prefersIndoorVenues: false,
+      prefersStructuredActivities: false,
+      prefersSpontaneousPlans: true,
+      prefersLocalMeetups: true,
+      prefersTravelEvents: false,
+      prefersQuietEnvironments: true,
+      prefersActiveLifestyles: false,
+      prefersIntellectualDiscussions: true,
+    }
+  }
+];
+
+const TestPingSection: React.FC<{ textColor: string, sectionBgColor: string }> = ({ textColor, sectionBgColor }) => {
+  const { user: authUser } = useAuth();
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [pingCount, setPingCount] = useState(5);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [existingTestPings, setExistingTestPings] = useState<Array<{ id: string } & any>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchExistingTestPings = useCallback(async () => {
+    try {
+      const pingsQuery = query(
+        collection(db, 'pings'),
+        where('testPing', '==', true)
+      );
+      const snapshot = await getDocs(pingsQuery);
+      const pings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setExistingTestPings(pings);
+    } catch (error) {
+      console.error('Error fetching test pings:', error);
+      Alert.alert('Error', 'Failed to fetch existing test pings');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchExistingTestPings();
+  }, [fetchExistingTestPings]);
+
+  const deleteTestPing = async (pingId: string) => {
+    try {
+      await deleteDoc(doc(db, 'pings', pingId));
+      setExistingTestPings(prev => prev.filter(ping => ping.id !== pingId));
+      Alert.alert('Success', 'Test ping deleted successfully');
+    } catch (error) {
+      console.error('Error deleting test ping:', error);
+      Alert.alert('Error', 'Failed to delete test ping');
+    }
+  };
+
+  const deleteAllTestPings = async () => {
+    Alert.alert(
+      'Delete All Test Pings',
+      'Are you sure you want to delete all test pings? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const batch = writeBatch(db);
+              existingTestPings.forEach(ping => {
+                const pingRef = doc(db, 'pings', ping.id);
+                batch.delete(pingRef);
+              });
+              await batch.commit();
+              setExistingTestPings([]);
+              Alert.alert('Success', 'All test pings deleted successfully');
+            } catch (error) {
+              console.error('Error deleting all test pings:', error);
+              Alert.alert('Error', 'Failed to delete all test pings');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Function to generate random coordinates within 50 miles of user location
+  const generateRandomCoordinates = (userLat: number, userLng: number): { latitude: number; longitude: number } => {
+    // Convert miles to degrees (approximate)
+    // 1 degree of latitude ≈ 69 miles
+    // 1 degree of longitude ≈ 69 * cos(latitude) miles
+    const maxRadiusMiles = 50;
+    const maxRadiusLat = maxRadiusMiles / 69;
+    const maxRadiusLng = maxRadiusMiles / (69 * Math.cos(userLat * Math.PI / 180));
+
+    // Generate random angle and distance
+    const angle = Math.random() * 2 * Math.PI;
+    const distance = Math.random() * maxRadiusMiles;
+
+    // Convert to lat/lng offsets
+    const latOffset = (distance * Math.cos(angle)) / 69;
+    const lngOffset = (distance * Math.sin(angle)) / (69 * Math.cos(userLat * Math.PI / 180));
+
+    return {
+      latitude: userLat + latOffset,
+      longitude: userLng + lngOffset
+    };
+  };
+
+  const generateTestPings = async () => {
+    if (pingCount < 1 || pingCount > 10) {
+      Alert.alert('Error', 'Please select between 1 and 10 pings');
+      return;
+    }
+
+    if (!authUser?.uid) {
+      Alert.alert('Error', 'You must be logged in to generate test pings');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationStatus('Getting current user location...');
+
+    try {
+      // Get the current authenticated user's location
+      const currentUserDoc = await getDoc(doc(db, 'users', authUser.uid));
+      if (!currentUserDoc.exists()) {
+        Alert.alert('Error', 'Current user document not found');
+        return;
+      }
+
+      const currentUserData = currentUserDoc.data();
+      const userLocation = currentUserData.lastKnownCoordinates;
+
+      if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
+        Alert.alert('Error', 'Current user does not have location data. Please enable location services first.');
+        return;
+      }
+
+      setGenerationStatus('Cleaning up existing test pings...');
+
+      // First, delete all existing test pings
+      if (existingTestPings.length > 0) {
+        const deleteBatch = writeBatch(db);
+        existingTestPings.forEach(ping => {
+          const pingRef = doc(db, 'pings', ping.id);
+          deleteBatch.delete(pingRef);
+        });
+        await deleteBatch.commit();
+      }
+
+      // Then generate new test pings
+      setGenerationStatus('Creating new test pings...');
+      const selectedPings = testPings.slice(0, pingCount);
+      const batch = writeBatch(db);
+
+      for (const ping of selectedPings) {
+        const pingRef = doc(collection(db, 'pings'));
+        const now = Timestamp.now();
+        
+        // Generate random coordinates within 50 miles of user location
+        const coordinates = generateRandomCoordinates(userLocation.latitude, userLocation.longitude);
+
+        const pingData = {
+          ...ping,
+          creatorId: authUser.uid,
+          creatorName: currentUserData.name || 'Test User',
+          coordinates: coordinates,
+          createdAt: now,
+          status: 'active',
+          participants: [],
+          participantCount: 0,
+          testPing: true,
+          updatedAt: now
+        };
+
+        batch.set(pingRef, pingData);
+      }
+
+      await batch.commit();
+      setGenerationStatus(`Successfully generated ${pingCount} test pings within 50 miles of your location!`);
+      fetchExistingTestPings(); // Refresh the list after generating new pings
+    } catch (error) {
+      console.error('Error generating test pings:', error);
+      setGenerationStatus('Error generating test pings. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const formatDate = (timestamp: Timestamp) => {
+    return new Date(timestamp.toDate()).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric'
+    });
+  };
+
+  return (
+    <View style={[styles.testPingSection, { backgroundColor: sectionBgColor }]}>
+      <Text style={[styles.sectionTitle, { color: textColor }]}>Test Ping Generation</Text>
+      
+      <View style={styles.testPingContent}>
+        <Text style={[styles.testPingDescription, { color: textColor }]}>
+          Generate test pings with realistic data for development and testing purposes. All pings will be created within 50 miles of your current location.
+        </Text>
+
+        <View style={styles.pingCountContainer}>
+          <Text style={[styles.label, { color: textColor }]}>Number of Pings:</Text>
+          <View style={styles.pingCountControls}>
+            <TouchableOpacity
+              style={[styles.pingCountButton, { borderColor: textColor }]}
+              onPress={() => setPingCount(Math.max(1, pingCount - 1))}
+              disabled={pingCount <= 1}
+            >
+              <MaterialIcons name="remove" size={20} color={textColor} />
+            </TouchableOpacity>
+            <Text style={[styles.pingCount, { color: textColor }]}>{pingCount}</Text>
+            <TouchableOpacity
+              style={[styles.pingCountButton, { borderColor: textColor }]}
+              onPress={() => setPingCount(Math.min(10, pingCount + 1))}
+              disabled={pingCount >= 10}
+            >
+              <MaterialIcons name="add" size={20} color={textColor} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.generatePingButton,
+            isGenerating && styles.generatePingButtonDisabled
+          ]}
+          onPress={generateTestPings}
+          disabled={isGenerating}
+        >
+          {isGenerating ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.generatePingButtonText}>Generate Test Pings</Text>
+          )}
+        </TouchableOpacity>
+
+        {generationStatus && (
+          <Text style={[styles.generationStatus, { color: textColor }]}>
+            {generationStatus}
+          </Text>
+        )}
+
+        <View style={styles.existingPingsSection}>
+          <View style={styles.existingPingsHeader}>
+            <Text style={[styles.existingPingsTitle, { color: textColor }]}>
+              Existing Test Pings ({existingTestPings.length})
+            </Text>
+          </View>
+          {existingTestPings.length > 0 && (
+            <View style={styles.deleteAllContainer}>
+              <TouchableOpacity
+                style={[styles.deleteAllButton, { borderColor: textColor }]}
+                onPress={deleteAllTestPings}
+              >
+                <MaterialIcons name="delete-sweep" size={20} color={textColor} />
+                <Text style={[styles.deleteAllButtonText, { color: textColor }]}>
+                  Delete All
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isLoading ? (
+            <ActivityIndicator size="large" color={textColor} style={styles.loadingIndicator} />
+          ) : existingTestPings.length === 0 ? (
+            <View style={styles.emptyState}>
+              <MaterialIcons name="event" size={48} color={textColor} style={{ opacity: 0.5 }} />
+              <Text style={[styles.emptyStateText, { color: textColor }]}>No test pings found</Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.testPingsList}>
+              {existingTestPings.map((ping) => (
+                <View 
+                  key={ping.id} 
+                  style={[styles.testPingItem, { borderColor: textColor }]}
+                >
+                  <View style={styles.testPingInfo}>
+                    <View style={styles.testPingDetails}>
+                      <Text style={[styles.testPingTitle, { color: textColor }]}>{ping.title}</Text>
+                      <Text style={[styles.testPingCategory, { color: textColor }]}>
+                        {PING_CATEGORIES.find(cat => cat.id === ping.category)?.label || ping.category}
+                      </Text>
+                      <Text style={[styles.testPingDate, { color: textColor }]}>
+                        {ping.createdAt ? formatDate(ping.createdAt) : 'Unknown Date'}
+                      </Text>
+                      <Text style={[styles.testPingLocation, { color: textColor }]}>
+                        {ping.location}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.deleteButton, { borderColor: textColor }]}
+                    onPress={() => deleteTestPing(ping.id)}
                   >
                     <MaterialIcons name="delete" size={20} color={textColor} />
                   </TouchableOpacity>
@@ -2355,7 +3122,10 @@ export default function AdminTools() {
           </TouchableOpacity>
 
           {expandedGroups.testData && (
-            <TestDataSection textColor={textColor} sectionBgColor={sectionBgColor} />
+            <>
+              <TestDataSection textColor={textColor} sectionBgColor={sectionBgColor} />
+              <TestPingSection textColor={textColor} sectionBgColor={sectionBgColor} />
+            </>
           )}
 
           <TouchableOpacity 
@@ -3023,5 +3793,118 @@ const styles = StyleSheet.create({
   sandboxButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  testPingSection: {
+    borderRadius: 12,
+    marginBottom: 24,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  testPingContent: {
+    padding: 16,
+  },
+  testPingDescription: {
+    fontSize: 14,
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  pingCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  pingCountControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pingCountButton: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 40,
+    height: 40,
+  },
+  pingCount: {
+    fontSize: 18,
+    fontWeight: '600',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  generatePingButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  generatePingButtonDisabled: {
+    backgroundColor: '#007AFF80',
+  },
+  generatePingButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  existingPingsSection: {
+    marginTop: 32,
+  },
+  existingPingsHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  existingPingsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  testPingsList: {
+    maxHeight: 400,
+  },
+  testPingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  testPingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  testPingDetails: {
+    flex: 1,
+  },
+  testPingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  testPingCategory: {
+    fontSize: 14,
+    opacity: 0.8,
+    marginBottom: 2,
+  },
+  testPingDate: {
+    fontSize: 14,
+    opacity: 0.6,
+  },
+  testPingLocation: {
+    fontSize: 14,
+    opacity: 0.6,
   },
 }); 

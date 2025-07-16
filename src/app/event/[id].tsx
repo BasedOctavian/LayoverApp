@@ -266,7 +266,8 @@ export default function Event() {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const insets = useSafeAreaInsets();
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const { theme } = React.useContext(ThemeContext);
+  const themeContext = React.useContext(ThemeContext);
+  const theme = themeContext?.theme || "light";
   const { messages } = useChat(eventId);
   const messageCount = messages?.length || 0;
 
@@ -615,110 +616,7 @@ export default function Event() {
     ? ["#FF416C", "#FF4B2B"] 
     : ["#37a4c8", "#37a4c8"];
 
-  const renderOrganizerSection = () => (
-    <View style={styles.organizerContainer}>
-      {event.organizer ? (
-        <TouchableOpacity
-          style={[styles.organizerBadge, { 
-            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.04)" : "rgba(55, 164, 200, 0.08)",
-            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
-          }]}
-          onPress={() => router.push(`/profile/${event.organizer}`)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.organizerHeader}>
-            <View style={[styles.organizerIconContainer, {
-              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.12)"
-            }]}>
-              <MaterialIcons name="person" size={14} color="#37a4c8" />
-            </View>
-            <View style={styles.organizerMainInfo}>
-              <Text style={[styles.organizerTitle, { color: "#37a4c8" }]}>
-                Organized by {organizer?.name || "Unknown"}
-              </Text>
-              {organizer && (organizer.age || organizer.airportCode) && (
-                <View style={styles.organizerMeta}>
-                  {organizer.age && (
-                    <Text style={[styles.organizerMetaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      {organizer.age} years old
-                    </Text>
-                  )}
-                  {organizer.age && organizer.airportCode && (
-                    <View style={[styles.organizerMetaDot, { 
-                      backgroundColor: theme === "light" ? "#64748B" : "#94A3B8" 
-                    }]} />
-                  )}
-                  {organizer.airportCode && (
-                    <Text style={[styles.organizerMetaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      {organizer.airportCode}
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
-            <View style={[styles.organizerChevron, {
-              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(55, 164, 200, 0.1)"
-            }]}>
-              <MaterialIcons name="chevron-right" size={16} color="#37a4c8" />
-            </View>
-          </View>
-        </TouchableOpacity>
-      ) : (
-        <View style={[styles.organizerBadge, { 
-          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.04)" : "rgba(55, 164, 200, 0.08)",
-          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
-        }]}>
-          <View style={styles.organizerHeader}>
-            <View style={[styles.organizerIconContainer, {
-              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.12)"
-            }]}>
-              <MaterialIcons name="group-add" size={14} color="#37a4c8" />
-            </View>
-            <View style={styles.organizerMainInfo}>
-              <Text style={[styles.organizerTitle, { color: "#37a4c8" }]}>
-                This event needs an organizer!
-              </Text>
-              <Text style={[styles.organizerSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                Be the first to claim organization and set the event time
-              </Text>
-            </View>
-          </View>
-        </View>
-      )}
 
-      {event.organizer === null && (
-        <TouchableOpacity
-          style={styles.becomeOrganizerButton}
-          onPress={confirmOrganizerTakeover}
-          disabled={loading}
-          activeOpacity={0.7}
-        >
-          <LinearGradient
-            colors={["#37a4c8", "#37a4c8"]}
-            style={styles.buttonGradient}
-          >
-            <Feather name="star" size={20} color="#fff" />
-            <Text style={styles.buttonText}>
-              {loading ? "Claiming..." : "Become Organizer"}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
-
-      {event.organizedAt && (
-        <View style={styles.organizedTimestampContainer}>
-          <View style={[styles.organizedTimestampIcon, {
-            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(55, 164, 200, 0.1)"
-          }]}>
-            <MaterialIcons name="schedule" size={10} color="#37a4c8" />
-          </View>
-          <Text style={[styles.organizedTimestamp, { color: "#37a4c8" }]}>
-            Organized on {formatDateTime(event.organizedAt)}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
 
   const renderAttendeesModal = () => (
     <Modal
@@ -893,184 +791,278 @@ export default function Event() {
                 </View>
               )}
 
-              {/* Event Card */}
-              <View style={[styles.eventCard, { 
-                backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
-              }]}>
-                <Text style={[styles.eventTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>{event.name}</Text>
-                
-                <View style={[styles.categoryChip, { 
-                  backgroundColor: theme === "light" ? "rgba(56,165,201,0.1)" : "rgba(56,165,201,0.1)",
-                  borderColor: "#37a4c8"
-                }]}>
-                  <Text style={styles.eventCategory}>{event.category}</Text>
-                </View>
-                
-                <Text style={[styles.eventDescription, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>{event.description}</Text>
-                
-                <View style={styles.detailsGrid}>
-                  <View style={[styles.detailItem, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
-                    borderRadius: 12,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
-                  }]}>
-                    <View style={styles.detailIconContainer}>
-                      <MaterialIcons name="event" size={18} color="#37a4c8" />
-                    </View>
-                    <View style={styles.detailContent}>
-                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                        Created
-                      </Text>
-                      <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                        {formatDateTime(event.createdAt)}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  <View style={[styles.detailItem, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
-                    borderRadius: 12,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
-                  }]}>
-                    <View style={styles.detailIconContainer}>
-                      <MaterialIcons name="schedule" size={18} color="#37a4c8" />
-                    </View>
-                    <View style={styles.detailContent}>
-                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                        Starts
-                      </Text>
-                      <View style={styles.detailTextContainer}>
-                        <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                          {formatDateTime(event.startTime)}
-                        </Text>
-                        {isOrganizer && (
-                          <TouchableOpacity 
-                            style={styles.editButton}
-                            onPress={() => setShowDatePicker(true)}
-                          >
-                            <MaterialIcons name="edit" size={14} color="#37a4c8" />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-                  
-                  <View style={[styles.detailItem, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
-                    borderRadius: 12,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
-                  }]}>
-                    <View style={styles.detailIconContainer}>
-                      <MaterialIcons name="people" size={18} color="#37a4c8" />
-                    </View>
-                    <View style={styles.detailContent}>
-                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                        Attendees
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.attendeesButton}
-                        onPress={handleShowAttendees}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.attendeesButtonContent}>
-                          <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                            {event.attendees?.length || 0} people
-                          </Text>
-                          <Ionicons name="chevron-forward" size={16} color="#37a4c8" />
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                  
-                  <View style={[styles.detailItem, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
-                    borderRadius: 12,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
-                  }]}>
-                    <View style={styles.detailIconContainer}>
-                      <MaterialIcons name="flight" size={18} color="#37a4c8" />
-                    </View>
-                    <View style={styles.detailContent}>
-                      <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                        Airport
-                      </Text>
-                      <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                        {event.airportCode || "Not set"}
-                      </Text>
-                    </View>
+              {/* Title and Category Section */}
+              <View style={[styles.titleSection, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                <View style={styles.titleRow}>
+                  <MaterialIcons 
+                    name="event" 
+                    size={24} 
+                    color="#37a4c8" 
+                    style={styles.categoryIcon}
+                  />
+                  <View style={styles.titleContent}>
+                    <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {event.name}
+                    </Text>
+                    <Text style={[styles.category, { color: "#37a4c8" }]}>
+                      {event.category}
+                    </Text>
                   </View>
                 </View>
                 
-                {renderOrganizerSection()}
+                {/* Status badge */}
+                <View style={[styles.statusBadge, { backgroundColor: event.organizer ? '#10B981' : '#F59E0B' }]}>
+                  <Text style={styles.statusText}>{event.organizer ? 'Organized' : 'Needs Organizer'}</Text>
+                </View>
+              </View>
 
-                {/* Action Buttons */}
-                <View style={styles.bottomButtons}>
+              {/* Description Section */}
+              <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                  Description
+                </Text>
+                <Text style={[styles.description, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                  {event.description}
+                </Text>
+              </View>
+
+              {/* Details Grid */}
+              <View style={styles.detailsGrid}>
+                <View style={[styles.detailItem, { 
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                  borderRadius: 12,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                }]}>
+                  <View style={styles.detailIconContainer}>
+                    <MaterialIcons name="event" size={18} color="#37a4c8" />
+                  </View>
+                  <View style={styles.detailContent}>
+                    <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Created
+                    </Text>
+                    <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {formatDateTime(event.createdAt)}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.detailItem, { 
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                  borderRadius: 12,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                }]}>
+                  <View style={styles.detailIconContainer}>
+                    <MaterialIcons name="schedule" size={18} color="#37a4c8" />
+                  </View>
+                  <View style={styles.detailContent}>
+                    <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Starts
+                    </Text>
+                    <View style={styles.detailTextContainer}>
+                      <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                        {formatDateTime(event.startTime)}
+                      </Text>
+                      {isOrganizer && (
+                        <TouchableOpacity 
+                          style={styles.editButton}
+                          onPress={() => setShowDatePicker(true)}
+                        >
+                          <MaterialIcons name="edit" size={14} color="#37a4c8" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                </View>
+                
+                <View style={[styles.detailItem, { 
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                  borderRadius: 12,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                }]}>
+                  <View style={styles.detailIconContainer}>
+                    <MaterialIcons name="people" size={18} color="#37a4c8" />
+                  </View>
+                  <View style={styles.detailContent}>
+                    <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Attendees
+                    </Text>
+                    <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {event.attendees?.length || 0} people
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.detailItem, { 
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                  borderRadius: 12,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                }]}>
+                  <View style={styles.detailIconContainer}>
+                    <MaterialIcons name="flight" size={18} color="#37a4c8" />
+                  </View>
+                  <View style={styles.detailContent}>
+                    <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Airport
+                    </Text>
+                    <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {event.airportCode || "Not set"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Organizer Section */}
+              <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                  {event.organizer ? 'Organized by' : 'Organization'}
+                </Text>
+                {event.organizer ? (
+                  <View style={styles.creatorRow}>
+                    <UserAvatar user={{ name: organizer?.name || 'Unknown' }} size={50} />
+                    <View style={styles.creatorInfo}>
+                      <Text style={[styles.creatorName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                        {organizer?.name || "Unknown"}
+                      </Text>
+                      <Text style={[styles.creatorDate, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Organized {formatDateTime(event.organizedAt)}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.creatorRow}>
+                    <View style={[styles.organizerIconContainer, {
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.12)"
+                    }]}>
+                      <MaterialIcons name="group-add" size={24} color="#37a4c8" />
+                    </View>
+                    <View style={styles.creatorInfo}>
+                      <Text style={[styles.creatorName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                        This event needs an organizer!
+                      </Text>
+                      <Text style={[styles.creatorDate, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Be the first to claim organization and set the event time
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {event.organizer === null && (
                   <TouchableOpacity
-                    style={[styles.buttonContainer, (!isAttending && !isOrganizer) && styles.buttonContainerDisabled]}
-                    onPress={() => router.push(`event/eventChat/${id}`)}
-                    accessibilityLabel="Event Chat"
-                    accessibilityHint="Navigate to event discussion"
-                    disabled={!isAttending && !isOrganizer}
+                    style={styles.becomeOrganizerButton}
+                    onPress={confirmOrganizerTakeover}
+                    disabled={loading}
                     activeOpacity={0.7}
-                  >
-                    <LinearGradient 
-                      colors={(!isAttending && !isOrganizer) ? ["#cccccc", "#999999"] : ["#37a4c8", "#37a4c8"]} 
-                      style={styles.buttonGradient}
-                    >
-                      <View style={styles.chatButtonContent}>
-                        <View style={styles.chatIconContainer}>
-                          <Ionicons name="chatbubbles" size={24} color="#ffffff" />
-                          {messageCount > 0 && (
-                            <View style={styles.messageBadge}>
-                              <Text style={styles.messageBadgeText}>
-                                {messageCount > 99 ? '99+' : messageCount}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                        <Text style={styles.buttonText}>
-                          {(!isAttending && !isOrganizer) ? "Join to Chat" : "Event Chat"}
-                        </Text>
-                      </View>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[styles.buttonContainer, attendButtonDisabled && styles.buttonContainerDisabled]}
-                    onPress={handleAttend}
-                    activeOpacity={0.7}
-                    disabled={loading || attendButtonDisabled}
                   >
                     <LinearGradient
-                      colors={attendButtonColors}
+                      colors={["#37a4c8", "#37a4c8"]}
                       style={styles.buttonGradient}
                     >
-                      <Feather
-                        name={isAttending ? "x-circle" : "check-circle"}
-                        size={24}
-                        color="#ffffff"
-                      />
+                      <Feather name="star" size={20} color="#fff" />
                       <Text style={styles.buttonText}>
-                        {loading
-                          ? "Processing..."
-                          : isAttending
-                          ? "Leave Event"
-                          : !event.organizer
-                          ? "Need Organizer"
-                          : "Attend Event"}
+                        {loading ? "Claiming..." : "Become Organizer"}
                       </Text>
                     </LinearGradient>
                   </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Attendees Section */}
+              <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                <View style={styles.participantsHeader}>
+                  <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Attendees ({event.attendees?.length || 0})
+                  </Text>
+                  <TouchableOpacity 
+                    style={styles.viewAllButton}
+                    onPress={handleShowAttendees}
+                  >
+                    <Text style={styles.viewAllText}>View All</Text>
+                  </TouchableOpacity>
                 </View>
+                
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.participantsScroll}>
+                  {attendeesList.slice(0, 5).map((attendee, index) => (
+                    <View key={attendee.id || index} style={styles.participantItem}>
+                      <UserAvatar user={attendee} size={40} />
+                      <Text style={[styles.participantName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                        {attendee.name}
+                      </Text>
+                    </View>
+                  ))}
+                  {attendeesList.length === 0 && (
+                    <Text style={[styles.noParticipants, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      No attendees yet
+                    </Text>
+                  )}
+                </ScrollView>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.bottomButtons}>
+                <TouchableOpacity
+                  style={[styles.buttonContainer, (!isAttending && !isOrganizer) && styles.buttonContainerDisabled]}
+                  onPress={() => router.push(`event/eventChat/${id}`)}
+                  accessibilityLabel="Event Chat"
+                  accessibilityHint="Navigate to event discussion"
+                  disabled={!isAttending && !isOrganizer}
+                  activeOpacity={0.7}
+                >
+                  <LinearGradient 
+                    colors={(!isAttending && !isOrganizer) ? ["#cccccc", "#999999"] : ["#37a4c8", "#37a4c8"]} 
+                    style={styles.buttonGradient}
+                  >
+                    <View style={styles.chatButtonContent}>
+                      <View style={styles.chatIconContainer}>
+                        <Ionicons name="chatbubbles" size={24} color="#ffffff" />
+                        {messageCount > 0 && (
+                          <View style={styles.messageBadge}>
+                            <Text style={styles.messageBadgeText}>
+                              {messageCount > 99 ? '99+' : messageCount}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.buttonText}>
+                        {(!isAttending && !isOrganizer) ? "Join to Chat" : "Event Chat"}
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.buttonContainer, attendButtonDisabled && styles.buttonContainerDisabled]}
+                  onPress={handleAttend}
+                  activeOpacity={0.7}
+                  disabled={loading || attendButtonDisabled}
+                >
+                  <LinearGradient
+                    colors={attendButtonColors}
+                    style={styles.buttonGradient}
+                  >
+                    <Feather
+                      name={isAttending ? "x-circle" : "check-circle"}
+                      size={24}
+                      color="#ffffff"
+                    />
+                    <Text style={styles.buttonText}>
+                      {loading
+                        ? "Processing..."
+                        : isAttending
+                        ? "Leave Event"
+                        : !event.organizer
+                        ? "Need Organizer"
+                        : "Attend Event"}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
 
               {/* Report Button */}
@@ -1162,49 +1154,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 80,
   },
-  eventCard: {
-    borderRadius: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    position: 'relative',
-    elevation: 6,
-    shadowColor: "#37a4c8",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    padding: 20,
-    paddingBottom: 24,
-  },
-  eventTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 12,
-    letterSpacing: -0.3,
-  },
-  categoryChip: {
-    backgroundColor: "rgba(56,165,201,0.1)",
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    alignSelf: "flex-start",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#37a4c8",
-  },
-  eventCategory: {
-    fontSize: 12,
-    color: "#37a4c8",
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  eventDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 20,
-    fontWeight: '400',
-  },
+
   detailsGrid: {
     marginBottom: 20,
     gap: 8,
@@ -1218,67 +1168,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  organizerContainer: {
-    marginBottom: 24,
-  },
-  organizerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  organizerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    width: '100%',
-  },
-  organizerIconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  organizerMainInfo: {
-    flex: 1,
-  },
-  organizerTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 1,
-  },
-  organizerSubtitle: {
-    fontSize: 11,
-    fontWeight: '400',
-    lineHeight: 14,
-  },
-  organizerMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    marginTop: 1,
-  },
-  organizerMetaText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  organizerMetaDot: {
-    width: 2,
-    height: 2,
-    borderRadius: 1,
-    marginHorizontal: 4,
-  },
-  organizerChevron: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+
   becomeOrganizerButton: {
     borderRadius: 16,
     overflow: "hidden",
@@ -1287,6 +1177,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
+    marginTop: 12,
   },
   buttonGradient: {
     flexDirection: "row",
@@ -1546,15 +1437,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#37a4c8',
   },
-  attendeesButton: {
-    flex: 1,
-  },
-  attendeesButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 20,
-  },
+
   modalEmptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1579,22 +1462,133 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     opacity: 0.7,
   },
-  organizedTimestampContainer: {
+
+  titleSection: {
+    borderRadius: 20,
+    marginBottom: 16,
+    padding: 20,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 4,
+    gap: 12,
+    marginBottom: 8,
   },
-  organizedTimestampIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  categoryIcon: {
+    marginTop: 4,
+  },
+  titleContent: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  category: {
+    fontSize: 14,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    color: '#37a4c8',
+  },
+  statusBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  section: {
+    borderRadius: 20,
+    marginBottom: 16,
+    padding: 20,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+    letterSpacing: -0.3,
+  },
+  description: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '400',
+  },
+  creatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  creatorInfo: {
+    flex: 1,
+  },
+  creatorName: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  creatorDate: {
+    fontSize: 13,
+    fontWeight: '400',
+    opacity: 0.7,
+  },
+  viewAllButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#37a4c8',
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#37a4c8',
+  },
+  participantsScroll: {
+    paddingVertical: 10,
+  },
+  participantItem: {
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  participantName: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  noParticipants: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  participantsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  organizerIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  organizedTimestamp: {
-    fontSize: 11,
-    fontWeight: '500',
-    opacity: 0.7,
   },
 });

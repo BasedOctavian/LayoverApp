@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -30,19 +30,20 @@ import * as Location from "expo-location";
 import StatusSheet, { presetStatuses, PresetStatus } from "../../components/StatusSheet";
 import { router } from "expo-router";
 import useAuth from "../../hooks/auth";
-import useAirports, { Airport } from "../../hooks/useAirports";
-import useEvents from "../../hooks/useEvents";
-import useSportEvents from "../../hooks/useSportEvents";
 import useUsers from "../../hooks/useUsers";
-import { useNearestAirports } from "../../hooks/useNearestAirports";
-import { useFilteredEvents } from "../../hooks/useFilteredEvents";
 import useNotificationCount from "../../hooks/useNotificationCount";
+import useActivityCollapse from "../../hooks/useActivityCollapse";
+
+
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
+import ActivityCard from "../../components/ActivityCard";
 import { ThemeContext } from "../../context/ThemeContext";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Notifications from 'expo-notifications';
 import LoadingImage from "../../components/LoadingImage";
+import PingEventModal from "../../components/PingEventModal";
+import { isProfileComplete } from "../../utils/profileCompletionCheck";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -102,6 +103,10 @@ interface UserData {
     count: number;
   };
   currentCity?: string;
+  lastKnownCoordinates?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
@@ -133,7 +138,57 @@ const isUserAvailable = (availabilitySchedule: any): boolean => {
   if (!todaySchedule) return false;
   
   const { start, end } = todaySchedule;
+  
+  // Check for invalid or zero times
+  if (!start || !end || start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
+    return false;
+  }
+  
+  // Check if start and end are the same (no availability window)
+  if (start === end) return false;
+  
   return currentTime >= start && currentTime <= end;
+};
+
+// Helper function to format military time to AM/PM format
+const formatTimeToAMPM = (militaryTime: string): string => {
+  if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
+  
+  const [hours, minutes] = militaryTime.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  
+  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+};
+
+// Helper function to validate availability schedule
+const isValidAvailabilitySchedule = (availabilitySchedule: any): boolean => {
+  if (!availabilitySchedule || typeof availabilitySchedule !== 'object') return false;
+  
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  
+  // Check if at least one day has valid availability
+  for (const day of days) {
+    const daySchedule = availabilitySchedule[day];
+    if (daySchedule && daySchedule.start && daySchedule.end) {
+      const { start, end } = daySchedule;
+      
+      // Skip invalid or zero times
+      if (start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
+        continue;
+      }
+      
+      // Skip if start and end are the same
+      if (start === end) {
+        continue;
+      }
+      
+      // If we find at least one valid day, the schedule is valid
+      return true;
+    }
+  }
+  
+  return false;
 };
 
 // Helper function to get availability time range for today
@@ -148,7 +203,16 @@ const getTodayAvailability = (availabilitySchedule: any): string | null => {
   if (!todaySchedule) return null;
   
   const { start, end } = todaySchedule;
-  return `${start} - ${end}`;
+  
+  // Check for invalid or zero times
+  if (!start || !end || start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
+    return null;
+  }
+  
+  // Check if start and end are the same
+  if (start === end) return null;
+  
+  return `${formatTimeToAMPM(start)} - ${formatTimeToAMPM(end)}`;
 };
 
 // Helper function to get remaining availability time
@@ -163,6 +227,12 @@ const getRemainingTime = (availabilitySchedule: any): string | null => {
   if (!todaySchedule) return null;
   
   const { end } = todaySchedule;
+  
+  // Check for invalid or zero times
+  if (!end || end === '0:00' || end === '00:00') {
+    return null;
+  }
+  
   const [endHour, endMinute] = end.split(':').map(Number);
   const endTime = new Date();
   endTime.setHours(endHour, endMinute, 0, 0);
@@ -186,13 +256,72 @@ const formatRating = (ratingScore: any): string => {
   return `${ratingScore.average.toFixed(1)} (${ratingScore.count})`;
 };
 
+// Helper function to get next available time
+const getNextAvailableTime = (availabilitySchedule: any): string | null => {
+  if (!availabilitySchedule) return null;
+  
+  const now = new Date();
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const currentDayIndex = now.getDay();
+  
+  // Check today and the next 7 days
+  for (let i = 0; i < 7; i++) {
+    const dayIndex = (currentDayIndex + i) % 7;
+    const dayName = days[dayIndex];
+    const daySchedule = availabilitySchedule[dayName];
+    
+    if (daySchedule && daySchedule.start && daySchedule.end) {
+      const { start, end } = daySchedule;
+      
+      // Skip invalid or zero times
+      if (start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
+        continue;
+      }
+      
+      // Skip if start and end are the same
+      if (start === end) {
+        continue;
+      }
+      
+      const [startHour, startMinute] = start.split(':').map(Number);
+      const startTime = new Date();
+      startTime.setDate(startTime.getDate() + i);
+      startTime.setHours(startHour, startMinute, 0, 0);
+      
+      // If this is today, check if the start time is in the future
+      if (i === 0 && startTime <= now) {
+        continue;
+      }
+      
+      // Format the day name
+      const dayNames = ['Today', 'Tomorrow', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const displayDay = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayNames[dayIndex + 2];
+      
+      return `${displayDay} at ${formatTimeToAMPM(start)}`;
+    }
+  }
+  
+  return null;
+};
+
 type DashboardItem = {
-  type: "section" | "feature" | "spacer";
+  type: "section" | "feature" | "spacer" | "activity";
   id: string;
   data: any;
 };
 
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList) as unknown as typeof FlatList;
+type SearchItem = {
+  id: string;
+  name: string;
+  description: string;
+  isCreateEvent: boolean;
+  type?: string;
+  startTime?: string;
+};
+
+type FlatListItem = DashboardItem | SearchItem;
+
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<FlatListItem>);
 
 const getCategoryIcon = (category: string) => {
   switch (category) {
@@ -209,7 +338,7 @@ const getCategoryIcon = (category: string) => {
     case 'Networking':
       return <MaterialIcons name="groups" size={20} color="#38a5c9" />;
     case 'Social':
-      return <MaterialIcons name="people-alt" size={20} color="#38a5c9" />;
+      return <MaterialIcons name="people" size={20} color="#38a5c9" />;
     case 'Learning':
       return <MaterialIcons name="school" size={20} color="#38a5c9" />;
     case 'Business':
@@ -224,7 +353,7 @@ const getCategoryIcon = (category: string) => {
 const getEventIcon = (eventName: string) => {
   const name = eventName.toLowerCase();
   if (name.includes('startup') || name.includes('pitch')) {
-    return <MaterialIcons name="rocket-launch" size={20} color="#38a5c9" />;
+    return <MaterialIcons name="rocket" size={20} color="#38a5c9" />;
   }
   if (name.includes('mindful') || name.includes('meditation')) {
     return <MaterialIcons name="self-improvement" size={20} color="#38a5c9" />;
@@ -257,13 +386,13 @@ const getEventIcon = (eventName: string) => {
     return <MaterialIcons name="luggage" size={20} color="#38a5c9" />;
   }
   if (name.includes('cultural')) {
-    return <MaterialIcons name="emoji-people" size={20} color="#38a5c9" />;
+    return <MaterialIcons name="people" size={20} color="#38a5c9" />;
   }
   if (name.includes('freelancer')) {
     return <MaterialIcons name="work" size={20} color="#38a5c9" />;
   }
   if (name.includes('book')) {
-    return <MaterialIcons name="menu-book" size={20} color="#38a5c9" />;
+    return <MaterialIcons name="book" size={20} color="#38a5c9" />;
   }
   if (name.includes('tech')) {
     return <MaterialIcons name="computer" size={20} color="#38a5c9" />;
@@ -335,6 +464,79 @@ const CountdownTimer = ({ startTime }: { startTime: Date }) => {
   );
 };
 
+// Real-time updating component for user availability time
+const UserAvailabilityTimer = ({ availabilitySchedule, theme }: { availabilitySchedule: any; theme: string }) => {
+  const [timeLeft, setTimeLeft] = useState<string>('');
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      if (!availabilitySchedule) {
+        setTimeLeft('');
+        return;
+      }
+      
+      const now = new Date();
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const currentDay = days[now.getDay()];
+      const todaySchedule = availabilitySchedule[currentDay];
+      
+      if (!todaySchedule) {
+        setTimeLeft('');
+        return;
+      }
+      
+      const { end } = todaySchedule;
+      
+      // Check for invalid or zero times
+      if (!end || end === '0:00' || end === '00:00') {
+        setTimeLeft('');
+        return;
+      }
+      
+      const [endHour, endMinute] = end.split(':').map(Number);
+      const endTime = new Date();
+      endTime.setHours(endHour, endMinute, 0, 0);
+      
+      const diffMs = endTime.getTime() - now.getTime();
+      if (diffMs <= 0) {
+        setTimeLeft('');
+        return;
+      }
+      
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMinutes = Math.ceil((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (diffHours > 0) {
+        setTimeLeft(`${diffHours}h ${diffMinutes}m left`);
+      } else {
+        setTimeLeft(`${diffMinutes}m left`);
+      }
+    };
+
+    calculateTimeLeft();
+    const timer = setInterval(calculateTimeLeft, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, [availabilitySchedule]);
+
+  if (!timeLeft) return null;
+
+  return (
+    <View style={[styles.metaItem, { 
+      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
+    }]}>
+      <Feather name="clock" size={9} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+      <Text 
+        style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {timeLeft}
+      </Text>
+    </View>
+  );
+};
+
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
@@ -364,30 +566,19 @@ export default function Dashboard() {
   useEffect(() => {
     backgroundAnim.setValue(theme === "light" ? 0 : 1);
     textAnim.setValue(theme === "light" ? 0 : 1);
-  }, [theme]);
+  }, [theme, backgroundAnim, textAnim]);
 
   const { user: authUser, userId } = useAuth();
   const [userData, setUserData] = useState<UserData | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchType, setSearchType] = useState<"airports" | "events">("airports");
-  const { getEvents } = useEvents();
-  const [events, setEvents] = useState<any[]>([]);
-  const { updateUser, updateUserLocationAndLogin, getNearbyUsers } = useUsers();
-  const [selectedAirport, setSelectedAirport] = useState<Airport | null>(null);
-  const [allAirports, setAllAirports] = useState<Airport[]>([]);
-  const { getSportEvents } = useSportEvents();
-  const [allSportEvents, setAllSportEvents] = useState<any[]>([]);
-  const { getAirports } = useAirports();
-  const nearestAirports = useNearestAirports(userLocation, allAirports);
-  const { filteredRegularEvents, matchingSportEvents } = useFilteredEvents(selectedAirport, events, allSportEvents);
-  const allEvents = [...matchingSportEvents, ...filteredRegularEvents];
+  const [searchType, setSearchType] = useState<"events">("events");
+  const { updateUser, updateUserLocationAndLogin, getNearbyUsers, getUsers } = useUsers();
   const [showStatusSheet, setShowStatusSheet] = useState(false);
   const sheetAnim = useState(new Animated.Value(0))[0];
   const [customStatus, setCustomStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const [eventsLoaded, setEventsLoaded] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [updatingMood, setUpdatingMood] = useState(false);
   const [searchHeaderHeight, setSearchHeaderHeight] = useState(0);
@@ -406,8 +597,202 @@ export default function Dashboard() {
     type: "success",
   });
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
-  const [visibleAirportCount, setVisibleAirportCount] = useState(5);
-  const AIRPORTS_PER_PAGE = 5;
+  const [pingStep, setPingStep] = useState(1);
+
+  // Ping Modal State
+  const [showPingModal, setShowPingModal] = useState(false);
+
+  // Handle ping modal open/close
+  const handleOpenPingModal = () => {
+    setShowPingModal(true);
+    toggleFabExpansion();
+  };
+
+  const handleClosePingModal = () => {
+    setShowPingModal(false);
+  };
+
+  const [displayText, setDisplayText] = useState<string>("");
+  const [isShowingRandom, setIsShowingRandom] = useState(false);
+  const textFadeAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  // FAB expansion state and animations
+  const [fabExpanded, setFabExpanded] = useState(false);
+  const fabRotateAnim = useRef(new Animated.Value(0)).current;
+  const eventButtonAnim = useRef(new Animated.Value(0)).current;
+  const pingButtonAnim = useRef(new Animated.Value(0)).current;
+  const eventButtonOpacity = useRef(new Animated.Value(0)).current;
+  const pingButtonOpacity = useRef(new Animated.Value(0)).current;
+
+  // Random messages for alternating display
+  const randomMessages = useMemo(() => [
+    "Spontaneity starts here.",
+    "Start the party. Ping now.",
+    "Throw a vibe out there.",
+    "Basketball at 5? Ping it.",
+    "Something cool going down? Let people know.",
+    "Invite the city. Ping it.",
+    "Got plans? Drop a Ping.",
+    "Open invite. You in?",
+    "Kick something off. Ping it.",
+    "Send it. Someone's down.",
+    "It's time to lock in."
+  ], []);
+
+  // Function to handle FAB expansion
+  const toggleFabExpansion = useCallback(() => {
+    if (fabExpanded) {
+      // Collapse FAB
+      Animated.parallel([
+        Animated.timing(fabRotateAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(eventButtonAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pingButtonAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(eventButtonOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pingButtonOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Expand FAB
+      Animated.parallel([
+        Animated.timing(fabRotateAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(eventButtonAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pingButtonAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(eventButtonOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pingButtonOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    setFabExpanded(!fabExpanded);
+  }, [fabExpanded, fabRotateAnim, eventButtonAnim, pingButtonAnim, eventButtonOpacity, pingButtonOpacity]);
+
+  // Function to handle text transition with fade
+  const transitionText = useCallback((newText: string) => {
+    // Fade out
+    Animated.timing(textFadeAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      // Change text
+      setDisplayText(newText);
+      // Wait 0.3 seconds before fading in
+      setTimeout(() => {
+        Animated.timing(textFadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      }, 300);
+    });
+  }, [textFadeAnim]);
+
+  // Effect to alternate between mood status and random messages
+  useEffect(() => {
+    // Don't start alternating until userData is loaded
+    if (!userData) {
+      setDisplayText("Set your mood status");
+      return;
+    }
+
+    // If no mood status is set, just show the placeholder
+    if (!userData.moodStatus) {
+      setDisplayText("Set your mood status");
+      return;
+    }
+
+    // Set initial text to mood status with prefix
+    setDisplayText(`Current status: ${userData.moodStatus}`);
+    setIsShowingRandom(false);
+
+    // Trigger glow and scale animation for initial load
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.05,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [userData?.moodStatus, glowAnim, scaleAnim]);
+
+  // Separate effect for the interval
+  useEffect(() => {
+    // Only start interval if we have userData and moodStatus
+    if (!userData?.moodStatus) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      // If current text starts with "Current status:", show random message
+      if (displayText.startsWith("Current status:")) {
+        const randomIndex = Math.floor(Math.random() * randomMessages.length);
+        transitionText(randomMessages[randomIndex]);
+      } else {
+        // If current text is a random message, show mood status with prefix
+        transitionText(`Current status: ${userData.moodStatus}`);
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(interval);
+  }, [userData?.moodStatus, displayText, transitionText]);
 
   const hasUpdatedRef = useRef(false);
   const [scrollY] = useState(new Animated.Value(0));
@@ -428,13 +813,14 @@ export default function Dashboard() {
   const listTranslateYAnim = useRef(new Animated.Value(20)).current;
 
   const notificationCount = useNotificationCount(userId);
+  const { isCollapsed: activityCollapsed, isLoading: activityCollapseLoading, toggleCollapse: toggleActivityCollapse } = useActivityCollapse();
 
-  const showPopup = (title: string, message: string, type: "success" | "error") => {
+  const showPopup = useCallback((title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
     setTimeout(() => setPopupData((prev) => ({ ...prev, visible: false })), 3000);
-  };
+  }, []);
 
-  const handleUpdateMoodStatus = async (status: string) => {
+  const handleUpdateMoodStatus = useCallback(async (status: string) => {
     if (!userId) return;
     setUpdatingMood(true);
     setIsUpdating(true);
@@ -450,16 +836,16 @@ export default function Dashboard() {
       setUpdatingMood(false);
       setIsUpdating(false);
     }
-  };
+  }, [userId, updateUser]);
 
-  const toggleStatusSheet = () => {
+  const toggleStatusSheet = useCallback(() => {
     Animated.spring(sheetAnim, {
       toValue: showStatusSheet ? 0 : 1,
       useNativeDriver: true,
       bounciness: 8,
     }).start();
     setShowStatusSheet(!showStatusSheet);
-  };
+  }, [showStatusSheet, sheetAnim]);
   
 
   // Fetch user location on mount
@@ -478,23 +864,10 @@ export default function Dashboard() {
     })();
   }, []);
 
-  // Fetch events, sport events, and airports
+  // Initialize dashboard
   useEffect(() => {
     const initializeDashboard = async () => {
       try {
-        const [eventsData, sportEventsData] = await Promise.all([
-          getEvents(),
-          getSportEvents(),
-        ]);
-
-        if (eventsData) setEvents(eventsData);
-        if (sportEventsData) setAllSportEvents(sportEventsData);
-        setEventsLoaded(true);
-
-        // Load airports
-        const fetchedAirports = await getAirports();
-        if (fetchedAirports) setAllAirports(fetchedAirports);
-
         // Set initial load complete
         setInitialLoadComplete(true);
       } catch (error) {
@@ -506,16 +879,19 @@ export default function Dashboard() {
     if (userId) {
       initializeDashboard();
     }
-  }, [userId]);
+  }, [userId, showPopup]);
 
   useEffect(() => {
     const fetchNearbyUsers = async () => {
-      if (!selectedAirport?.airportCode) return;
+      if (!userId || !userLocation) return;
+      
+      // Prevent multiple fetches
+      if (usersLoaded) return;
       
       try {
-        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
-        const users = await getNearbyUsers(selectedAirport.airportCode, thirtyMinutesAgo) as UserData[];
-        
+        const users = await getUsers() as UserData[];
+     
+
         // Get current user's document to check blocked users
         if (!userId) {
           console.error('User ID is null');
@@ -524,18 +900,60 @@ export default function Dashboard() {
         const currentUserRef = doc(db, 'users', userId);
         const currentUserDoc = await getDoc(currentUserRef);
         const currentUserData = currentUserDoc.data();
-        
+
         // Get lists of blocked users
         const blockedUsers = currentUserData?.blockedUsers || [];
         const hasMeBlocked = currentUserData?.hasMeBlocked || [];
-        
-        // Convert users to NearbyUser format and filter out blocked users
-        const formattedUsers = users
-          .filter(user => 
-            user.id !== userId && // Exclude current user
-            !blockedUsers.includes(user.id) && // Exclude users blocked by current user
-            !hasMeBlocked.includes(user.id) // Exclude users who blocked current user
-          )
+
+        // Get current user's coordinates
+        const myLat = userLocation?.lat;
+        const myLong = userLocation?.long;
+
+        // Helper: check if user is available right now
+        const isAvailableNow = (availabilitySchedule: any) => {
+          if (!availabilitySchedule) return false;
+          const now = new Date();
+          const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+          const currentDay = days[now.getDay()];
+          const todaySchedule = availabilitySchedule[currentDay];
+          if (!todaySchedule) return false;
+          const { start, end } = todaySchedule;
+          if (!start || !end || start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') return false;
+          if (start === end) return false;
+          const currentTime = now.toTimeString().slice(0,5);
+          return currentTime >= start && currentTime <= end;
+        };
+
+        // Filter users by block, distance, and availability
+        const formattedUsers: NearbyUser[] = users
+          .filter(user => {
+            if (user.id === userId) {
+              return false;
+            }
+            if (blockedUsers.includes(user.id)) {
+              return false;
+            }
+            if (hasMeBlocked.includes(user.id)) {
+              return false;
+            }
+            // Availability filter
+            if (!isAvailableNow(user.availabilitySchedule)) {
+              return false;
+            }
+            // Distance filter
+            if (!user.lastKnownCoordinates || myLat == null || myLong == null) {
+              return false;
+            }
+            const { latitude, longitude } = user.lastKnownCoordinates;
+            if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+              return false;
+            }
+            const dist = haversineDistance(myLat, myLong, latitude, longitude);
+            if (dist > 40) {
+              return false;
+            }
+            return true;
+          })
           .map(user => ({
             id: user.id,
             name: user.name || 'Anonymous',
@@ -553,19 +971,19 @@ export default function Dashboard() {
             currentCity: user.currentCity,
           }));
 
+
+
         // Generate a unique timestamp for this batch of invite cards
         const timestamp = Date.now();
-        
-        let finalUsers = [...formattedUsers];
-        
-        // If we have 3 or more users, add a "View More" card as the last item
-        if (formattedUsers.length >= 3) {
+        let finalUsers: NearbyUser[] = [...formattedUsers];
+        if (formattedUsers.length >= 5) {
           finalUsers = [
             ...formattedUsers,
             {
               id: `view-more-${timestamp}`,
               name: 'View More',
               status: 'See all travelers',
+              isViewMoreCard: true,
               profilePicture: undefined,
               age: undefined,
               bio: undefined,
@@ -580,8 +998,8 @@ export default function Dashboard() {
             }
           ];
         } else {
-          // If we have fewer than 3 users, add "Invite Friends" cards
-          const inviteFriendsCards = Array(3 - formattedUsers.length)
+          // If we have fewer than 5 users, add "Invite Friends" cards
+          const inviteFriendsCards = Array(5 - formattedUsers.length)
             .fill(null)
             .map((_, index) => ({
               id: `invite-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
@@ -602,7 +1020,6 @@ export default function Dashboard() {
             }));
           finalUsers = [...formattedUsers, ...inviteFriendsCards];
         }
-
         setNearbyUsers(finalUsers);
         setUsersLoaded(true);
       } catch (error) {
@@ -611,18 +1028,17 @@ export default function Dashboard() {
         setUsersLoaded(true);
       }
     };
-
     fetchNearbyUsers();
-  }, [selectedAirport?.airportCode, userId]);
+  }, [userId, getNearbyUsers, userLocation, usersLoaded, getUsers]);
 
-  // Update loading state based on both events and users loading status
+  // Update loading state based on users loading status
   useEffect(() => {
-    if (eventsLoaded && usersLoaded) {
+    if (usersLoaded) {
       setLoading(false);
     }
-  }, [eventsLoaded, usersLoaded]);
+  }, [usersLoaded]);
 
-  const features: FeatureButton[] = [
+  const features: FeatureButton[] = useMemo(() => [
     { 
       icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, 
       title: "Connect", 
@@ -659,87 +1075,33 @@ export default function Dashboard() {
       screen: "settings/settings",
       description: "Customize your app preferences"
     },
-  ];
+  ], [userId]);
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      const [eventsData, sportEventsData] = await Promise.all([
-        getEvents(),
-        getSportEvents(),
-      ]);
-
-      if (eventsData) setEvents(eventsData);
-      if (sportEventsData) setAllSportEvents(sportEventsData);
-
-      const fetchedAirports = await getAirports();
-      if (fetchedAirports) setAllAirports(fetchedAirports);
+      // Refresh logic can be added here if needed
     } catch (error) {
       console.error("Error refreshing data:", error);
       showPopup("Error", "Failed to refresh data", "error");
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [isRefreshing, showPopup]);
 
-  const filteredResults =
-    searchType === "airports"
-      ? (() => {
-          // First filter the airports based on search query
-          const filtered = (allAirports || []).filter((airport: Airport) => 
-            airport?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            airport?.airportCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            airport?.location?.toLowerCase().includes(searchQuery.toLowerCase())
-          );
+  const filteredResults: SearchItem[] = useMemo(() => [
+    {
+      id: 'create-event',
+      name: 'Create Event',
+      description: 'Start a new event',
+      isCreateEvent: true
+    }
+  ], [searchQuery]);
 
-          // If we have user location, calculate distances and sort
-          if (userLocation) {
-            const withDistances = filtered.map(airport => ({
-              ...airport,
-              distance: haversineDistance(
-                userLocation.lat,
-                userLocation.long,
-                airport.lat,
-                airport.long
-              )
-            }));
+  const visibleResults: SearchItem[] = useMemo(() => filteredResults, [filteredResults]);
 
-            // Sort by distance, but put selected airport at top
-            return withDistances.sort((a, b) => {
-              if (selectedAirport && a.airportCode === selectedAirport.airportCode) return -1;
-              if (selectedAirport && b.airportCode === selectedAirport.airportCode) return 1;
-              return a.distance - b.distance;
-            });
-          }
-
-          // If no user location, just put selected airport at top
-          return filtered.sort((a, b) => {
-            if (selectedAirport && a.airportCode === selectedAirport.airportCode) return -1;
-            if (selectedAirport && b.airportCode === selectedAirport.airportCode) return 1;
-            return 0;
-          });
-        })()
-      : [
-          ...(allEvents || []).filter((event) => 
-            event?.name?.toLowerCase().includes(searchQuery.toLowerCase())),
-          {
-            id: 'create-event',
-            name: 'Create Event',
-            description: 'Start a new event at this airport',
-            isCreateEvent: true
-          }
-        ];
-
-  const visibleAirports = searchType === "airports" 
-    ? filteredResults.slice(0, visibleAirportCount)
-    : filteredResults;
-
-  const handleLoadMore = () => {
-    setVisibleAirportCount(prev => prev + AIRPORTS_PER_PAGE);
-  };
-
-  const handleSearchPress = () => {
+  const handleSearchPress = useCallback(() => {
     setShowSearch(true);
     Animated.parallel([
       Animated.timing(searchTransitionAnim, {
@@ -772,9 +1134,9 @@ export default function Dashboard() {
         }),
       ]).start();
     });
-  };
+  }, [searchTransitionAnim, listOpacityAnim, listTranslateYAnim]);
 
-  const handleSearchClose = () => {
+  const handleSearchClose = useCallback(() => {
     Animated.parallel([
       Animated.timing(searchTransitionAnim, {
         toValue: 0,
@@ -807,168 +1169,93 @@ export default function Dashboard() {
         }),
       ]).start();
     });
-  };
+  }, [searchTransitionAnim, listOpacityAnim, listTranslateYAnim]);
 
-  const renderSearchResult = (item: any) => {
-    if (searchType === "airports") {
-      const isSelected = selectedAirport?.airportCode === item.airportCode;
-      return (
-        <TouchableOpacity
-          style={styles.resultItem}
-          activeOpacity={0.9}
-          onPress={() => {
-            setSelectedAirport(item);
-            setShowSearch(false);
-          }}
-        >
-          <View style={[styles.resultItemView, { 
-            backgroundColor: isSelected 
-              ? (theme === "light" ? "#37a4c8" : "#38a5c9")
-              : (theme === "light" ? "#ffffff" : "#1a1a1a"),
-            borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-          }]}>
-            <Feather 
-              name="airplay" 
-              size={20} 
-              color={isSelected 
-                ? "#FFFFFF" 
-                : (theme === "light" ? "#37a4c8" : "#38a5c9")} 
-              style={styles.resultIcon} 
-            />
-            <View style={styles.airportResultContent}>
-              <Text style={[styles.airportName, { 
-                color: isSelected 
-                  ? "#FFFFFF" 
-                  : (theme === "light" ? "#000000" : "#e4fbfe")
-              }]}>{item.name}</Text>
-              <Text style={[styles.airportLocation, { 
-                color: isSelected 
-                  ? "#FFFFFF" 
-                  : (theme === "light" ? "#37a4c8" : "#38a5c9")
-              }]}>{item.location}</Text>
-              <View style={styles.airportMetaContainer}>
-                <Text style={[styles.airportCode, { 
-                  color: isSelected 
-                    ? "#FFFFFF" 
-                    : (theme === "light" ? "#37a4c8" : "#64748B")
-                }]}>{item.airportCode}</Text>
-                {item.distance !== undefined && (
-                  <Text style={[styles.airportDistance, { 
-                    color: isSelected 
-                      ? "#FFFFFF" 
-                      : (theme === "light" ? "#37a4c8" : "#64748B")
-                  }]}>
-                    {(item.distance * 0.621371).toFixed(1)} mi away
-                  </Text>
-                )}
-              </View>
-            </View>
-            <Feather 
-              name="chevron-right" 
-              size={18} 
-              color={isSelected 
-                ? "#FFFFFF" 
-                : (theme === "light" ? "#37a4c8" : "#CBD5E1")} 
-            />
-          </View>
-        </TouchableOpacity>
-      );
-    } else {
-      const isCreateEvent = item.isCreateEvent;
-      return (
-        <TouchableOpacity
-          style={styles.resultItem}
-          activeOpacity={0.9}
-          onPress={() => {
-            if (isCreateEvent) {
-              router.push('eventCreation');
-            } else {
-              const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
-              router.push(route);
-            }
-          }}
-        >
-          <View style={[
-            isCreateEvent ? styles.createEventItemView : styles.resultItemView,
-            { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-            }
-          ]}>
-            <Feather 
-              name={isCreateEvent ? "plus-circle" : "calendar"} 
-              size={20} 
-              color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
-              style={styles.resultIcon} 
-            />
-            <View style={styles.eventResultContent}>
-              <View style={[styles.eventHeader, { 
-                borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-              }]}>
-                <View style={styles.eventTitleContainer}>
-                  <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                    {item.name}
-                  </Text>
-                </View>
-              </View>
-              <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                {item.description}
-              </Text>
-              {!isCreateEvent && item.startTime && (
-                <View style={styles.eventMetaContainer}>
-                  <View style={[styles.eventMetaItem, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                  }]}>
-                    <Feather 
-                      name="clock" 
-                      size={14} 
-                      color={theme === "light" ? "#37a4c8" : "#64748B"} 
-                    />
-                    <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                      {new Date(item.startTime).toLocaleDateString()} at {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </View>
-                  {item.startTime && (
-                    <CountdownTimer startTime={new Date(item.startTime)} />
-                  )}
-                </View>
-              )}
-            </View>
-            <Feather 
-              name="chevron-right" 
-              size={18} 
-              color={theme === "light" ? "#37a4c8" : "#CBD5E1"} 
-            />
-          </View>
-        </TouchableOpacity>
-      );
-    }
-  };
+  const handleMoodPress = useCallback(() => {
+    toggleStatusSheet();
+  }, [toggleStatusSheet]);
 
-  const renderLoadMore = () => {
-    if (searchType === "airports" && filteredResults.length > visibleAirportCount) {
-      return (
-        <TouchableOpacity
-          style={[styles.loadMoreButton, { 
+  const renderSearchResult = useCallback((item: SearchItem) => {
+    const isCreateEvent = item.isCreateEvent;
+    return (
+      <TouchableOpacity
+        style={styles.resultItem}
+        activeOpacity={0.9}
+        onPress={() => {
+          if (isCreateEvent) {
+            router.push('eventCreation');
+          } else {
+            const route = item.type === "sport" ? `/sport/${item.id}` : `/event/${item.id}`;
+            router.push(route);
+          }
+        }}
+      >
+        <View style={[
+          isCreateEvent ? styles.createEventItemView : styles.resultItemView,
+          { 
             backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
             borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-          }]}
-          onPress={handleLoadMore}
-        >
-          <Text style={[styles.loadMoreText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>Load More Airports</Text>
-          <Feather name="chevron-down" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-        </TouchableOpacity>
-      );
-    }
-    return null;
-  };
+          }
+        ]}>
+          <Feather 
+            name={isCreateEvent ? "plus-circle" : "calendar"} 
+            size={20} 
+            color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+            style={styles.resultIcon} 
+          />
+          <View style={styles.eventResultContent}>
+            <View style={[styles.eventHeader, { 
+              borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+            }]}>
+              <View style={styles.eventTitleContainer}>
+                <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  {item.name}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+              {item.description}
+            </Text>
+            {!isCreateEvent && item.startTime && (
+              <View style={styles.eventMetaContainer}>
+                <View style={[styles.eventMetaItem, { 
+                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                }]}>
+                  <Feather 
+                    name="clock" 
+                    size={14} 
+                    color={theme === "light" ? "#37a4c8" : "#64748B"} 
+                  />
+                  <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                    {new Date(item.startTime).toLocaleDateString()} at {new Date(item.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </Text>
+                </View>
+                {item.startTime && (
+                  <CountdownTimer startTime={new Date(item.startTime)} />
+                )}
+              </View>
+            )}
+          </View>
+          <Feather 
+            name="chevron-right" 
+            size={18} 
+            color={theme === "light" ? "#37a4c8" : "#CBD5E1"} 
+          />
+        </View>
+      </TouchableOpacity>
+    );
+  }, [theme, router]);
 
-  const dashboardData = [
+  const renderLoadMore = useCallback(() => {
+    return null;
+  }, []);
+
+  const dashboardData: DashboardItem[] = useMemo(() => [
+    { type: "activity", id: "activity", data: { userLocation, userId, isCollapsed: activityCollapsed } },
     { type: "section", id: "users", data: nearbyUsers || [] },
-    { type: "section", id: "events", data: allEvents || [] },
-    { type: "spacer", id: "spacer1" },
+    { type: "spacer", id: "spacer1", data: null },
     { type: "feature", id: "feature-grid", data: features },
-  ];
+  ], [userLocation, userId, activityCollapsed, nearbyUsers, features]);
 
   useEffect(() => {
     if (!loading && initialLoadComplete) {
@@ -980,7 +1267,7 @@ export default function Dashboard() {
         }).start();
       }, 400);
     }
-  }, [loading, initialLoadComplete]);
+  }, [loading, initialLoadComplete, fadeAnim]);
 
   
 
@@ -1034,6 +1321,16 @@ export default function Dashboard() {
         if (doc.exists()) {
           const data = doc.data() as UserData;
           setUserData(data);
+          
+          console.log('🔄 Dashboard - User data updated, checking profile completion...');
+          
+          // Check if profile is complete and redirect if not
+          if (data && !isProfileComplete(data)) {
+            console.log('🔄 Dashboard - Profile incomplete, redirecting to /profileComplete');
+            router.replace("/profileComplete");
+          } else if (data) {
+            console.log('✅ Dashboard - Profile complete, staying on dashboard');
+          }
         }
       });
     }
@@ -1043,21 +1340,9 @@ export default function Dashboard() {
         unsubscribe();
       }
     };
-  }, [userId]);
+  }, [userId, router]);
 
-  useEffect(() => {
-    if (!selectedAirport && nearestAirports.closest) {
-      setSelectedAirport(nearestAirports.closest);
-    }
-  }, [nearestAirports.closest, selectedAirport]);
 
-  useEffect(() => {
-    if (userId && nearestAirports.closest && !hasUpdatedRef.current) {
-      hasUpdatedRef.current = true; // Mark as updated to prevent re-runs
-      updateUserLocationAndLogin(userId, nearestAirports.closest.airportCode);
-      console.log("Updated user location and login");
-    }
-  }, [userId, nearestAirports.closest, updateUserLocationAndLogin]);
 
   // Show black screen during auth check
   if (!userId) {
@@ -1073,7 +1358,6 @@ export default function Dashboard() {
   if (loading || !initialLoadComplete) {
     return (
       <LoadingScreen 
-        isEventsLoading={!eventsLoaded} 
         isUsersLoading={!usersLoaded} 
       />
     );
@@ -1125,7 +1409,7 @@ export default function Dashboard() {
                   }]}>
                     <TextInput
                       style={[styles.searchInput, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
-                      placeholder={`Search ${searchType}...`}
+                      placeholder="Search events..."
                       placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
                       value={searchQuery}
                       onChangeText={setSearchQuery}
@@ -1149,35 +1433,12 @@ export default function Dashboard() {
                       <Feather name="x" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                     </TouchableOpacity>
                   </View>
-                  <View style={styles.filterContainer}>
-                    <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("airports")}>
-                      <View style={[styles.filterButtonInner, { 
-                        backgroundColor: searchType === "airports" ? (theme === "light" ? "#37a4c8" : "#38a5c9") : (theme === "light" ? "#e6e6e6" : "#1a1a1a"),
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                      }]}>
-                        <Feather name="airplay" size={18} color={searchType === "airports" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")} />
-                        <Text style={[styles.filterText, { 
-                          color: searchType === "airports" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")
-                        }]}>Airports</Text>
-                      </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.filterButton} onPress={() => setSearchType("events")}>
-                      <View style={[styles.filterButtonInner, { 
-                        backgroundColor: searchType === "events" ? (theme === "light" ? "#37a4c8" : "#38a5c9") : (theme === "light" ? "#e6e6e6" : "#1a1a1a"),
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                      }]}>
-                        <Feather name="calendar" size={18} color={searchType === "events" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")} />
-                        <Text style={[styles.filterText, { 
-                          color: searchType === "events" ? "#FFFFFF" : (theme === "light" ? "#37a4c8" : "#38a5c9")
-                        }]}>Events</Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
+
                 </Animated.View>
               ) : (
                 <TouchableOpacity
                   activeOpacity={0.9}
-                  onPress={handleSearchPress}
+                  onPress={handleMoodPress}
                   style={styles.defaultSearchContainer}
                   onLayout={(event) => {
                     const { height } = event.nativeEvent.layout;
@@ -1188,52 +1449,28 @@ export default function Dashboard() {
                     backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
                     borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
                   }]}>
-                    <Feather name="search" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                    <Text style={[styles.searchPlaceholder, { 
-                      color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                    <Animated.Text style={[styles.searchPlaceholder, { 
+                      color: theme === "light" ? "#37a4c8" : "#38a5c9",
+                      opacity: textFadeAnim
                     }]}
                       numberOfLines={1}
                       ellipsizeMode="tail"
                     >
-                      {selectedAirport ? selectedAirport.name : "Select an airport"}
-                    </Text>
-                    
+                      {displayText}
+                    </Animated.Text>
                   </View>
-                  {selectedAirport && (
-                    <TouchableOpacity
-                      style={[styles.directionsButton, { 
-                        backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                      }]}
-                      onPress={() => {
-                        const url = Platform.select({
-                          ios: `maps://app?daddr=${selectedAirport.lat},${selectedAirport.long}`,
-                          android: `google.navigation:q=${selectedAirport.lat},${selectedAirport.long}`
-                        });
-                        if (url) {
-                          Linking.openURL(url);
-                        }
-                      }}
-                    >
-                      <Feather 
-                        name="navigation" 
-                        size={20} 
-                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
-                      />
-                      <Text style={[styles.directionsButtonText, { 
-                        color: theme === "light" ? "#37a4c8" : "#38a5c9"
-                      }]}>
-                        Get Directions
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </TouchableOpacity>
               )}
             </Animated.View>
             <AnimatedFlatList
               style={{ flex: 1 }}
-              data={showSearch ? [...visibleAirports, 'load-more'] : dashboardData}
-              keyExtractor={(item, index) => (showSearch ? index.toString() : item.id)}
+              data={showSearch ? visibleResults : dashboardData}
+              keyExtractor={(item: FlatListItem, index) => {
+                if (showSearch) {
+                  return `search-${index}`;
+                }
+                return item.id;
+              }}
               refreshing={isRefreshing}
               onRefresh={refreshData}
               onScroll={Animated.event(
@@ -1242,15 +1479,12 @@ export default function Dashboard() {
               )}
               scrollEventThrottle={16}
               contentContainerStyle={{ 
-                paddingTop: showSearch ? searchHeaderHeight + 40 : defaultSearchHeight + 40,
+                paddingTop: showSearch ? searchHeaderHeight + 40 : defaultSearchHeight + 20,
                 paddingHorizontal: 16, 
                 paddingBottom: Platform.OS === 'ios' ? 100 : 80 
               }}
               renderItem={({ item, index }) => {
                 if (showSearch) {
-                  if (item === 'load-more') {
-                    return renderLoadMore();
-                  }
                   return (
                     <Animated.View
                       style={{
@@ -1258,521 +1492,614 @@ export default function Dashboard() {
                         transform: [{ translateY: listTranslateYAnim }],
                       }}
                     >
-                      {renderSearchResult(item)}
+                      {renderSearchResult(item as SearchItem)}
                     </Animated.View>
                   );
-                } else if (item.type === "section") {
-                  if (item.id === "users") {
+                } else {
+                  // Type guard to check if item is a DashboardItem
+                  if ('type' in item && 'data' in item) {
+                    const dashboardItem = item as DashboardItem;
+                  if (dashboardItem.type === "activity") {
                     return (
                       <View style={styles.section}>
                         <View style={styles.headerRow}>
                           <View style={styles.headerLeft}>
-                          <FontAwesome5 name="users" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
-                          <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Nearby Users</Text>
-                          </View>
-                          <TouchableOpacity 
-                            style={[styles.filterButton, { 
-                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                              borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                              marginTop: 2,
-                            }]}
-                            onPress={() => router.push('/explore')}
-                            activeOpacity={0.7}
-                          >
-                            <Feather name="filter" size={14} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                            <Text style={[styles.filterButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                              Filter
+                            <MaterialIcons name="local-activity" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
+                            <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                              Nearby Activities
                             </Text>
-                          </TouchableOpacity>
+                          </View>
                         </View>
-                        {loading ? (
-                          <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="small" color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                            <Text style={[styles.loadingText, { color: theme === "light" ? "#000000" : "#64748B" }]}>
-                              Finding travelers...
-                            </Text>
+                        <ActivityCard 
+                          userLocation={dashboardItem.data.userLocation}
+                          userId={dashboardItem.data.userId}
+                          isCollapsed={false}
+                          onToggleCollapse={() => {}}
+                        />
+                      </View>
+                    );
+
+                  } else if (dashboardItem.type === "section") {
+                    if (dashboardItem.id === "users") {
+                      return (
+                        <View style={styles.section}>
+                          <View style={styles.headerRow}>
+                            <View style={styles.headerLeft}>
+                            <Feather name="clock" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
+                            <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Available Now</Text>
+                            </View>
+                            <TouchableOpacity 
+                              style={[styles.filterButton, { 
+                                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                                borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                                marginTop: 2,
+                              }]}
+                              onPress={() => router.push('/explore')}
+                              activeOpacity={0.7}
+                            >
+                              <Feather name="filter" size={14} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                              <Text style={[styles.filterButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                Filter
+                              </Text>
+                            </TouchableOpacity>
                           </View>
-                        ) : item.data.length > 0 ? (
-                          <FlatList
-                            horizontal
-                            data={item.data}
-                            keyExtractor={(user: NearbyUser) => user.id}
-                            renderItem={({ item: user }: { item: NearbyUser }) => {
-                              const handlePress = () => {
-                                if (user.isInviteCard) {
-                                  const appStoreLink = 'https://apps.apple.com/us/app/wingman-connect-on-layovers/id6743148488';
-                                  const message = `Join me on Wingman! Connect with travelers during layovers: ${appStoreLink}`;
-                                  Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
-                                } else if (user.isViewMoreCard) {
-                                  router.push('/explore');
-                                } else {
-                                  router.push(`profile/${user.id}`);
-                                }
-                              };
+                          {loading ? (
+                            <View style={styles.loadingContainer}>
+                              <ActivityIndicator size="small" color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                              <Text style={[styles.loadingText, { color: theme === "light" ? "#000000" : "#64748B" }]}>
+                                Finding available travelers...
+                              </Text>
+                            </View>
+                          ) : dashboardItem.data.length > 0 ? (
+                            <FlatList
+                              horizontal
+                              data={dashboardItem.data}
+                              keyExtractor={(user: NearbyUser) => user.id}
+                              renderItem={({ item: user }: { item: NearbyUser }) => {
+                                const handlePress = () => {
+                                  if (user.isInviteCard) {
+                                    const appStoreLink = 'https://apps.apple.com/us/app/wingman-connect-on-layovers/id6743148488';
+                                    const message = `Join me on Wingman! Connect with travelers during layovers: ${appStoreLink}`;
+                                    Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
+                                  } else if (user.isViewMoreCard) {
+                                    router.push('/explore');
+                                  } else {
+                                    router.push(`profile/${user.id}`);
+                                  }
+                                };
 
-                              const renderUserCard = () => (
-                                <View style={styles.userInfo}>
-                                  {/* Avatar and Basic Info Section */}
-                                  <View style={styles.userSection}>
-                                    <View style={[styles.avatar, { 
-                                      backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
-                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                                      marginBottom: 10,
-                                    }]}>
-                                      {user.profilePicture ? (
-                                        <Image 
-                                          source={{ uri: user.profilePicture }} 
-                                          style={styles.avatarImage}
-                                        />
-                                      ) : (
-                                        <FontAwesome5 name="user" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                      )}
-                                    </View>
-                                    
-                                    {/* Name and Age Row */}
-                                    <View style={styles.nameAgeContainer}>
-                                      <Text 
-                                        style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
-                                        numberOfLines={1}
-                                        ellipsizeMode="tail"
-                                      >
-                                        {user.name}
-                                      </Text>
-                                      {user.age && (
-                                        <Text style={[styles.userAge, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                          {user.age}
-                                        </Text>
-                                      )}
-                                    </View>
-                                    
-                                    {/* Available Tag */}
-                                    <View style={[styles.availableTag, { 
-                                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                    }]}>
-                                      <Feather name="check-circle" size={10} color="#FFFFFF" />
-                                      <Text style={styles.availableText}>Available</Text>
-                                    </View>
-                                  </View>
-
-                                  {/* Meta Information Section */}
-                                  <View style={styles.userMetaContainer}>
-                                    {/* Availability Time */}
-                                    <View style={[styles.metaItem, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
-                                    }]}>
-                                      <Feather name="clock" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                    <Text 
-                                        style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
-                                        numberOfLines={1}
-                                      ellipsizeMode="tail"
-                                    >
-                                        {getTodayAvailability(user.availabilitySchedule) || 'Not available'}
-                                    </Text>
-                                    </View>
-
-                                    {/* Remaining Time */}
-                                    {getRemainingTime(user.availabilitySchedule) && (
-                                      <View style={[styles.metaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
+                                const renderUserCard = () => (
+                                  <View style={styles.userInfo}>
+                                    {/* Avatar and Basic Info Section */}
+                                    <View style={styles.userSection}>
+                                      <View style={[styles.avatar, { 
+                                        backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                                        marginBottom: 12,
                                       }]}>
-                                        <Feather name="clock" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                        {user.profilePicture ? (
+                                          <Image 
+                                            source={{ uri: user.profilePicture }} 
+                                            style={styles.avatarImage}
+                                          />
+                                        ) : (
+                                          <FontAwesome5 name="user" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                        )}
+                                      </View>
+                                      
+                                      {/* Name and Age Row */}
+                                      <View style={styles.nameAgeContainer}>
                                         <Text 
-                                          style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}
+                                          style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
                                           numberOfLines={1}
                                           ellipsizeMode="tail"
                                         >
-                                          {getRemainingTime(user.availabilitySchedule)}
+                                          {user.name}
                                         </Text>
+                                        {user.age && (
+                                          <Text style={[styles.userAge, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                            {user.age}
+                                          </Text>
+                                        )}
                                       </View>
-                                    )}
-
-                                    {/* Rating */}
-                                    <View style={[styles.metaItem, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
-                                    }]}>
-                                      <Feather name="star" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                      <Text 
-                                        style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
-                                        numberOfLines={1}
-                                        ellipsizeMode="tail"
-                                      >
-                                        {formatRating(user.linkRatingScore)}
-                                      </Text>
+                                      
+                                      {/* Available Tag */}
+                                      <View style={[styles.availableTag, { 
+                                        backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                      }]}>
+                                        <Feather name="check-circle" size={8} color="#FFFFFF" />
+                                        <Text style={styles.availableText}>Available</Text>
+                                      </View>
                                     </View>
 
-                                    {/* Current City */}
-                                    {user.currentCity && (
+                                    {/* Meta Information Section */}
+                                    <View style={styles.userMetaContainer}>
+                                      {/* Time Left */}
+                                      <UserAvailabilityTimer 
+                                        availabilitySchedule={user.availabilitySchedule} 
+                                        theme={theme || "light"} 
+                                      />
+
+                                      {/* Rating */}
                                       <View style={[styles.metaItem, { 
                                         backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
                                       }]}>
-                                        <Feather name="map-pin" size={11} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                        <Feather name="star" size={9} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                                         <Text 
                                           style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
                                           numberOfLines={1}
                                           ellipsizeMode="tail"
                                         >
-                                          {user.currentCity}
+                                          {formatRating(user.linkRatingScore)}
                                         </Text>
                                       </View>
-                                    )}
-                                  </View>
-                                </View>
-                              );
 
-                              const renderInviteCard = () => (
-                                <View style={[styles.inviteCardGradient, { 
-                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
-                                }]}>
-                                  <View style={[styles.inviteAvatar, { 
-                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                  }]}>
-                                    <FontAwesome5 name="user-plus" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                  </View>
-                                  <Text style={[styles.inviteTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                    Invite Friends
-                                  </Text>
-                                  <Text style={[styles.inviteSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                    Share Wingman
-                                  </Text>
-                                  <View style={[styles.inviteButton, { 
-                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
-                                  }]}>
-                                    <Feather name="share-2" size={16} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                    <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                      Share
-                                    </Text>
-                                  </View>
-                                </View>
-                              );
-
-                              const renderViewMoreCard = () => (
-                                <View style={[styles.inviteCardGradient, { 
-                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
-                                }]}>
-                                  <View style={[styles.inviteAvatar, { 
-                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                  }]}>
-                                    <Feather name="users" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                  </View>
-                                  <Text style={[styles.inviteTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                    View More
-                                  </Text>
-                                  <Text style={[styles.inviteSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                    See all travelers
-                                  </Text>
-                                  <View style={[styles.inviteButton, { 
-                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
-                                  }]}>
-                                    <Feather name="chevron-right" size={16} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                    <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                      Explore
-                                    </Text>
-                                  </View>
-                                </View>
-                              );
-
-                              return (
-                                <TouchableOpacity
-                                  style={[styles.userCard, { 
-                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                  }]}
-                                  activeOpacity={0.7}
-                                  onPress={handlePress}
-                                >
-                                  <View style={styles.userCardGradient}>
-                                    {user.isInviteCard ? renderInviteCard() : 
-                                     user.isViewMoreCard ? renderViewMoreCard() : 
-                                     renderUserCard()}
-                                  </View>
-                                </TouchableOpacity>
-                              );
-                            }}
-                            showsHorizontalScrollIndicator={false}
-                          />
-                        ) : (
-                          <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No nearby users found.</Text>
-                        )}
-                      </View>
-                    );
-                  } else if (item.id === "events") {
-                    return (
-                      <View style={styles.section}>
-                        <View style={styles.headerRow}>
-                          <MaterialIcons name="event" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
-                          <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                            Nearby Events
-                          </Text>
-                        </View>
-                        {item.data.length > 0 ? (
-                          <FlatList
-                            horizontal
-                            data={[...item.data]
-                              .filter(event => {
-                                // Only filter out events that have a start time and are more than 1 hour past
-                                if (!event.startTime) return true;
-                                const startTime = new Date(event.startTime);
-                                const now = new Date();
-                                const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-                                return startTime > oneHourAgo;
-                              })
-                              .sort((a, b) => {
-                                // First sort by whether user is attending
-                                const userIsAttendingA = a.attendees?.includes(authUser?.uid);
-                                const userIsAttendingB = b.attendees?.includes(authUser?.uid);
-                                if (userIsAttendingA && !userIsAttendingB) return -1;
-                                if (!userIsAttendingA && userIsAttendingB) return 1;
-                                
-                                // Then sort by whether user is organizer
-                                const userIsOrganizerA = a.organizer === authUser?.uid;
-                                const userIsOrganizerB = b.organizer === authUser?.uid;
-                                if (userIsOrganizerA && !userIsOrganizerB) return -1;
-                                if (!userIsOrganizerA && userIsOrganizerB) return 1;
-                                
-                                // Then sort by start time (events without start time go to the end)
-                                if (!a.startTime && !b.startTime) return 0;
-                                if (!a.startTime) return 1;
-                                if (!b.startTime) return -1;
-                                return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-                              })}
-                            keyExtractor={(event) => `${event.type}-${event.id}`}
-                            renderItem={({ item: event }) => (
-                              <TouchableOpacity
-                                style={[styles.eventCard, { 
-                                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                  borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                }]}
-                                activeOpacity={0.8}
-                                onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
-                              >
-                                <View style={styles.eventImageContainer}>
-                                {event.eventImage ? (
-                                  <LoadingImage 
-                                    source={{ uri: event.eventImage }} 
-                                    style={styles.eventImage}
-                                  />
-                                ) : (
-                                  <View style={[styles.eventImagePlaceholder, {
-                                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                  }]}>
-                                    <MaterialIcons 
-                                      name="event" 
-                                      size={32} 
-                                      color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
-                                    />
-                                  </View>
-                                )}
-                                {event.organizer && event.organizer === authUser?.uid && (
-                                  <View style={[styles.organizerBadge, {
-                                    backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                  }]}>
-                                    <Feather name="star" size={12} color="#FFFFFF" />
-                                    <Text style={styles.organizerText}>Organized by you</Text>
-                                  </View>
-                                )}
-                                {event.attendees?.includes(authUser?.uid) && event.organizer !== authUser?.uid && (
-                                  <View style={[styles.attendingBadge, {
-                                    backgroundColor: theme === "light" ? "#4CAF50" : "#45a049"
-                                  }]}>
-                                    <Feather name="check" size={12} color="#FFFFFF" />
-                                    <Text style={styles.attendingText}>You're attending</Text>
-                                  </View>
-                                )}
-                                </View>
-                                <View style={styles.eventContent}>
-                                  <View style={[styles.eventHeader, { 
-                                    borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                  }]}>
-                                    <View style={styles.eventTitleContainer}>
-                                      <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                        {event.name}
-                                      </Text>
-                                      {event.category && (
-                                        <View style={[styles.categoryTag, {
-                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                                          borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                      {/* Current City */}
+                                      {user.currentCity && (
+                                        <View style={[styles.metaItem, { 
+                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
                                         }]}>
-                                          <Text style={[styles.categoryText, {
-                                            color: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                          }]}>
-                                            {event.category}
+                                          <Feather name="map-pin" size={9} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                          <Text 
+                                            style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
+                                            numberOfLines={1}
+                                            ellipsizeMode="tail"
+                                          >
+                                            {user.currentCity}
                                           </Text>
                                         </View>
                                       )}
                                     </View>
                                   </View>
-                                  <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                    {event.description}
-                                  </Text>
-                                  <View style={styles.eventMetaContainer}>
-                                    {event.startTime && (
-                                      <View style={[styles.eventMetaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                      }]}>
-                                        <Feather name="clock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                          {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </Text>
-                                      </View>
-                                    )}
-                                    {event.startTime && (
-                                      <CountdownTimer startTime={new Date(event.startTime)} />
-                                    )}
-                                    {event.attendees && (
-                                      <View style={[styles.eventMetaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                      }]}>
-                                        <Feather name="users" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                          {event.attendees.length} {event.attendees.length === 1 ? 'attendee' : 'attendees'}
-                                        </Text>
-                                      </View>
-                                    )}
-                                    {event.private && (
-                                      <View style={[styles.eventMetaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                      }]}>
-                                        <Feather name="lock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                          Private
-                                        </Text>
-                                      </View>
-                                    )}
-                                    {event.airportCode && (
-                                      <View style={[styles.eventMetaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                      }]}>
-                                        <Feather name="airplay" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                        <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                          {event.airportCode}
-                                        </Text>
-                                      </View>
-                                    )}
+                                );
+
+                                const renderInviteCard = () => (
+                                  <View style={[styles.inviteCardGradient, { 
+                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
+                                  }]}>
+                                    <View style={[styles.inviteAvatar, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                    }]}>
+                                      <FontAwesome5 name="user-plus" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                    </View>
+                                    <Text style={[styles.inviteTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                      Invite Friends
+                                    </Text>
+                                    <Text style={[styles.inviteSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                      Share Wingman
+                                    </Text>
+                                    <View style={[styles.inviteButton, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+                                    }]}>
+                                      <Feather name="share-2" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                      <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                        Share
+                                      </Text>
+                                    </View>
                                   </View>
-                                </View>
-                              </TouchableOpacity>
-                            )}
-                            showsHorizontalScrollIndicator={false}
+                                );
+
+                                const renderViewMoreCard = () => (
+                                  <View style={[styles.viewMoreCard, { 
+                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
+                                  }]}>
+                                    <View style={[styles.viewMoreIconContainer, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)",
+                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                    }]}>
+                                      <Feather name="users" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                    </View>
+                                    <Text style={[styles.viewMoreTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                      View More
+                                    </Text>
+                                    <Text style={[styles.viewMoreSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                      See all travelers
+                                    </Text>
+                                    <View style={[styles.inviteButton, { 
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+                                    }]}>
+                                      <Feather name="chevron-right" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                                      <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                        Explore
+                                      </Text>
+                                    </View>
+                                  </View>
+                                );
+
+                                return (
+                                  <TouchableOpacity
+                                    style={[styles.userCard, { 
+                                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                    }]}
+                                    activeOpacity={0.7}
+                                    onPress={handlePress}
+                                  >
+                                    <View style={styles.userCardGradient}>
+                                      {user.isInviteCard ? renderInviteCard() : 
+                                       user.isViewMoreCard ? renderViewMoreCard() : 
+                                       renderUserCard()}
+                                    </View>
+                                  </TouchableOpacity>
+                                );
+                              }}
+                              showsHorizontalScrollIndicator={false}
+                            />
+                          ) : (
+                            <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No travelers available now.</Text>
+                          )}
+                        </View>
+                      );
+                    } else if (dashboardItem.id === "events") {
+                      return (
+                        <View style={styles.section}>
+                          <View style={styles.headerRow}>
+                            <MaterialIcons name="event" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
+                            <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                              Nearby Events
+                            </Text>
+                          </View>
+                          {dashboardItem.data.length > 0 ? (
+                            <FlatList
+                              horizontal
+                              data={[...dashboardItem.data]
+                                .filter(event => {
+                                  // Only filter out events that have a start time and are more than 1 hour past
+                                  if (!event.startTime) return true;
+                                  const startTime = new Date(event.startTime);
+                                  const now = new Date();
+                                  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+                                  return startTime > oneHourAgo;
+                                })
+                                .sort((a, b) => {
+                                  // First sort by whether user is attending
+                                  const userIsAttendingA = a.attendees?.includes(authUser?.uid);
+                                  const userIsAttendingB = b.attendees?.includes(authUser?.uid);
+                                  if (userIsAttendingA && !userIsAttendingB) return -1;
+                                  if (!userIsAttendingA && userIsAttendingB) return 1;
+                                  
+                                  // Then sort by whether user is organizer
+                                  const userIsOrganizerA = a.organizer === authUser?.uid;
+                                  const userIsOrganizerB = b.organizer === authUser?.uid;
+                                  if (userIsOrganizerA && !userIsOrganizerB) return -1;
+                                  if (!userIsOrganizerA && userIsOrganizerB) return 1;
+                                  
+                                  // Then sort by start time (events without start time go to the end)
+                                  if (!a.startTime && !b.startTime) return 0;
+                                  if (!a.startTime) return 1;
+                                  if (!b.startTime) return -1;
+                                  return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+                                })}
+                              keyExtractor={(event) => `${event.type}-${event.id}`}
+                              renderItem={({ item: event }) => (
+                                <TouchableOpacity
+                                  style={[styles.eventCard, { 
+                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}
+                                  activeOpacity={0.8}
+                                  onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
+                                >
+                                  <View style={styles.eventImageContainer}>
+                                  {event.eventImage ? (
+                                    <LoadingImage 
+                                      source={{ uri: event.eventImage }} 
+                                      style={styles.eventImage}
+                                    />
+                                  ) : (
+                                    <View style={[styles.eventImagePlaceholder, {
+                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                    }]}>
+                                      <MaterialIcons 
+                                        name="event" 
+                                        size={32} 
+                                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                                      />
+                                    </View>
+                                  )}
+                                  {event.organizer && event.organizer === authUser?.uid && (
+                                    <View style={[styles.organizerBadge, {
+                                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                    }]}>
+                                      <Feather name="star" size={12} color="#FFFFFF" />
+                                      <Text style={styles.organizerText}>Organized by you</Text>
+                                    </View>
+                                  )}
+                                  {event.attendees?.includes(authUser?.uid) && event.organizer !== authUser?.uid && (
+                                    <View style={[styles.attendingBadge, {
+                                      backgroundColor: theme === "light" ? "#4CAF50" : "#45a049"
+                                    }]}>
+                                      <Feather name="check" size={12} color="#FFFFFF" />
+                                      <Text style={styles.attendingText}>You're attending</Text>
+                                    </View>
+                                  )}
+                                  </View>
+                                  <View style={styles.eventContent}>
+                                    <View style={[styles.eventHeader, { 
+                                      borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                    }]}>
+                                      <View style={styles.eventTitleContainer}>
+                                        <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                                          {event.name}
+                                        </Text>
+                                        {event.category && (
+                                          <View style={[styles.categoryTag, {
+                                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                                            borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                          }]}>
+                                            <Text style={[styles.categoryText, {
+                                              color: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                            }]}>
+                                              {event.category}
+                                            </Text>
+                                          </View>
+                                        )}
+                                      </View>
+                                    </View>
+                                    <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                                      {event.description}
+                                    </Text>
+                                    <View style={styles.eventMetaContainer}>
+                                      {event.startTime && (
+                                        <View style={[styles.eventMetaItem, { 
+                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                        }]}>
+                                          <Feather name="clock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                                            {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                          </Text>
+                                        </View>
+                                      )}
+                                      {event.startTime && (
+                                        <CountdownTimer startTime={new Date(event.startTime)} />
+                                      )}
+                                      {event.attendees && (
+                                        <View style={[styles.eventMetaItem, { 
+                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                        }]}>
+                                          <Feather name="users" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                                            {event.attendees.length} {event.attendees.length === 1 ? 'attendee' : 'attendees'}
+                                          </Text>
+                                        </View>
+                                      )}
+                                      {event.private && (
+                                        <View style={[styles.eventMetaItem, { 
+                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                        }]}>
+                                          <Feather name="lock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                                            Private
+                                          </Text>
+                                        </View>
+                                      )}
+                                      {event.airportCode && (
+                                        <View style={[styles.eventMetaItem, { 
+                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                                        }]}>
+                                          <Feather name="airplay" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
+                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
+                                            {event.airportCode}
+                                          </Text>
+                                        </View>
+                                      )}
+                                    </View>
+                                  </View>
+                                </TouchableOpacity>
+                              )}
+                              showsHorizontalScrollIndicator={false}
+                            />
+                          ) : (
+                            <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No events at this airport.</Text>
+                          )}
+                        </View>
+                      );
+                    }
+                  } else if (dashboardItem.type === "feature") {
+                    return (
+                      <View style={styles.featureSection}>
+                        <View style={styles.featureGridContainer}>
+                          {features.map((feature, index) => (
+                        <TouchableOpacity
+                              key={index}
+                              style={[styles.featureGridItem, { 
+                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "#38a5c9"
+                          }]}
+                              activeOpacity={0.7}
+                              onPress={() => router.push(feature.screen)}
+                        >
+                              <View style={[styles.featureIconContainer, {
+                                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                              }]}>
+                                {feature.icon}
+                              </View>
+                              <Text style={[styles.featureGridTitle, { 
+                                color: theme === "light" ? "#000000" : "#e4fbfe" 
+                              }]}>
+                                {feature.title}
+                              </Text>
+                              <Text style={[styles.featureGridDescription, { 
+                                color: theme === "light" ? "#64748B" : "#64748B" 
+                              }]} numberOfLines={2}>
+                                {feature.description}
+                              </Text>
+                        </TouchableOpacity>
+                          ))}
+                        </View>
+                        <View style={[styles.footer, { 
+                          position: 'relative',
+                          marginBottom: 100 // Add space at the bottom to prevent scrolling past
+                        }]}>
+                          <Image
+                            source={theme === "light" 
+                              ? require('../../../assets/images/splash-icon.png')
+                              : require('../../../assets/images/splash-icon-dark.png')
+                            }
+                            style={[
+                              styles.footerLogo
+                              
+                            ]}
+                            resizeMode="contain"
                           />
-                        ) : (
-                          <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No events at this airport.</Text>
-                        )}
+                          <Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                            © 2025 Wingman. All rights reserved.
+                          </Text>
+                        </View>
                       </View>
                     );
+                  } else if (dashboardItem.type === "spacer") {
+                    return <View style={styles.spacer} />;
                   }
-                } else if (item.type === "feature") {
-                  return (
-                    <View style={styles.featureSection}>
-                      <View style={styles.featureGridContainer}>
-                        {features.map((feature, index) => (
-                      <TouchableOpacity
-                            key={index}
-                            style={[styles.featureGridItem, { 
-                          backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "#38a5c9"
-                        }]}
-                            activeOpacity={0.7}
-                            onPress={() => router.push(feature.screen)}
-                      >
-                            <View style={[styles.featureIconContainer, {
-                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                            }]}>
-                              {feature.icon}
-                            </View>
-                            <Text style={[styles.featureGridTitle, { 
-                              color: theme === "light" ? "#000000" : "#e4fbfe" 
-                            }]}>
-                              {feature.title}
-                            </Text>
-                            <Text style={[styles.featureGridDescription, { 
-                              color: theme === "light" ? "#64748B" : "#64748B" 
-                            }]} numberOfLines={2}>
-                              {feature.description}
-                            </Text>
-                      </TouchableOpacity>
-                        ))}
-                      </View>
-                      <View style={[styles.footer, { 
-                        position: 'relative',
-                        marginBottom: 100 // Add space at the bottom to prevent scrolling past
-                      }]}>
-                        <Image
-                          source={theme === "light" 
-                            ? require('../../../assets/images/splash-icon.png')
-                            : require('../../../assets/images/splash-icon-dark.png')
-                          }
-                          style={[
-                            styles.footerLogo
-                            
-                          ]}
-                          resizeMode="contain"
-                        />
-                        <Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                          © 2025 Wingman. All rights reserved.
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                } else if (item.type === "spacer") {
-                  return <View style={styles.spacer} />;
+                  return null;
                 }
                 return null;
+              }
+              return null;
               }}
             />
             {/* Floating Action Button */}
             {!showSearch && (
-              <Animated.View
-                style={[
-                  styles.fab,
-                  {
-                    opacity: sheetAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 1],
-                    }),
-                    transform: [
-                      {
-                        scale: sheetAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [1, 1],
-                        }),
-                      },
-                    ],
-                    backgroundColor: "#1a1a1a",
-                    borderWidth: 1,
-                    borderColor: "#37a4c8",
-                  },
-                ]}
-              >
-                <TouchableOpacity onPress={toggleStatusSheet}>
-                  {updatingMood ? (
-                    <View style={styles.loadingDot}>
-                      <Animated.View
-                        style={[
-                          styles.loadingDotInner,
-                          {
-                            transform: [
-                              {
-                                scale: sheetAnim.interpolate({
-                                  inputRange: [0, 0.5, 1],
-                                  outputRange: [1, 1.2, 1],
-                                }),
-                              },
-                            ],
-                          },
-                        ]}
-                      />
-                    </View>
-                  ) : userData?.moodStatus ? (
-                    <Text style={{ fontSize: 24 }}>
-                      {presetStatuses.find((status: PresetStatus) => status.label === userData.moodStatus)?.emoji || "✏️"}
-                    </Text>
-                  ) : (
-                    <Feather name="edit" size={24} color="#e4fbfe" />
-                  )}
-                </TouchableOpacity>
-              </Animated.View>
+              <View style={styles.fabContainer}>
+                {/* Event Button */}
+                <Animated.View
+                  style={[
+                    styles.fabOption,
+                    styles.eventFabOption,
+                    {
+                      opacity: eventButtonOpacity,
+                      transform: [
+                        {
+                          translateX: eventButtonAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -100 * Math.cos(Math.PI / 8)],
+                          }),
+                        },
+                        {
+                          translateY: eventButtonAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -100 * Math.sin(Math.PI / 8)],
+                          }),
+                        },
+                        {
+                          scale: eventButtonAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.8, 1],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={[styles.fabOptionButton, { 
+                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                    }]}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      // Do nothing for now as requested
+                      console.log("Event button pressed");
+                    }}
+                  >
+                    <MaterialIcons 
+                      name="event" 
+                      size={20} 
+                      color="#FFFFFF" 
+                    />
+                  </TouchableOpacity>
+                </Animated.View>
+
+                {/* Ping Button */}
+                <Animated.View
+                  style={[
+                    styles.fabOption,
+                    styles.pingFabOption,
+                    {
+                      opacity: pingButtonOpacity,
+                      transform: [
+                        {
+                          translateX: pingButtonAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -100 * Math.cos(Math.PI / 2.2)],
+                          }),
+                        },
+                        {
+                          translateY: pingButtonAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -100 * Math.sin(Math.PI / 2.2)],
+                          }),
+                        },
+                        {
+                          scale: pingButtonAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.8, 1],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={[styles.fabOptionButton, { 
+                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9",
+                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                    }]}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      handleOpenPingModal();
+                      toggleFabExpansion(); // Close the FAB
+                    }}
+                  >
+                    <MaterialIcons 
+                      name="send" 
+                      size={20} 
+                      color="#FFFFFF" 
+                    />
+                  </TouchableOpacity>
+                </Animated.View>
+
+                {/* Main FAB */}
+                <Animated.View
+                  style={[
+                    styles.fab,
+                    {
+                      opacity: sheetAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1],
+                      }),
+                      transform: [
+                        {
+                          scale: sheetAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1],
+                          }),
+                        },
+                        {
+                          rotate: fabRotateAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0deg', '45deg'],
+                          }),
+                        },
+                      ],
+                      backgroundColor: theme === "light" ? "#37a4c8" : "#000000",
+                      borderWidth: 0,
+                    },
+                  ]}
+                >
+                  <TouchableOpacity 
+                    onPress={toggleFabExpansion}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons 
+                      name="add" 
+                      size={28} 
+                      color={theme === "light" ? "#FFFFFF" : "#38a5c9"} 
+                    />
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
             )}
             {/* Status Sheet Component */}
             {showStatusSheet && (
@@ -1788,6 +2115,13 @@ export default function Dashboard() {
                 toggleStatusSheet={toggleStatusSheet}
               />
             </View>
+
+            {/* Ping Event Modal */}
+            <PingEventModal
+              visible={showPingModal}
+              onClose={handleClosePingModal}
+              onSuccess={showPopup}
+            />
           </Animated.View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -1812,7 +2146,7 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 0,
-    marginTop: 24,
+    marginTop: 12,
   },
   headerRow: {
     flexDirection: "row",
@@ -1835,40 +2169,40 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   userCard: {
-    width: 168,
+    width: 140,
     backgroundColor: "#1a1a1a",
     borderRadius: 16,
-    marginRight: 8,
-    elevation: 6,
+    marginRight: 10,
+    elevation: 4,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowRadius: 8,
     borderWidth: 1,
     borderColor: "#38a5c9",
-    marginBottom: 16,
+    marginBottom: 12,
     overflow: 'hidden',
   },
   userCardGradient: {
-    padding: 18,
+    padding: 16,
     alignItems: 'center',
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 8,
     borderWidth: 2,
     borderColor: "#38a5c9",
     overflow: 'hidden',
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   userInfo: {
     padding: 0,
@@ -1876,10 +2210,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   userSection: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(55, 164, 200, 0.08)',
-    paddingBottom: 14,
-    marginBottom: 14,
+    borderBottomWidth: 0,
+    paddingBottom: 8,
+    marginBottom: 8,
     width: '100%',
     alignItems: 'center',
   },
@@ -1893,18 +2226,20 @@ const styles = StyleSheet.create({
   nameAgeContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     width: '100%',
   },
   userName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     textAlign: 'center',
     marginBottom: 2,
+    letterSpacing: -0.2,
   },
   userAge: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.8,
   },
   pronouns: {
     fontSize: 13,
@@ -1922,26 +2257,26 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     marginTop: 0,
-    gap: 8,
+    gap: 6,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    gap: 6,
-    minHeight: 28,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    gap: 5,
+    minHeight: 24,
     maxWidth: '100%',
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
-    shadowRadius: 3,
+    shadowRadius: 2,
     elevation: 1,
   },
   metaText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',
     flexShrink: 1,
@@ -1983,9 +2318,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(56, 165, 201, 0.03)',
   },
   inviteAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(56, 165, 201, 0.08)',
     justifyContent: "center",
     alignItems: "center",
@@ -1996,39 +2331,39 @@ const styles = StyleSheet.create({
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
-    shadowRadius: 3,
+    shadowRadius: 4,
   },
   inviteTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "700",
     color: "#e4fbfe",
-    letterSpacing: 0.1,
-    marginBottom: 4,
+    letterSpacing: -0.2,
+    marginBottom: 2,
     textAlign: 'center',
   },
   inviteSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#38a5c9",
     letterSpacing: 0.1,
     textAlign: 'center',
     marginBottom: 8,
-    lineHeight: 16,
-    paddingHorizontal: 4,
+    lineHeight: 14,
+    paddingHorizontal: 2,
   },
   inviteButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(56, 165, 201, 0.08)',
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
-    gap: 6,
+    borderRadius: 10,
+    gap: 4,
     borderWidth: 1,
-    borderColor: 'rgba(56, 165, 201, 0.2)',
+    borderColor: 'rgba(56, 165, 201, 0.25)',
   },
   inviteButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#38a5c9",
     fontWeight: "600",
     letterSpacing: 0.1,
@@ -2321,6 +2656,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     elevation: 4,
     shadowColor: "#38a5c9",
     shadowOffset: { width: 0, height: 4 },
@@ -2331,8 +2667,9 @@ const styles = StyleSheet.create({
   searchPlaceholder: {
     fontSize: 16,
     color: "#64748B",
-    marginLeft: 14,
     letterSpacing: 0.3,
+    textAlign: "center",
+    flex: 1,
   },
   searchIcon: {
     marginLeft: 10,
@@ -2724,23 +3061,129 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 18,
-    gap: 5,
-    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+    marginTop: 6,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   availableText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#FFFFFF',
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
+  fabContainer: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 0 : 0,
+    right: 0,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+
+  },
+  fabOption: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabOptionButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 8,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  fabOptionLabel: {
+    position: 'absolute',
+    left: 60,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  fabOptionText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: "600",
+    letterSpacing: 0.2,
+  },
+  eventFabOption: {
+    // Positioned above the main FAB
+  },
+  pingFabOption: {
+    // Positioned above the event FAB
+  },
+  viewMoreCard: {
+    padding: 16,
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 165, 201, 0.02)',
+  },
+  viewMoreIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(56, 165, 201, 0.08)',
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+    borderWidth: 1.5,
+    borderColor: "#38a5c9",
+    overflow: 'hidden',
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  viewMoreTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#e4fbfe",
+    letterSpacing: -0.2,
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  viewMoreSubtitle: {
+    fontSize: 11,
+    color: "#38a5c9",
+    letterSpacing: 0.1,
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 14,
+    paddingHorizontal: 2,
+  },
+  viewMoreButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
 });
 
 export { Dashboard };

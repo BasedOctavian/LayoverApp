@@ -11,6 +11,7 @@ import useUsers from "../hooks/useUsers";
 import * as ExpoNotifications from 'expo-notifications';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebaseConfig';
+import { isProfileComplete } from "../utils/profileCompletionCheck";
 
 // Configure notification handler
 ExpoNotifications.setNotificationHandler({
@@ -43,6 +44,7 @@ export default function MainScreen() {
   const { getUser } = useUsers();
   const [isLoading, setIsLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [userData, setUserData] = useState(null);
 
   useEffect(() => {
     // Set up notification response handler
@@ -135,8 +137,9 @@ export default function MainScreen() {
           await handleNotificationToken(user.uid);
           
           // Fetch user profile data
-          const userData = await getUser(user.uid);
-          if (userData) {
+          const fetchedUserData = await getUser(user.uid);
+          if (fetchedUserData) {
+            setUserData(fetchedUserData);
             setProfileLoaded(true);
           }
         } else {
@@ -168,8 +171,20 @@ export default function MainScreen() {
     return <Redirect href="/login/login" />;
   }
 
-  // If user is logged in and profile is loaded, redirect to dashboard
-  return <Redirect href="/home/dashboard" />;
+  // If user is logged in and profile is loaded, check if profile is complete
+  if (user && userData) {
+    const profileComplete = isProfileComplete(userData);
+    if (profileComplete) {
+      return <Redirect href="/home/dashboard" />;
+    } else {
+      return <Redirect href="/profileComplete" />;
+    }
+  }
+
+  // If user is logged in but no userData yet, redirect to dashboard (will be checked there)
+  if (user) {
+    return <Redirect href="/home/dashboard" />;
+  }
 }
 
 const styles = StyleSheet.create({

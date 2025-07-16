@@ -71,12 +71,14 @@ interface UserData {
   pronouns?: string;
   bio?: string;
   profilePicture?: string;
+  galleryImages?: string[];
   moodStatus?: string;
   languages: string[];
   interests: string[];
   goals: string[];
   travelHistory?: any[];
   createdAt?: any;
+  lastLogin?: any;
   socialMedia?: {
     instagram?: string;
     linkedin?: string;
@@ -109,8 +111,18 @@ interface UserData {
   };
   reputationTags?: string[];
   eventPreferences?: {
-    prefersSmallGroups?: boolean;
-    likesBars?: boolean;
+    likesBars: boolean;
+    prefersSmallGroups: boolean;
+    prefersWeekendEvents: boolean;
+    prefersEveningEvents: boolean;
+    prefersIndoorVenues: boolean;
+    prefersStructuredActivities: boolean;
+    prefersSpontaneousPlans: boolean;
+    prefersLocalMeetups: boolean;
+    prefersTravelEvents: boolean;
+    prefersQuietEnvironments: boolean;
+    prefersActiveLifestyles: boolean;
+    prefersIntellectualDiscussions: boolean;
   };
 }
 
@@ -143,12 +155,14 @@ const convertToUserData = (data: DocumentData): UserData => {
     pronouns: data.pronouns,
     bio: data.bio,
     profilePicture: data.profilePicture,
+    galleryImages: data.galleryImages || [],
     moodStatus: data.moodStatus,
     languages: data.languages || [],
     interests: data.interests || [],
     goals: data.goals || [],
     travelHistory: data.travelHistory,
     createdAt: data.createdAt,
+    lastLogin: data.lastLogin,
     socialMedia: data.socialMedia || {},
     airportCode: data.airportCode || null,
     currentCity: data.currentCity,
@@ -163,6 +177,120 @@ const convertToUserData = (data: DocumentData): UserData => {
     reputationTags: data.reputationTags,
     eventPreferences: data.eventPreferences,
   };
+};
+
+// Helper function to extract username from social media URLs
+const extractUsername = (url: string, platform: string) => {
+  if (!url) return "";
+  
+  // If it's already just a username (no http/https), return it
+  if (!url.includes('http')) {
+    return url.replace(/^@/, ''); // Remove @ if present
+  }
+  
+  try {
+    // Handle malformed double URLs (like "https://www.instagram.com/https://www.instagram.com/username//")
+    if (platform === 'instagram' && url.includes('instagram.com/instagram.com/')) {
+      const parts = url.split('instagram.com/');
+      if (parts.length >= 3) {
+        const username = parts[2].replace(/\/+$/, ''); // Remove trailing slashes
+        return username;
+      }
+    }
+    
+    const urlObj = new URL(url);
+    switch (platform) {
+      case 'instagram':
+        return urlObj.pathname.replace(/^\/|\/$/g, '');
+      case 'linkedin':
+        // For LinkedIn, return the full URL if it's already a URL, otherwise return as is
+        if (url.includes('linkedin.com')) {
+          return url;
+        }
+        return urlObj.pathname.replace(/^\/in\/|\/$/g, '');
+      case 'twitter':
+        return urlObj.pathname.replace(/^\/|\/$/g, '');
+      default:
+        return url;
+    }
+  } catch {
+    // If it's not a valid URL, return as is (for LinkedIn profile links)
+    if (platform === 'linkedin') {
+      return url;
+    }
+    return url;
+  }
+};
+
+// Helper function to format military time to AM/PM format
+const formatTimeToAMPM = (militaryTime: string): string => {
+  if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
+  
+  const [hours, minutes] = militaryTime.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  
+  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+};
+
+// Helper function to check if user is currently available based on schedule
+const isUserCurrentlyAvailable = (availabilitySchedule: any): boolean => {
+  if (!availabilitySchedule) return false;
+  
+  const now = new Date();
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const currentDay = days[now.getDay()];
+  const currentTime = now.toLocaleTimeString('en-US', { 
+    hour12: false, 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+  
+  const todaySchedule = availabilitySchedule[currentDay];
+  if (!todaySchedule) return false;
+  
+  const { start, end } = todaySchedule;
+  
+  // Check for invalid times
+  if (!start || !end) {
+    return false;
+  }
+  
+  // Check if start and end are the same (no availability window)
+  if (start === end) return false;
+  
+  // Special case: "00:00" to "23:59" means all day availability
+  if ((start === '00:00' || start === '0:00') && (end === '23:59' || end === '23:59')) {
+    return true;
+  }
+  
+  // Check for invalid zero times (but not the all-day case above)
+  if ((start === '0:00' || start === '00:00') && (end !== '23:59' && end !== '23:59')) {
+    return false;
+  }
+  if ((end === '0:00' || end === '00:00') && (start !== '23:59' && start !== '23:59')) {
+    return false;
+  }
+  
+  // Normalize time formats to ensure consistent comparison
+  const normalizeTime = (timeStr: string): string => {
+    // Handle both "H:MM" and "HH:MM" formats
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  };
+  
+  const normalizedStart = normalizeTime(start);
+  const normalizedEnd = normalizeTime(end);
+  const normalizedCurrent = normalizeTime(currentTime);
+  
+  // Handle cases where availability spans midnight (e.g., 22:00 to 02:00)
+  if (normalizedStart > normalizedEnd) {
+    // Availability spans midnight, so check if current time is after start OR before end
+    return normalizedCurrent >= normalizedStart || normalizedCurrent <= normalizedEnd;
+  } else {
+    // Normal case: availability within same day
+    return normalizedCurrent >= normalizedStart && normalizedCurrent <= normalizedEnd;
+  }
 };
 
 const sendPushNotification = async (expoPushToken: string, reportedUserName: string) => {
@@ -332,6 +460,11 @@ const Profile = () => {
   const [showStatusSheet, setShowStatusSheet] = useState(false);
   const [customStatus, setCustomStatus] = useState("");
   const [updatingMood, setUpdatingMood] = useState(false);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [uploadingGalleryImage, setUploadingGalleryImage] = useState(false);
+  const [loadingGalleryImages, setLoadingGalleryImages] = useState<Set<number>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [currentUserData, setCurrentUserData] = useState<UserData | null>(null);
 
   // Refs and animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -430,6 +563,62 @@ const Profile = () => {
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   }, []);
 
+  // Helper functions to find shared items
+  const getSharedConnectionIntents = useCallback(() => {
+    if (!userData?.connectionIntents || !currentUserData?.connectionIntents || isOwnProfile) {
+      return [];
+    }
+    return userData.connectionIntents.filter(intent => 
+      currentUserData.connectionIntents!.includes(intent)
+    );
+  }, [userData?.connectionIntents, currentUserData?.connectionIntents, isOwnProfile]);
+
+  const getSharedPersonalTags = useCallback(() => {
+    if (!userData?.personalTags || !currentUserData?.personalTags || isOwnProfile) {
+      return [];
+    }
+    return userData.personalTags.filter(tag => 
+      currentUserData.personalTags!.includes(tag)
+    );
+  }, [userData?.personalTags, currentUserData?.personalTags, isOwnProfile]);
+
+  const getSharedEventPreferences = useCallback(() => {
+    if (!userData?.eventPreferences || !currentUserData?.eventPreferences || isOwnProfile) {
+      return [];
+    }
+    
+    const sharedPreferences: string[] = [];
+    const userPrefs = userData.eventPreferences;
+    const currentPrefs = currentUserData.eventPreferences;
+    
+    if (userPrefs.likesBars && currentPrefs.likesBars) sharedPreferences.push('Enjoys bar meetups');
+    if (userPrefs.prefersSmallGroups && currentPrefs.prefersSmallGroups) sharedPreferences.push('Prefers small groups');
+    if (userPrefs.prefersWeekendEvents && currentPrefs.prefersWeekendEvents) sharedPreferences.push('Prefers weekend events');
+    if (userPrefs.prefersEveningEvents && currentPrefs.prefersEveningEvents) sharedPreferences.push('Prefers evening events');
+    if (userPrefs.prefersIndoorVenues && currentPrefs.prefersIndoorVenues) sharedPreferences.push('Prefers indoor venues');
+    if (userPrefs.prefersStructuredActivities && currentPrefs.prefersStructuredActivities) sharedPreferences.push('Prefers structured activities');
+    if (userPrefs.prefersSpontaneousPlans && currentPrefs.prefersSpontaneousPlans) sharedPreferences.push('Prefers spontaneous plans');
+    if (userPrefs.prefersLocalMeetups && currentPrefs.prefersLocalMeetups) sharedPreferences.push('Prefers local meetups');
+    if (userPrefs.prefersTravelEvents && currentPrefs.prefersTravelEvents) sharedPreferences.push('Prefers travel events');
+    if (userPrefs.prefersQuietEnvironments && currentPrefs.prefersQuietEnvironments) sharedPreferences.push('Prefers quiet environments');
+    if (userPrefs.prefersActiveLifestyles && currentPrefs.prefersActiveLifestyles) sharedPreferences.push('Prefers active lifestyles');
+    if (userPrefs.prefersIntellectualDiscussions && currentPrefs.prefersIntellectualDiscussions) sharedPreferences.push('Prefers intellectual discussions');
+    
+    return sharedPreferences;
+  }, [userData?.eventPreferences, currentUserData?.eventPreferences, isOwnProfile]);
+
+  const isSharedItem = useCallback((item: string, type: 'connectionIntents' | 'personalTags' | 'eventPreferences') => {
+    if (isOwnProfile) return false;
+    
+    if (type === 'connectionIntents') {
+      return getSharedConnectionIntents().includes(item);
+    } else if (type === 'personalTags') {
+      return getSharedPersonalTags().includes(item);
+    } else {
+      return getSharedEventPreferences().includes(item);
+    }
+  }, [isOwnProfile, getSharedConnectionIntents, getSharedPersonalTags, getSharedEventPreferences]);
+
   // Data fetching functions
   const fetchUserData = useCallback(async () => {
     if (!userId || !id) return;
@@ -495,6 +684,22 @@ const Profile = () => {
       setIsLoadingContent(false);
     }
   }, [userId, id, headerFadeAnim, scaleAnim, sectionsFadeAnim, cardScaleAnim, socialFadeAnim]);
+
+  const fetchCurrentUserData = useCallback(async () => {
+    if (!authUser?.uid || isOwnProfile) return;
+    
+    try {
+      const currentUserDocRef = doc(db, "users", authUser.uid);
+      const currentUserDoc = await getDoc(currentUserDocRef);
+      
+      if (currentUserDoc.exists()) {
+        const currentUserData = convertToUserData(currentUserDoc.data());
+        setCurrentUserData(currentUserData);
+      }
+    } catch (error) {
+      console.error("Error fetching current user data:", error);
+    }
+  }, [authUser?.uid, isOwnProfile]);
 
   const checkConnectionStatus = useCallback(async () => {
     if (!authUser || !id) return;
@@ -1009,7 +1214,7 @@ const Profile = () => {
           };
         });
 
-        Alert.alert('Success', 'Profile picture updated successfully!');
+        
       }
     } catch (error) {
       console.error('Error uploading image:', error);
@@ -1018,6 +1223,135 @@ const Profile = () => {
       setUploadingImage(false);
     }
   }, [id]);
+
+  const handleGalleryImageUpload = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant permission to access your photos');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        aspect: [1, 1],
+        quality: 0.9,
+        allowsMultipleSelection: true,
+        selectionLimit: 10,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        setUploadingGalleryImage(true);
+        
+        try {
+          const uploadPromises = result.assets.map(async (asset, index) => {
+            const imageUri = asset.uri;
+            
+            const response = await fetch(imageUri);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch image ${index + 1}`);
+            }
+            
+            const blob = await response.blob();
+            const timestamp = Date.now();
+            const randomId = Math.random().toString(36).substring(7);
+            const storageRef = ref(storage, `gallery_images/${id}/${timestamp}_${randomId}`);
+            
+            await uploadBytes(storageRef, blob);
+            return await getDownloadURL(storageRef);
+          });
+
+          const downloadURLs = await Promise.all(uploadPromises);
+          
+          const userDocRef = doc(db, "users", id);
+          const updatedGallery = [...galleryImages, ...downloadURLs];
+          await updateDoc(userDocRef, {
+            galleryImages: updatedGallery
+          });
+
+          setGalleryImages(updatedGallery);
+
+         
+        } catch (uploadError) {
+          console.error('Error during upload process:', uploadError);
+          Alert.alert(
+            'Upload Error', 
+            'Some images failed to upload. Please try again with fewer images or check your connection.'
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error uploading gallery images:', error);
+      Alert.alert('Error', 'Failed to upload images. Please try again.');
+    } finally {
+      setUploadingGalleryImage(false);
+    }
+  }, [id, galleryImages]);
+
+  const handleDeleteGalleryImage = useCallback(async (imageIndex: number) => {
+    if (!authUser || id !== authUser.uid) return;
+    
+    Alert.alert(
+      "Delete Photo",
+      "Are you sure you want to delete this photo from your gallery?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const updatedGallery = galleryImages.filter((_, index) => index !== imageIndex);
+              
+              const userDocRef = doc(db, "users", id);
+              await updateDoc(userDocRef, {
+                galleryImages: updatedGallery
+              });
+
+              setGalleryImages(updatedGallery);
+              
+            } catch (error) {
+              console.error('Error deleting gallery image:', error);
+              Alert.alert('Error', 'Failed to delete photo. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  }, [authUser, id, galleryImages]);
+
+  const toggleSection = useCallback((sectionId: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionId)) {
+        newSet.delete(sectionId);
+      } else {
+        newSet.add(sectionId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const isSectionExpanded = useCallback((sectionId: string) => {
+    return expandedSections.has(sectionId);
+  }, [expandedSections]);
+
+  const shouldShowExpandButton = useCallback((items: any[], maxItems: number = 6) => {
+    return items && items.length > maxItems;
+  }, []);
+
+  const getVisibleItems = useCallback((items: any[], maxItems: number = 6) => {
+    if (!items) return [];
+    if (items.length <= maxItems) return items;
+    return items.slice(0, maxItems);
+  }, []);
+
+  const getHiddenItems = useCallback((items: any[], maxItems: number = 6) => {
+    if (!items) return [];
+    if (items.length <= maxItems) return [];
+    return items.slice(maxItems);
+  }, []);
 
   const handleUpdateMoodStatus = useCallback(async (status: string) => {
     if (!userId) return;
@@ -1208,7 +1542,7 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <View style={styles.locationHeader}>
-                  <MaterialIcons name="location-on" size={24} color="#37a4c8" />
+                  <MaterialIcons name="location-on" size={24} color="#37a4c8" style={styles.headerIcon} />
                   <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Location</Text>
                 </View>
                 <Text style={[styles.locationText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
@@ -1216,7 +1550,7 @@ const Profile = () => {
                 </Text>
                 {userData.preferredMeetupRadius && (
                   <View style={styles.meetupRadiusContainer}>
-                    <MaterialIcons name="radar" size={16} color={theme === "light" ? "#666666" : "#999999"} />
+                    <MaterialIcons name="radar" size={16} color={theme === "light" ? "#666666" : "#999999"} style={styles.headerIcon} />
                     <Text style={[styles.meetupRadiusText, { color: theme === "light" ? "#666666" : "#999999" }]}>
                       Prefers meetups within {userData.preferredMeetupRadius} miles
                     </Text>
@@ -1233,23 +1567,23 @@ const Profile = () => {
               shadowOpacity: theme === "light" ? 0.2 : 0.1,
             }]}>
               <View style={styles.availabilityHeader}>
-                <MaterialIcons name="schedule" size={24} color="#37a4c8" />
+                <MaterialIcons name="schedule" size={24} color="#37a4c8" style={styles.headerIcon} />
                 <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Availability</Text>
               </View>
               <View style={styles.availabilityContainer}>
                 <View style={[styles.availabilityIndicator, { 
-                  backgroundColor: userData.availableNow 
+                  backgroundColor: isUserCurrentlyAvailable(userData.availabilitySchedule)
                     ? (theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)")
                     : (theme === "light" ? "rgba(244, 67, 54, 0.1)" : "rgba(244, 67, 54, 0.2)"),
-                  borderColor: userData.availableNow ? "#4CAF50" : "#F44336",
+                  borderColor: isUserCurrentlyAvailable(userData.availabilitySchedule) ? "#4CAF50" : "#F44336",
                 }]}>
                   <View style={[styles.availabilityDot, { 
-                    backgroundColor: userData.availableNow ? "#4CAF50" : "#F44336" 
+                    backgroundColor: isUserCurrentlyAvailable(userData.availabilitySchedule) ? "#4CAF50" : "#F44336" 
                   }]} />
                   <Text style={[styles.availabilityText, { 
-                    color: userData.availableNow ? "#4CAF50" : "#F44336" 
+                    color: isUserCurrentlyAvailable(userData.availabilitySchedule) ? "#4CAF50" : "#F44336" 
                   }]}>
-                    {userData.availableNow ? "Available Now" : "Not Available"}
+                    {isUserCurrentlyAvailable(userData.availabilitySchedule) ? "Available Now" : "Not Available"}
                   </Text>
                 </View>
               </View>
@@ -1268,7 +1602,9 @@ const Profile = () => {
                           {day.charAt(0).toUpperCase() + day.slice(1, 3)}
                         </Text>
                         <Text style={[styles.scheduleTime, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                          {schedule.start === "00:00" && schedule.end === "00:00" ? "Unavailable" : `${schedule.start}-${schedule.end}`}
+                          {schedule.start === "00:00" && schedule.end === "00:00" ? "Unavailable" : 
+                           (schedule.start === "00:00" && schedule.end === "23:59") ? "All day" :
+                           `${formatTimeToAMPM(schedule.start)} - ${formatTimeToAMPM(schedule.end)}`}
                         </Text>
                       </View>
                     ))}
@@ -1311,25 +1647,114 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <View style={styles.intentHeader}>
-                  <MaterialIcons name="people" size={24} color="#37a4c8" />
+                  <MaterialIcons name="people" size={24} color="#37a4c8" style={styles.headerIcon} />
                   <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Looking to Connect</Text>
+                  <Text style={[styles.itemCount, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                    {userData.connectionIntents.length}
+                  </Text>
                 </View>
                 <Text style={[styles.cardSubtitle, { color: theme === "light" ? "#666666" : "#999999" }]}>
                   Interested in networking around these topics
                 </Text>
+                
+                {/* Show shared connection intents count if any */}
+                {!isOwnProfile && getSharedConnectionIntents().length > 0 && (
+                  <View style={[styles.sharedItemsIndicator, { 
+                    backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
+                    borderColor: "#4CAF50",
+                  }]}>
+                    <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
+                    <Text style={[styles.sharedItemsText, { color: "#4CAF50" }]}>
+                      {getSharedConnectionIntents().length} shared interest{getSharedConnectionIntents().length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                )}
+                
                 <View style={styles.tagsContainer}>
-                  {userData.connectionIntents.map((intent, index) => (
-                    <View key={index} style={[styles.tag, styles.intentTag, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
-                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                      shadowOpacity: theme === "light" ? 0.15 : 0,
-                    }]}>
-                      <MaterialIcons name="handshake" size={16} color="#37a4c8" style={styles.tagIcon} />
-                      <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{intent}</Text>
-                    </View>
-                  ))}
+                  {getVisibleItems(userData.connectionIntents, 6).map((intent, index) => {
+                    const isShared = isSharedItem(intent, 'connectionIntents');
+                    return (
+                      <View key={index} style={[styles.tag, styles.intentTag, { 
+                        backgroundColor: isShared 
+                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)"),
+                        borderColor: isShared 
+                          ? "#4CAF50" 
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8"),
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.15 : 0,
+                      }]}>
+                        <MaterialIcons 
+                          name={isShared ? "check-circle" : "handshake"} 
+                          size={16} 
+                          color={isShared ? "#4CAF50" : "#37a4c8"} 
+                          style={styles.tagIcon} 
+                        />
+                        <Text style={[styles.tagText, { 
+                          color: theme === "light" ? "#0F172A" : "#ffffff",
+                          fontWeight: isShared ? '700' : '600'
+                        }]}>{intent}</Text>
+                        {isShared && (
+                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                        )}
+                      </View>
+                    );
+                  })}
+                  
+                  {/* Hidden items when expanded */}
+                  {isSectionExpanded('connectionIntents') && getHiddenItems(userData.connectionIntents, 6).map((intent, index) => {
+                    const isShared = isSharedItem(intent, 'connectionIntents');
+                    return (
+                      <View key={`hidden-${index}`} style={[styles.tag, styles.intentTag, { 
+                        backgroundColor: isShared 
+                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)"),
+                        borderColor: isShared 
+                          ? "#4CAF50" 
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8"),
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.15 : 0,
+                      }]}>
+                        <MaterialIcons 
+                          name={isShared ? "check-circle" : "handshake"} 
+                          size={16} 
+                          color={isShared ? "#4CAF50" : "#37a4c8"} 
+                          style={styles.tagIcon} 
+                        />
+                        <Text style={[styles.tagText, { 
+                          color: theme === "light" ? "#0F172A" : "#ffffff",
+                          fontWeight: isShared ? '700' : '600'
+                        }]}>{intent}</Text>
+                        {isShared && (
+                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
+                
+                {/* Expand/Collapse Button */}
+                {shouldShowExpandButton(userData.connectionIntents, 6) && (
+                  <TouchableOpacity
+                    style={[styles.expandButton, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.15)",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                    }]}
+                    onPress={() => toggleSection('connectionIntents')}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons 
+                      name={isSectionExpanded('connectionIntents') ? "expand-less" : "expand-more"} 
+                      size={20} 
+                      color="#37a4c8" 
+                    />
+                    <Text style={[styles.expandButtonText, { color: "#37a4c8" }]}>
+                      {isSectionExpanded('connectionIntents') 
+                        ? `Show Less` 
+                        : `Show ${getHiddenItems(userData.connectionIntents, 6).length} More`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -1342,66 +1767,113 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <View style={styles.traitHeader}>
-                  <MaterialIcons name="person" size={24} color="#FFC107" />
+                  <MaterialIcons name="person" size={24} color="#FFC107" style={styles.headerIcon} />
                   <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Personal Traits</Text>
+                  <Text style={[styles.itemCount, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                    {userData.personalTags.length}
+                  </Text>
                 </View>
-                <View style={styles.tagsContainer}>
-                  {userData.personalTags.map((tag, index) => (
-                    <View key={index} style={[styles.tag, styles.traitTag, { 
-                      backgroundColor: theme === "light" ? "rgba(255, 193, 7, 0.1)" : "rgba(255, 193, 7, 0.2)",
-                      borderColor: theme === "light" ? "rgba(255, 193, 7, 0.4)" : "#FFC107",
-                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                      shadowOpacity: theme === "light" ? 0.15 : 0,
-                    }]}>
-                      <MaterialIcons name="star" size={16} color="#FFC107" style={styles.tagIcon} />
-                      <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{tag}</Text>
-                    </View>
-                  ))}
+                
+                {/* Show shared personal tags count if any */}
+                {!isOwnProfile && getSharedPersonalTags().length > 0 && (
+                  <View style={[styles.sharedItemsIndicator, { 
+                    backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
+                    borderColor: "#4CAF50",
+                  }]}>
+                    <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
+                    <Text style={[styles.sharedItemsText, { color: "#4CAF50" }]}>
+                      {getSharedPersonalTags().length} shared trait{getSharedPersonalTags().length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                )}
+                
+                <View style={styles.verticalTagsContainer}>
+                  {getVisibleItems(userData.personalTags, 6).map((tag, index) => {
+                    const isShared = isSharedItem(tag, 'personalTags');
+                    return (
+                      <View key={index} style={[styles.verticalTag, styles.traitTag, { 
+                        backgroundColor: isShared 
+                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                          : (theme === "light" ? "rgba(255, 193, 7, 0.1)" : "rgba(255, 193, 7, 0.2)"),
+                        borderColor: isShared 
+                          ? "#4CAF50" 
+                          : (theme === "light" ? "rgba(255, 193, 7, 0.4)" : "#FFC107"),
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.15 : 0,
+                      }]}>
+                        <MaterialIcons 
+                          name={isShared ? "check-circle" : "star"} 
+                          size={16} 
+                          color={isShared ? "#4CAF50" : "#FFC107"} 
+                          style={styles.tagIcon} 
+                        />
+                        <Text style={[styles.verticalTagText, { 
+                          color: theme === "light" ? "#0F172A" : "#ffffff",
+                          fontWeight: isShared ? '700' : '600'
+                        }]}>{tag}</Text>
+                        {isShared && (
+                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                        )}
+                      </View>
+                    );
+                  })}
+                  
+                  {/* Hidden items when expanded */}
+                  {isSectionExpanded('personalTags') && getHiddenItems(userData.personalTags, 6).map((tag, index) => {
+                    const isShared = isSharedItem(tag, 'personalTags');
+                    return (
+                      <View key={`hidden-${index}`} style={[styles.verticalTag, styles.traitTag, { 
+                        backgroundColor: isShared 
+                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                          : (theme === "light" ? "rgba(255, 193, 7, 0.1)" : "rgba(255, 193, 7, 0.2)"),
+                        borderColor: isShared 
+                          ? "#4CAF50" 
+                          : (theme === "light" ? "rgba(255, 193, 7, 0.4)" : "#FFC107"),
+                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                        shadowOpacity: theme === "light" ? 0.15 : 0,
+                      }]}>
+                        <MaterialIcons 
+                          name={isShared ? "check-circle" : "star"} 
+                          size={16} 
+                          color={isShared ? "#4CAF50" : "#FFC107"} 
+                          style={styles.tagIcon} 
+                        />
+                        <Text style={[styles.verticalTagText, { 
+                          color: theme === "light" ? "#0F172A" : "#ffffff",
+                          fontWeight: isShared ? '700' : '600'
+                        }]}>{tag}</Text>
+                        {isShared && (
+                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
+                
+                {/* Expand/Collapse Button */}
+                {shouldShowExpandButton(userData.personalTags, 6) && (
+                  <TouchableOpacity
+                    style={[styles.expandButton, { 
+                      backgroundColor: theme === "light" ? "rgba(255, 193, 7, 0.08)" : "rgba(255, 193, 7, 0.15)",
+                      borderColor: theme === "light" ? "rgba(255, 193, 7, 0.3)" : "#FFC107",
+                    }]}
+                    onPress={() => toggleSection('personalTags')}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons 
+                      name={isSectionExpanded('personalTags') ? "expand-less" : "expand-more"} 
+                      size={20} 
+                      color="#FFC107" 
+                    />
+                    <Text style={[styles.expandButtonText, { color: "#FFC107" }]}>
+                      {isSectionExpanded('personalTags') 
+                        ? `Show Less` 
+                        : `Show ${getHiddenItems(userData.personalTags, 6).length} More`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
-
-            <View style={[styles.card, styles.interestsCard, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-              shadowOpacity: theme === "light" ? 0.2 : 0.1,
-            }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Interests</Text>
-              <View style={styles.tagsContainer}>
-                {userData.interests.map((interest, index) => (
-                  <View key={index} style={[styles.tag, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                    shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                    shadowOpacity: theme === "light" ? 0.1 : 0,
-                  }]}>
-                    <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{interest}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={[styles.card, styles.goalsCard, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-              shadowOpacity: theme === "light" ? 0.2 : 0.1,
-            }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Goals</Text>
-              <View style={styles.tagsContainer}>
-                {userData.goals.map((goal, index) => (
-                  <View key={index} style={[styles.tag, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                    shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                    shadowOpacity: theme === "light" ? 0.1 : 0,
-                  }]}>
-                    <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{goal}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
 
             {/* Event Preferences */}
             {userData.eventPreferences && (
@@ -1412,30 +1884,322 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <View style={styles.preferencesHeader}>
-                  <MaterialIcons name="event" size={24} color="#37a4c8" />
+                  <MaterialIcons name="event" size={24} color="#37a4c8" style={styles.headerIcon} />
                   <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Event Preferences</Text>
                 </View>
+                
+                {/* Show shared event preferences count if any */}
+                {!isOwnProfile && getSharedEventPreferences().length > 0 && (
+                  <View style={[styles.sharedItemsIndicator, { 
+                    backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
+                    borderColor: "#4CAF50",
+                  }]}>
+                    <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
+                    <Text style={[styles.sharedItemsText, { color: "#4CAF50" }]}>
+                      {getSharedEventPreferences().length} shared preference{getSharedEventPreferences().length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                )}
+                
                 <View style={styles.preferencesContainer}>
-                  {userData.eventPreferences.prefersSmallGroups && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                    }]}>
-                      <MaterialIcons name="group" size={20} color="#37a4c8" />
-                      <Text style={[styles.preferenceText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                        Prefers small groups
-                      </Text>
-                    </View>
-                  )}
                   {userData.eventPreferences.likesBars && (
                     <View style={[styles.preferenceItem, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                      backgroundColor: isSharedItem('Enjoys bar meetups', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Enjoys bar meetups', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
                     }]}>
-                      <MaterialIcons name="local-bar" size={20} color="#37a4c8" />
-                      <Text style={[styles.preferenceText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Enjoys bar meetups', 'eventPreferences') ? "check-circle" : "local-bar"} 
+                        size={20} 
+                        color={isSharedItem('Enjoys bar meetups', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Enjoys bar meetups', 'eventPreferences') ? '700' : '600'
+                      }]}>
                         Enjoys bar meetups
                       </Text>
+                      {isSharedItem('Enjoys bar meetups', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersSmallGroups && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers small groups', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers small groups', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers small groups', 'eventPreferences') ? "check-circle" : "group"} 
+                        size={20} 
+                        color={isSharedItem('Prefers small groups', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers small groups', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers small groups
+                      </Text>
+                      {isSharedItem('Prefers small groups', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersWeekendEvents && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers weekend events', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers weekend events', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers weekend events', 'eventPreferences') ? "check-circle" : "weekend"} 
+                        size={20} 
+                        color={isSharedItem('Prefers weekend events', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers weekend events', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers weekend events
+                      </Text>
+                      {isSharedItem('Prefers weekend events', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersEveningEvents && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers evening events', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers evening events', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers evening events', 'eventPreferences') ? "check-circle" : "nights-stay"} 
+                        size={20} 
+                        color={isSharedItem('Prefers evening events', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers evening events', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers evening events
+                      </Text>
+                      {isSharedItem('Prefers evening events', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersIndoorVenues && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers indoor venues', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers indoor venues', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers indoor venues', 'eventPreferences') ? "check-circle" : "home"} 
+                        size={20} 
+                        color={isSharedItem('Prefers indoor venues', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers indoor venues', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers indoor venues
+                      </Text>
+                      {isSharedItem('Prefers indoor venues', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersStructuredActivities && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers structured activities', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers structured activities', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers structured activities', 'eventPreferences') ? "check-circle" : "list-alt"} 
+                        size={20} 
+                        color={isSharedItem('Prefers structured activities', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers structured activities', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers structured activities
+                      </Text>
+                      {isSharedItem('Prefers structured activities', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersSpontaneousPlans && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers spontaneous plans', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers spontaneous plans', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers spontaneous plans', 'eventPreferences') ? "check-circle" : "flash-on"} 
+                        size={20} 
+                        color={isSharedItem('Prefers spontaneous plans', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers spontaneous plans', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers spontaneous plans
+                      </Text>
+                      {isSharedItem('Prefers spontaneous plans', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersLocalMeetups && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers local meetups', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers local meetups', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers local meetups', 'eventPreferences') ? "check-circle" : "location-on"} 
+                        size={20} 
+                        color={isSharedItem('Prefers local meetups', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers local meetups', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers local meetups
+                      </Text>
+                      {isSharedItem('Prefers local meetups', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersTravelEvents && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers travel events', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers travel events', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers travel events', 'eventPreferences') ? "check-circle" : "flight"} 
+                        size={20} 
+                        color={isSharedItem('Prefers travel events', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers travel events', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers travel events
+                      </Text>
+                      {isSharedItem('Prefers travel events', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersQuietEnvironments && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers quiet environments', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers quiet environments', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers quiet environments', 'eventPreferences') ? "check-circle" : "volume-off"} 
+                        size={20} 
+                        color={isSharedItem('Prefers quiet environments', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers quiet environments', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers quiet environments
+                      </Text>
+                      {isSharedItem('Prefers quiet environments', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersActiveLifestyles && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers active lifestyles', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers active lifestyles', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers active lifestyles', 'eventPreferences') ? "check-circle" : "fitness-center"} 
+                        size={20} 
+                        color={isSharedItem('Prefers active lifestyles', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers active lifestyles', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers active lifestyles
+                      </Text>
+                      {isSharedItem('Prefers active lifestyles', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
+                    </View>
+                  )}
+                  {userData.eventPreferences.prefersIntellectualDiscussions && (
+                    <View style={[styles.preferenceItem, { 
+                      backgroundColor: isSharedItem('Prefers intellectual discussions', 'eventPreferences')
+                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
+                      borderColor: isSharedItem('Prefers intellectual discussions', 'eventPreferences')
+                        ? "#4CAF50"
+                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
+                    }]}>
+                      <MaterialIcons 
+                        name={isSharedItem('Prefers intellectual discussions', 'eventPreferences') ? "check-circle" : "school"} 
+                        size={20} 
+                        color={isSharedItem('Prefers intellectual discussions', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
+                      />
+                      <Text style={[styles.preferenceText, { 
+                        color: theme === "light" ? "#0F172A" : "#ffffff",
+                        fontWeight: isSharedItem('Prefers intellectual discussions', 'eventPreferences') ? '700' : '600'
+                      }]}>
+                        Prefers intellectual discussions
+                      </Text>
+                      {isSharedItem('Prefers intellectual discussions', 'eventPreferences') && (
+                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
+                      )}
                     </View>
                   )}
                 </View>
@@ -1455,7 +2219,7 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <View style={styles.groupsHeader}>
-                  <MaterialIcons name="groups" size={24} color="#9C27B0" />
+                  <MaterialIcons name="groups" size={24} color="#9C27B0" style={styles.headerIcon} />
                   <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Groups & Affiliations</Text>
                 </View>
                 <View style={styles.tagsContainer}>
@@ -1483,7 +2247,7 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <View style={styles.reputationHeader}>
-                  <MaterialIcons name="emoji-events" size={24} color="#4CAF50" />
+                  <MaterialIcons name="emoji-events" size={24} color="#4CAF50" style={styles.headerIcon} />
                   <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Community Recognition</Text>
                 </View>
                 <View style={styles.tagsContainer}>
@@ -1502,7 +2266,8 @@ const Profile = () => {
               </View>
             )}
 
-            {userData.socialMedia && Object.keys(userData.socialMedia).length > 0 ? (
+            
+
               <View style={[styles.card, styles.socialMediaCard, { 
                 backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
                 borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
@@ -1510,177 +2275,186 @@ const Profile = () => {
                 shadowOpacity: theme === "light" ? 0.2 : 0.1,
               }]}>
                 <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Social Media</Text>
-                <View style={styles.socialMediaLinks}>
-                  {userData.socialMedia?.instagram && (
-                    <TouchableOpacity 
-                      style={[styles.socialLink, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.1 : 0,
-                      }]}
-                      onPress={() => Linking.openURL(`https://instagram.com/${userData.socialMedia?.instagram}`)}
-                    >
-                      <MaterialIcons name="photo-camera" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
-                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>@{userData.socialMedia.instagram}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {userData.socialMedia?.linkedin && (
-                    <TouchableOpacity 
-                      style={[styles.socialLink, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
-                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.15 : 0,
-                      }]}
-                      onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
-                      activeOpacity={0.8}
-                    >
-                      <MaterialIcons name="work" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
-                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>LinkedIn Profile</Text>
-                    </TouchableOpacity>
-                  )}
-                  {userData.socialMedia?.twitter && (
-                    <TouchableOpacity 
-                      style={[styles.socialLink, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
-                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.15 : 0,
-                      }]}
-                      onPress={() => Linking.openURL(`https://twitter.com/${userData.socialMedia?.twitter}`)}
-                      activeOpacity={0.8}
-                    >
-                      <MaterialIcons name="chat" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
-                      <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>@{userData.socialMedia.twitter}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+              {userData.socialMedia && Object.keys(userData.socialMedia).length > 0 && (
+                (userData.socialMedia.instagram || userData.socialMedia.linkedin || userData.socialMedia.twitter) ? (
+                  <View style={styles.socialMediaLinks}>
+                    {userData.socialMedia?.instagram && (
+                      <TouchableOpacity 
+                        style={[styles.socialLink, { 
+                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
+                          shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                          shadowOpacity: theme === "light" ? 0.1 : 0,
+                        }]}
+                        onPress={() => {
+                          const username = extractUsername(userData.socialMedia?.instagram || '', 'instagram');
+                          Linking.openURL(`https://instagram.com/${username}`);
+                        }}
+                      >
+                        <MaterialIcons name="photo-camera" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+                        <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                          @{extractUsername(userData.socialMedia?.instagram || '', 'instagram')}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    {userData.socialMedia?.linkedin && (
+                      <TouchableOpacity 
+                        style={[styles.socialLink, { 
+                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
+                          shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                          shadowOpacity: theme === "light" ? 0.15 : 0,
+                        }]}
+                        onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialIcons name="work" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+                        <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>LinkedIn Profile</Text>
+                      </TouchableOpacity>
+                    )}
+                    {userData.socialMedia?.twitter && (
+                      <TouchableOpacity 
+                        style={[styles.socialLink, { 
+                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
+                          shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
+                          shadowOpacity: theme === "light" ? 0.15 : 0,
+                        }]}
+                        onPress={() => {
+                          const username = extractUsername(userData.socialMedia?.twitter || '', 'twitter');
+                          Linking.openURL(`https://x.com/${username}`);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialIcons name="chat" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+                        <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                          @{extractUsername(userData.socialMedia?.twitter || '', 'twitter')}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
               </View>
-            ) : (
-              <View style={[styles.card, styles.socialMediaCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Social Media</Text>
-                <Text style={[styles.noContentText, { color: theme === "light" ? "#666666" : "#999999" }]}>No social media links provided</Text>
-              </View>
-            )}
+                ) : (
+                  <View style={{alignItems: 'center', justifyContent: 'center', paddingVertical: 32}}>
+                    <MaterialIcons name="link-off" size={48} color={theme === "light" ? "#94A3B8" : "#666666"} style={{marginBottom: 12}} />
+                    <Text style={[styles.noContentText, { color: theme === "light" ? "#666666" : "#999999", fontSize: 16, fontWeight: '600' }]}>No social media accounts linked</Text>
+                    <Text style={[styles.noContentText, { color: theme === "light" ? "#94A3B8" : "#666666", fontSize: 13, marginTop: 4 }]}>This user hasn't added any social media links yet.</Text>
+                  </View>
+                )
+              )}
+            </View>
           </Animated.View>
         );
-      case 'stats':
+      case 'gallery':
         return (
           <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
-            <View style={[styles.card, styles.statsCard, { 
+            <View style={[styles.card, styles.galleryCard, { 
               backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
               borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
               shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
               shadowOpacity: theme === "light" ? 0.2 : 0.1,
             }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Profile Stats</Text>
-              
-              <View style={styles.statsGrid}>
-                <View style={[styles.statItem, { 
-                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                }]}>
-                  <MaterialIcons name="people" size={24} color="#37a4c8" />
-                  <Text style={[styles.statValue, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                    {connections.length}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    Connections
+              <View style={styles.galleryHeader}>
+                <View style={styles.galleryTitleContainer}>
+                  <MaterialIcons name="photo-library" size={24} color="#37a4c8" style={styles.headerIcon} />
+                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Photo Gallery</Text>
+                  <Text style={[styles.galleryCount, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                    {galleryImages.length} photo{galleryImages.length !== 1 ? 's' : ''}
                   </Text>
                 </View>
-                
-                <View style={[styles.statItem, { 
-                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                }]}>
-                  <MaterialIcons name="language" size={24} color="#37a4c8" />
-                  <Text style={[styles.statValue, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                    {userData.languages.length}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    Languages
-                  </Text>
-                </View>
-                
-                <View style={[styles.statItem, { 
-                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                }]}>
-                  <MaterialIcons name="favorite" size={24} color="#37a4c8" />
-                  <Text style={[styles.statValue, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                    {userData.interests.length}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    Interests
-                  </Text>
-                </View>
-                
-                <View style={[styles.statItem, { 
-                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                }]}>
-                  <MaterialIcons name="star" size={24} color="#37a4c8" />
-                  <Text style={[styles.statValue, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                    {userData.reputationTags?.length || 0}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    Recognition
-                  </Text>
-                </View>
+                {id === authUser?.uid && (
+                  <TouchableOpacity
+                    style={[styles.addPhotoButton, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
+                      borderColor: "#37a4c8",
+                    }]}
+                    onPress={handleGalleryImageUpload}
+                    disabled={uploadingGalleryImage}
+                    activeOpacity={0.7}
+                  >
+                    {uploadingGalleryImage ? (
+                      <ActivityIndicator size="small" color="#37a4c8" />
+                    ) : (
+                      <MaterialIcons name="add-photo-alternate" size={18} color="#37a4c8" />
+                    )}
+                    <Text style={[styles.addPhotoText, { color: "#37a4c8" }]}>
+                      {uploadingGalleryImage ? "Uploading..." : "Add"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
               
-              {/* Link Rating Score */}
-              {userData.linkRatingScore && (
-                <View style={[styles.ratingContainer, { 
-                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
-                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
-                }]}>
-                  <View style={styles.ratingHeader}>
-                    <MaterialIcons name="thumb-up" size={20} color="#37a4c8" />
-                    <Text style={[styles.ratingTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                      Community Rating
-                    </Text>
-                  </View>
-                  <View style={styles.ratingDetails}>
-                    <Text style={[styles.ratingScore, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                      {userData.linkRatingScore.average.toFixed(1)}/5
-                    </Text>
-                    <Text style={[styles.ratingCount, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                      ({userData.linkRatingScore.count} reviews)
-                    </Text>
-                  </View>
+              {galleryImages.length > 0 ? (
+                <View style={styles.galleryGrid}>
+                  {galleryImages.map((image, index) => (
+                    <View
+                      key={index}
+                      style={[styles.galleryImageContainer, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
+                      }]}
+                    >
+                      <TouchableOpacity
+                        style={styles.galleryImageTouchable}
+                        onPress={() => handlePhotoPress(galleryImages, index)}
+                        activeOpacity={0.8}
+                      >
+                        <Image 
+                          source={{ uri: image }} 
+                          style={styles.galleryImage}
+                          resizeMode="cover"
+                          onLoadStart={() => {
+                            setLoadingGalleryImages(prev => new Set(prev).add(index));
+                          }}
+                          onLoad={() => {
+                            setLoadingGalleryImages(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(index);
+                              return newSet;
+                            });
+                          }}
+                          onError={() => {
+                            setLoadingGalleryImages(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(index);
+                              return newSet;
+                            });
+                          }}
+                        />
+                        {loadingGalleryImages.has(index) && (
+                          <View style={styles.imageLoadingOverlay}>
+                            <ActivityIndicator size="small" color="#37a4c8" />
+                          </View>
+                        )}
+                        <View style={styles.imageOverlay}>
+                          <MaterialIcons name="zoom-in" size={20} color="#ffffff" />
+                        </View>
+                      </TouchableOpacity>
+                      
+                      {id === authUser?.uid && (
+                        <TouchableOpacity
+                          style={[styles.deleteImageButton, { 
+                            backgroundColor: theme === "light" ? "rgba(255, 68, 68, 0.9)" : "rgba(255, 102, 102, 0.9)",
+                          }]}
+                          onPress={() => handleDeleteGalleryImage(index)}
+                          activeOpacity={0.8}
+                        >
+                          <MaterialIcons name="delete" size={16} color="#ffffff" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
                 </View>
-              )}
-              
-              {userData.createdAt && (
-                <View style={[styles.membershipInfo, { 
+              ) : (
+                <View style={[styles.emptyGalleryContainer, { 
                   backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
                   borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
                 }]}>
-                  <MaterialIcons name="schedule" size={20} color="#37a4c8" />
-                  <Text style={[styles.membershipText, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    {userData.createdAt ? (
-                      (() => {
-                        const createdAt = userData.createdAt.toDate();
-                        const now = new Date();
-                        const diffTime = Math.abs(now.getTime() - createdAt.getTime());
-                        const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44));
-                        
-                        if (diffMonths === 0) {
-                          return "Joined this month";
-                        } else if (diffMonths === 1) {
-                          return "1 month on Wingman";
-                        } else {
-                          return `${diffMonths} months on Wingman`;
-                        }
-                      })()
-                    ) : "Member of Wingman"}
+                  <MaterialIcons name="photo-library" size={48} color={theme === "light" ? "#94A3B8" : "#666666"} />
+                  <Text style={[styles.emptyGalleryText, { color: theme === "light" ? "#666666" : "#999999" }]}>
+                    {id === authUser?.uid ? "No photos in gallery yet" : "No photos in gallery"}
+                  </Text>
+                  <Text style={[styles.emptyGallerySubtext, { color: theme === "light" ? "#94A3B8" : "#666666" }]}>
+                    {id === authUser?.uid ? "Add some photos to showcase yourself!" : "This user hasn't added any photos yet."}
                   </Text>
                 </View>
               )}
@@ -1743,7 +2517,7 @@ const Profile = () => {
       default:
         return null;
     }
-  }, [userData, activeTab, tabFadeAnim, tabScaleAnim, theme, connections, loadingConnections, router]);
+  }, [userData, activeTab, tabFadeAnim, tabScaleAnim, theme, connections, loadingConnections, router, galleryImages, uploadingGalleryImage, loadingGalleryImages, handleGalleryImageUpload, handleDeleteGalleryImage, handlePhotoPress, authUser, id, expandedSections, toggleSection, isSectionExpanded, shouldShowExpandButton, getVisibleItems, getHiddenItems, getSharedConnectionIntents, getSharedPersonalTags, getSharedEventPreferences, isSharedItem]);
 
   // Effects
   useFocusEffect(
@@ -1751,8 +2525,9 @@ const Profile = () => {
       if (userId && id) {
         setLoading(true);
         fetchUserData();
+        fetchCurrentUserData();
       }
-    }, [userId, id, fetchUserData])
+    }, [userId, id, fetchUserData, fetchCurrentUserData])
   );
 
   useEffect(() => {
@@ -1770,8 +2545,9 @@ const Profile = () => {
   useEffect(() => {
     if (userId && id) {
       fetchUserData();
+      fetchCurrentUserData();
     }
-  }, [userId, id, fetchUserData]);
+  }, [userId, id, fetchUserData, fetchCurrentUserData]);
 
   useEffect(() => {
     if (authUser && id) {
@@ -1784,6 +2560,13 @@ const Profile = () => {
       fetchConnections();
     }
   }, [id, fetchConnections]);
+
+  // Load gallery images when userData changes
+  useEffect(() => {
+    if (userData?.galleryImages) {
+      setGalleryImages(userData.galleryImages);
+    }
+  }, [userData?.galleryImages]);
 
   // Update animations when theme changes
   useEffect(() => {
@@ -1916,8 +2699,41 @@ const Profile = () => {
                   </Animated.View>
                 )}
                 <View style={[styles.statusIndicator, { 
-                  borderColor: theme === "light" ? "#e6e6e6" : "#000000",
-                  opacity: id === authUser?.uid ? 0 : 1,
+                  borderColor: "transparent",
+                  opacity: (() => {
+                    // Never show for own profile
+                    if (id === authUser?.uid) return 0;
+                    
+                    // Check if user is currently available based on schedule
+                    const isAvailableBySchedule = isUserCurrentlyAvailable(userData.availabilitySchedule);
+                    
+                    // Check if user was active within last 30 minutes
+                    const isRecentlyActive = (() => {
+                      if (!userData.lastLogin) return false;
+                      const lastLogin = userData.lastLogin.toDate ? userData.lastLogin.toDate() : new Date(userData.lastLogin);
+                      const now = new Date();
+                      const diffInMinutes = (now.getTime() - lastLogin.getTime()) / (1000 * 60);
+                      return diffInMinutes <= 30;
+                    })();
+                    
+                    return (isAvailableBySchedule || isRecentlyActive) ? 1 : 0;
+                  })(),
+                  backgroundColor: (() => {
+                    // Check if user is currently available based on schedule
+                    const isAvailableBySchedule = isUserCurrentlyAvailable(userData.availabilitySchedule);
+                    
+                    // Check if user was active within last 30 minutes
+                    const isRecentlyActive = (() => {
+                      if (!userData.lastLogin) return false;
+                      const lastLogin = userData.lastLogin.toDate ? userData.lastLogin.toDate() : new Date(userData.lastLogin);
+                      const now = new Date();
+                      const diffInMinutes = (now.getTime() - lastLogin.getTime()) / (1000 * 60);
+                      return diffInMinutes <= 30;
+                    })();
+                    
+                    return (isAvailableBySchedule || isRecentlyActive) ? "#37a4c8" : "transparent";
+                  })(),
+                  borderWidth: 0,
                 }]} />
               </TouchableOpacity>
 
@@ -2154,7 +2970,7 @@ const Profile = () => {
                 }
               ]}
             >
-              {['about', 'interests', 'social', 'stats'].map((tab) => (
+              {['about', 'interests', 'social', 'gallery'].map((tab) => (
                 <TouchableOpacity
                   key={tab}
                   style={[
@@ -2267,11 +3083,18 @@ const Profile = () => {
             ]}
           >
             <TouchableOpacity
-              style={styles.editFab}
+              style={[styles.editFab, {
+                backgroundColor: theme === "light" ? "#37a4c8" : "#000000",
+                borderColor: theme === "light" ? "#38a5c9" : "#37a4c8",
+              }]}
               activeOpacity={0.8}
               onPress={() => router.push('/profile/editProfile')}
             >
-              <MaterialIcons name="edit" size={24} color={theme === "light" ? "#ffffff" : "#ffffff"} />
+              <MaterialIcons 
+                name="edit" 
+                size={24} 
+                color={theme === "light" ? "#ffffff" : "#37a4c8"} 
+              />
             </TouchableOpacity>
           </Animated.View>
         ) : null}
@@ -2442,41 +3265,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 24,
+    padding: 20,
     paddingBottom: 160,
-    paddingTop: 20,
+    paddingTop: 16,
   },
   contentContainer: {
     flex: 1,
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
     paddingTop: 80,
     position: 'relative',
-    shadowColor: 'rgba(0, 0, 0, 0.05)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
     marginTop: 8,
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 12,
-    shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 12,
+    marginBottom: 16,
     marginTop: 10,
   },
   profileImage: {
     width: 128,
     height: 128,
     borderRadius: 64,
-    borderWidth: 4,
+    borderWidth: 2,
     borderColor: '#37a4c8',
-    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    backgroundColor: 'rgba(55, 164, 200, 0.05)',
   },
   statusIndicator: {
     position: "absolute",
@@ -2501,21 +3315,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   nameText: {
-    fontSize: 36,
-    fontWeight: "800",
-    marginBottom: 6,
-    letterSpacing: -0.8,
+    fontSize: 32,
+    fontWeight: "700",
+    marginBottom: 8,
+    letterSpacing: -0.5,
     textAlign: 'center',
-    lineHeight: 42,
-    textShadowColor: 'rgba(0, 0, 0, 0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    lineHeight: 38,
   },
   pronounsText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "400",
-    opacity: 0.7,
-    letterSpacing: -0.2,
+    opacity: 0.6,
+    letterSpacing: -0.1,
   },
   infoContainer: {
     flexDirection: 'row',
@@ -2582,19 +3393,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    borderRadius: 24,
+    borderRadius: 16,
     padding: 24,
-    borderWidth: 1.5,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 12,
-    elevation: 6,
-    marginBottom: 20,
-    shadowColor: 'rgba(0, 0, 0, 0.08)',
-    shadowOpacity: 0.15,
+    borderWidth: 0.5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 16,
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOpacity: 0.08,
+    overflow: 'hidden',
   },
   aboutCard: {
-    marginBottom: 28,
-    minHeight: 140,
+    marginBottom: 20,
   },
   gridContainer: {
     flexDirection: "row",
@@ -2611,15 +3422,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
-    letterSpacing: 0.3,
+    fontSize: 20,
+    fontWeight: "600",
+    marginBottom: 16,
+    letterSpacing: -0.2,
+    flexShrink: 1,
   },
   cardContent: {
-    fontSize: 15,
-    lineHeight: 24,
-    letterSpacing: 0.2,
+    fontSize: 16,
+    lineHeight: 26,
+    letterSpacing: 0.1,
+    fontWeight: "400",
   },
   metaContainer: {
     marginTop: 32,
@@ -2842,74 +3655,70 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     width: '100%',
     paddingHorizontal: 0,
-    gap: 8,
-    shadowColor: 'rgba(0, 0, 0, 0.05)',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    gap: 6,
   },
   tab: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 0,
-    borderRadius: 20,
-    backgroundColor: 'rgba(55, 164, 200, 0.08)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(55, 164, 200, 0.2)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(55, 164, 200, 0.04)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(55, 164, 200, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
     transform: [{ scale: 1 }],
   },
   activeTab: {
-    backgroundColor: 'rgba(55, 164, 200, 0.18)',
+    backgroundColor: 'rgba(55, 164, 200, 0.12)',
     borderColor: '#37a4c8',
     shadowColor: '#37a4c8',
-    shadowOpacity: 0.25,
-    transform: [{ scale: 1.02 }],
+    shadowOpacity: 0.15,
+    transform: [{ scale: 1.01 }],
   },
   tabText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     textAlign: 'center',
-    letterSpacing: 0.3,
+    letterSpacing: 0.1,
   },
   activeTabText: {
     fontWeight: '700',
     color: '#37a4c8',
   },
   tabContent: {
-    marginTop: 20,
+    marginTop: 16,
   },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 12,
+    gap: 8,
+    marginTop: 16,
   },
   tag: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-    elevation: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
     transform: [{ scale: 1 }],
-    shadowColor: 'rgba(0, 0, 0, 0.06)',
-    shadowOpacity: 0.12,
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOpacity: 0.06,
   },
   tagText: {
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.2,
+    fontSize: 13,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
   noContentText: {
     fontSize: 14,
@@ -3223,7 +4032,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   tagIcon: {
-    marginRight: 4,
+    marginRight: 6,
   },
   nameRow: {
     flexDirection: 'row',
@@ -3277,7 +4086,7 @@ const styles = StyleSheet.create({
   connectButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   overlay: {
     position: 'absolute',
@@ -3341,7 +4150,7 @@ const styles = StyleSheet.create({
   connectionCountText: {
     fontSize: 18,
     fontWeight: '800',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   shareButton: {
     minWidth: 100,
@@ -3350,7 +4159,7 @@ const styles = StyleSheet.create({
   shareButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   moodContainerUnderName: {
     flexDirection: "row",
@@ -3396,7 +4205,7 @@ const styles = StyleSheet.create({
   meetupRadiusText: {
     fontSize: 12,
     fontWeight: '500',
-    marginTop: 8,
+    marginTop: 0,
   },
   availabilityCard: {
     marginTop: 20,
@@ -3511,9 +4320,13 @@ const styles = StyleSheet.create({
   },
   locationHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 12,
+  },
+  headerIcon: {
+    alignSelf: 'flex-start',
+    marginTop: 1,
   },
   meetupRadiusContainer: {
     flexDirection: 'row',
@@ -3523,7 +4336,7 @@ const styles = StyleSheet.create({
   },
   availabilityHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 12,
   },
@@ -3560,33 +4373,260 @@ const styles = StyleSheet.create({
   },
   intentHeader: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 12,
+  },
+  interestsHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 12,
   },
-  traitHeader: {
+  goalsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  itemCount: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(55, 164, 200, 0.3)',
+  },
+  expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    gap: 6,
+    marginTop: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  expandButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  interestTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  goalTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  galleryCard: {
+    marginBottom: 20,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  galleryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  galleryTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+    flexWrap: 'wrap',
+  },
+  galleryCount: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+    opacity: 0.7,
+  },
+  addPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    gap: 4,
+    minWidth: 70,
+    maxWidth: 100,
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  addPhotoText: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  galleryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 0,
+    width: '100%',
+  },
+  galleryImageContainer: {
+    width: '48%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    marginBottom: 8,
+    position: 'relative',
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    minWidth: 0,
+    maxWidth: '48%',
+  },
+  galleryImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 10,
+  },
+  imageOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    opacity: 0,
+  },
+  emptyGalleryContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  emptyGalleryText: {
+    fontSize: 16,
+    marginTop: 16,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  emptyGallerySubtext: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  galleryImageTouchable: {
+    flex: 1,
+    position: 'relative',
+  },
+  deleteImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: 'rgba(0, 0, 0, 0.3)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 10,
+  },
+  imageLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  traitHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 12,
   },
   preferencesHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 12,
   },
   groupsHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 12,
   },
   reputationHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 12,
+  },
+  verticalTagsContainer: {
+    flexDirection: 'column',
+    gap: 8,
+    marginTop: 12,
+  },
+  verticalTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 3,
+    transform: [{ scale: 1 }],
+    shadowColor: 'rgba(0, 0, 0, 0.06)',
+    shadowOpacity: 0.12,
+  },
+  verticalTagText: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  sharedItemsIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    marginBottom: 12,
+  },
+  sharedItemsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  sharedStar: {
+    marginLeft: 4,
   },
 });
 

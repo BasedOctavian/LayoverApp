@@ -37,10 +37,11 @@ const ThemeAwareStack = () => {
   const pathname = usePathname();
   
   // Define routes where bottom nav should be hidden
-  const hideBottomNavRoutes = ['/login/login', '/userOnboarding'];
+  const hideBottomNavRoutes = ['/login/login', '/userOnboarding', '/profileComplete'];
   const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
     !pathname.startsWith('/chat/[id]') && // Only hide for individual chat conversations
     !pathname.startsWith('/event/eventChat/') && 
+    !pathname.startsWith('/ping/pingChat/') && 
     !pathname.includes('loading');
 
   return (
@@ -115,6 +116,14 @@ const ThemeAwareStack = () => {
       {/* User Onboarding */}
       <Stack.Screen
         name="userOnboarding"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      {/* Profile Complete Screen */}
+      <Stack.Screen
+        name="profileComplete"
         options={{
           headerShown: false,
           animation: 'none',
@@ -302,6 +311,22 @@ const ThemeAwareStack = () => {
           headerShown: false,
         }}
       />
+      {/* Ping Event Screen */}
+      <Stack.Screen
+        name="ping/[id]"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      {/* Ping Chat Screen */}
+      <Stack.Screen
+        name="ping/pingChat/[id]"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
     </Stack>
   );
 };
@@ -332,10 +357,11 @@ function MainLayout() {
   const pathname = usePathname();
   
   // Define routes where bottom nav should be hidden
-  const hideBottomNavRoutes = ['/login/login', '/userOnboarding'];
+  const hideBottomNavRoutes = ['/login/login', '/userOnboarding', '/profileComplete'];
   const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
     !pathname.startsWith('/chat/[id]') && // Only hide for individual chat conversations
     !pathname.startsWith('/event/eventChat/') && 
+    !pathname.startsWith('/ping/pingChat/') && 
     !pathname.includes('loading');
 
   // Initialize external routes handler
