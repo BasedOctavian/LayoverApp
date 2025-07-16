@@ -169,12 +169,18 @@ export default function PingEvent() {
   const [currentLocation, setCurrentLocation] = useState<{latitude: number, longitude: number} | null>(null);
   const { theme } = React.useContext(ThemeContext);
 
+  // New state for privacy settings and participant management
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showParticipantManagementModal, setShowParticipantManagementModal] = useState(false);
+  const [removingParticipant, setRemovingParticipant] = useState<string | null>(null);
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const mapScaleAnim = useRef(new Animated.Value(0.95)).current;
   const loadingSpinnerAnim = useRef(new Animated.Value(0)).current;
   const invitingSpinnerAnim = useRef(new Animated.Value(0)).current;
+  const removingSpinnerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const fetchPing = async () => {
@@ -316,6 +322,21 @@ export default function PingEvent() {
     }
   }, [invitingUser]);
 
+  // Removing spinner animation
+  useEffect(() => {
+    if (removingParticipant) {
+      Animated.loop(
+        Animated.timing(removingSpinnerAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      removingSpinnerAnim.setValue(0);
+    }
+  }, [removingParticipant]);
+
   const handleJoinLeave = async () => {
     if (!user || !ping) return;
     setLoading(true);
@@ -406,6 +427,13 @@ export default function PingEvent() {
   };
 
   const isOrganizer = user?.uid === ping?.creatorId;
+
+  // Privacy options for organizers
+  const privacyOptions = [
+    { id: 'open', label: 'Open', description: 'Anyone can join', icon: 'public' },
+    { id: 'invite-only', label: 'Invite Only', description: 'You approve requests', icon: 'person-add' },
+    { id: 'friends-only', label: 'Friends Only', description: 'Only your available connections', icon: 'people' }
+  ];
 
   const fetchUserConnections = async () => {
     if (!user?.uid) return;
@@ -524,6 +552,86 @@ export default function PingEvent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle privacy setting change
+  const handlePrivacyChange = async (newPrivacyType: string) => {
+    if (!ping || !user) return;
+    
+    setLoading(true);
+    try {
+      const pingRef = doc(db, 'pings', ping.id);
+      await updateDoc(pingRef, {
+        pingType: newPrivacyType,
+        updatedAt: new Date()
+      });
+      
+      // Update local state
+      setPing(prev => prev ? { ...prev, pingType: newPrivacyType } : null);
+      
+      // Notify participants about the privacy change
+      await notifyPingParticipants(ping, 'privacy');
+      
+      setShowPrivacyModal(false);
+      Alert.alert('Privacy Updated', `Activity is now ${getPrivacyTypeLabel(newPrivacyType)}`);
+      
+    } catch (error) {
+      console.error('Error updating privacy setting:', error);
+      Alert.alert('Error', 'Failed to update privacy setting. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle participant removal
+  const handleRemoveParticipant = async (participantId: string, participantName: string) => {
+    if (!ping || !user) return;
+    
+    Alert.alert(
+      'Remove Participant',
+      `Are you sure you want to remove ${participantName} from this activity?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingParticipant(participantId);
+            try {
+              const pingRef = doc(db, 'pings', ping.id);
+              const updatedParticipants = ping.participants.filter((id: string) => id !== participantId);
+              
+              await updateDoc(pingRef, {
+                participants: updatedParticipants,
+                participantCount: updatedParticipants.length,
+                updatedAt: new Date()
+              });
+              
+              // Update local state
+              setPing(prev => prev ? { 
+                ...prev, 
+                participants: updatedParticipants,
+                participantCount: updatedParticipants.length
+              } : null);
+              
+              // Update participants list
+              setParticipants(prev => prev.filter(p => p.id !== participantId));
+              
+              // Notify remaining participants
+              await notifyPingParticipants(ping, 'participant_removed');
+              
+              Alert.alert('Participant Removed', `${participantName} has been removed from the activity.`);
+              
+            } catch (error) {
+              console.error('Error removing participant:', error);
+              Alert.alert('Error', 'Failed to remove participant. Please try again.');
+            } finally {
+              setRemovingParticipant(null);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleInviteConnection = async (connectionUserId: string, connectionUserName: string) => {
@@ -705,6 +813,20 @@ export default function PingEvent() {
         return 'business';
       default:
         return 'event';
+    }
+  };
+
+  // Helper function to get user-friendly privacy type label
+  const getPrivacyTypeLabel = (pingType: string) => {
+    switch (pingType) {
+      case 'open':
+        return 'Open';
+      case 'invite-only':
+        return 'Invite Only';
+      case 'friends-only':
+        return 'Friends Only';
+      default:
+        return pingType;
     }
   };
 
@@ -995,9 +1117,17 @@ export default function PingEvent() {
                     Type
                   </Text>
                   <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    {ping.pingType}
+                    {getPrivacyTypeLabel(ping.pingType)}
                   </Text>
                 </View>
+                {isOrganizer && (
+                  <TouchableOpacity 
+                    style={styles.editButton}
+                    onPress={() => setShowPrivacyModal(true)}
+                  >
+                    <Feather name="settings" size={14} color="#37a4c8" />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -1044,32 +1174,112 @@ export default function PingEvent() {
             {/* Participants */}
             <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
               <View style={styles.participantsHeader}>
-                <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                  Participants ({ping.participantCount})
-                </Text>
-                <TouchableOpacity 
-                  style={styles.viewAllButton}
-                  onPress={() => setShowParticipantsModal(true)}
-                >
-                  <Text style={styles.viewAllText}>View All</Text>
-                </TouchableOpacity>
-              </View>
-              
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.participantsScroll}>
-                {participants.slice(0, 5).map((participant, index) => (
-                  <View key={participant.id || index} style={styles.participantItem}>
-                    <UserAvatar user={participant} size={40} />
-                    <Text style={[styles.participantName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                      {participant.name}
+                <View style={styles.participantsTitleContainer}>
+                  <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Participants
+                  </Text>
+                  <View style={[styles.participantCountBadge, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
+                  }]}>
+                    <Text style={[styles.participantCountText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                      {ping.participantCount}
                     </Text>
                   </View>
-                ))}
-                {participants.length === 0 && (
-                  <Text style={[styles.noParticipants, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                    No participants yet
-                  </Text>
+                </View>
+                <View style={styles.participantsHeaderButtons}>
+                  {isOrganizer && (
+                    <TouchableOpacity 
+                      style={[styles.headerButton, { 
+                        backgroundColor: theme === "light" ? "rgba(239, 68, 68, 0.1)" : "rgba(239, 68, 68, 0.15)",
+                        borderColor: theme === "light" ? "rgba(239, 68, 68, 0.3)" : "rgba(239, 68, 68, 0.4)"
+                      }]}
+                      onPress={() => setShowParticipantManagementModal(true)}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="manage-accounts" size={16} color="#ef4444" />
+                      <Text style={[styles.headerButtonText, { color: "#ef4444" }]}>Manage</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity 
+                    style={[styles.headerButton, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
+                    }]}
+                    onPress={() => setShowParticipantsModal(true)}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="people" size={16} color="#37a4c8" />
+                    <Text style={[styles.headerButtonText, { color: "#37a4c8" }]}>View All</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              <View style={styles.participantsContainer}>
+                {participants.length > 0 ? (
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false} 
+                    contentContainerStyle={styles.participantsScrollContent}
+                    style={styles.participantsScroll}
+                  >
+                    {participants.slice(0, 5).map((participant, index) => (
+                      <View key={participant.id || index} style={styles.participantCard}>
+                        <View style={styles.participantAvatarContainer}>
+                          <UserAvatar user={participant} size={48} />
+                          {participant.id === ping.creatorId && (
+                            <View style={[styles.creatorBadge, { 
+                              backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                            }]}>
+                              <MaterialIcons name="star" size={12} color="#FFFFFF" />
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[styles.participantName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]} numberOfLines={1}>
+                          {participant.name}
+                        </Text>
+                        {participant.airportCode && (
+                          <Text style={[styles.participantLocation, { color: theme === "light" ? "#64748B" : "#94A3B8" }]} numberOfLines={1}>
+                            {participant.airportCode}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                    {participants.length > 5 && (
+                      <View style={styles.moreParticipantsCard}>
+                        <View style={[styles.moreParticipantsAvatar, { 
+                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
+                        }]}>
+                          <Text style={[styles.moreParticipantsText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                            +{participants.length - 5}
+                          </Text>
+                        </View>
+                        <Text style={[styles.moreParticipantsLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                          More
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                ) : (
+                  <View style={[styles.emptyParticipantsContainer, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(56, 165, 201, 0.05)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                  }]}>
+                    <View style={[styles.emptyParticipantsIcon, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                    }]}>
+                      <MaterialIcons name="people-outline" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                    </View>
+                    <Text style={[styles.emptyParticipantsText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      No participants yet
+                    </Text>
+                    <Text style={[styles.emptyParticipantsSubtext, { color: theme === "light" ? "#94A3B8" : "#64748B" }]}>
+                      Be the first to join this activity!
+                    </Text>
+                  </View>
                 )}
-              </ScrollView>
+              </View>
             </View>
 
             {/* Action Buttons */}
@@ -1507,6 +1717,290 @@ export default function PingEvent() {
             </View>
           </View>
         </Modal>
+
+        {/* Privacy Settings Modal */}
+        <Modal 
+          visible={showPrivacyModal} 
+          animationType="slide" 
+          transparent={true}
+          onRequestClose={() => setShowPrivacyModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.editModalContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+              <View style={styles.editModalHeader}>
+                <Text style={[styles.editModalTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                  Privacy Settings
+                </Text>
+                <TouchableOpacity onPress={() => setShowPrivacyModal(false)}>
+                  <Ionicons name="close" size={24} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={[styles.privacyDescription, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                Choose who can join this activity
+              </Text>
+              
+              <ScrollView style={styles.selectionOptionsContainer}>
+                {privacyOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.privacyOption,
+                      {
+                        backgroundColor: option.id === ping?.pingType 
+                          ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"),
+                        borderColor: option.id === ping?.pingType 
+                          ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)")
+                      }
+                    ]}
+                    onPress={() => handlePrivacyChange(option.id)}
+                    activeOpacity={0.6}
+                  >
+                    <View style={styles.privacyOptionContent}>
+                      <View style={styles.privacyOptionHeader}>
+                        <MaterialIcons 
+                          name={option.icon as any} 
+                          size={20} 
+                          color={option.id === ping?.pingType ? "#FFFFFF" : "#37a4c8"} 
+                        />
+                        <Text style={[
+                          styles.privacyOptionTitle,
+                          {
+                            color: option.id === ping?.pingType 
+                              ? "#FFFFFF"
+                              : (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          }
+                        ]}>
+                          {option.label}
+                        </Text>
+                      </View>
+                      <Text style={[
+                        styles.privacyOptionDescription,
+                        {
+                          color: option.id === ping?.pingType 
+                            ? "rgba(255, 255, 255, 0.8)"
+                            : (theme === "light" ? "#64748B" : "#94A3B8")
+                        }
+                      ]}>
+                        {option.description}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Participant Management Modal */}
+        <Modal 
+          visible={showParticipantManagementModal} 
+          animationType="slide" 
+          transparent={true}
+          onRequestClose={() => setShowParticipantManagementModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.inviteModalContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+              {/* Header */}
+              <View style={[styles.inviteModalHeader, { 
+                borderBottomColor: theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)" 
+              }]}>
+                <View style={styles.inviteModalHeaderContent}>
+                  <Text style={[styles.inviteModalTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Manage Participants
+                  </Text>
+                  <Text style={[styles.inviteModalSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                    Remove participants from this activity
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.closeButton, { 
+                    backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)" 
+                  }]}
+                  onPress={() => setShowParticipantManagementModal(false)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+                </TouchableOpacity>
+              </View>
+              
+              {/* Content */}
+              <ScrollView 
+                style={styles.inviteModalBody} 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.inviteModalScrollContent}
+              >
+                {participants.length > 0 ? (
+                  <>
+                    <Text style={[styles.connectionsCount, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      {participants.length} participant{participants.length !== 1 ? 's' : ''} in this activity
+                    </Text>
+                    {participants.map((participant, idx) => (
+                      <View key={participant.id || idx} style={[styles.inviteConnectionItem, { 
+                        backgroundColor: theme === "light" ? "#ffffff" : "#2a2a2a",
+                        borderColor: theme === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.06)",
+                      }]}>
+                        {/* Top Row: Avatar and User Info */}
+                        <View style={styles.topRow}>
+                          {/* Avatar */}
+                          <View style={styles.avatarContainer}>
+                            <UserAvatar user={participant} size={48} />
+                            {participant.id === ping?.creatorId && (
+                              <View style={[styles.creatorBadge, { 
+                                backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                              }]}>
+                                <MaterialIcons name="star" size={12} color="#FFFFFF" />
+                              </View>
+                            )}
+                            <View style={[
+                              styles.onlineIndicator,
+                              { 
+                                backgroundColor: (() => {
+                                  if (!participant.lastLogin) return '#94A3B8';
+                                  const lastLogin = participant.lastLogin.toDate ? 
+                                    participant.lastLogin.toDate() : 
+                                    new Date(participant.lastLogin);
+                                  const now = new Date();
+                                  const diffInMinutes = (now.getTime() - lastLogin.getTime()) / (1000 * 60);
+                                  return diffInMinutes <= 30 ? '#10B981' : '#94A3B8';
+                                })()
+                              }
+                            ]} />
+                          </View>
+                          
+                          {/* User Info */}
+                          <View style={styles.userInfoContainer}>
+                            <View style={styles.nameRow}>
+                              <Text style={[styles.inviteConnectionName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                                {participant.name}
+                              </Text>
+                              {participant.age && (
+                                <Text style={[styles.ageText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                                  {participant.age}
+                                </Text>
+                              )}
+
+                            </View>
+                            
+                            <View style={styles.metaRow}>
+                              <View style={styles.metaItem}>
+                                <Ionicons 
+                                  name="location" 
+                                  size={12} 
+                                  color={theme === "light" ? "#64748B" : "#94A3B8"} 
+                                  style={styles.metaIcon}
+                                />
+                                <Text style={[styles.metaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                                  {participant.airportCode || 'Unknown'}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.metaDivider} />
+                              
+                              <View style={styles.metaItem}>
+                                <Ionicons 
+                                  name="time" 
+                                  size={12} 
+                                  color={theme === "light" ? "#64748B" : "#94A3B8"} 
+                                  style={styles.metaIcon}
+                                />
+                                <Text style={[styles.metaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                                  {formatLastActive(participant.lastLogin)}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                        
+                        {/* Bottom Row: Remove Button */}
+                        <View style={styles.buttonRow}>
+                          {participant.id !== ping?.creatorId ? (
+                            <TouchableOpacity
+                              style={[
+                                styles.removeButton,
+                                { 
+                                  backgroundColor: removingParticipant === participant.id 
+                                    ? "#ef4444"
+                                    : theme === "light" 
+                                      ? "#f8f9fa" 
+                                      : "#3a3a3a",
+                                  borderColor: removingParticipant === participant.id 
+                                    ? "#ef4444"
+                                    : theme === "light" 
+                                      ? "rgba(239, 68, 68, 0.2)" : 
+                                      "rgba(239, 68, 68, 0.3)"
+                                }
+                              ]}
+                              onPress={() => handleRemoveParticipant(participant.id, participant.name)}
+                              disabled={removingParticipant === participant.id}
+                              activeOpacity={0.7}
+                            >
+                              {removingParticipant === participant.id ? (
+                                <View style={styles.invitingContent}>
+                                  <Animated.View 
+                                    style={[
+                                      styles.invitingSpinner, 
+                                      { 
+                                        borderTopColor: "#ffffff",
+                                        transform: [{
+                                          rotate: removingSpinnerAnim.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: ['0deg', '360deg']
+                                          })
+                                        }]
+                                      }
+                                    ]} 
+                                  />
+                                  <Text style={styles.removeButtonTextActive}>Removing...</Text>
+                                </View>
+                              ) : (
+                                <>
+                                  <MaterialIcons name="person-remove" size={16} color="#ef4444" />
+                                  <Text style={[styles.removeButtonText, { color: "#ef4444" }]}>
+                                    Remove
+                                  </Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          ) : (
+                            <View style={[styles.organizerNote, { 
+                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
+                            }]}>
+                              <MaterialIcons name="star" size={16} color="#37a4c8" />
+                              <Text style={[styles.organizerNoteText, { color: "#37a4c8" }]}>
+                                Activity Organizer
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <View style={[styles.noConnectionsContainer, { 
+                    backgroundColor: theme === "light" ? "#f8f9fa" : "#2a2a2a",
+                    borderColor: theme === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.06)",
+                  }]}>
+                    <View style={[styles.noConnectionsIcon, { 
+                      backgroundColor: theme === "light" ? "rgba(239, 68, 68, 0.1)" : "rgba(239, 68, 68, 0.15)" 
+                    }]}>
+                      <MaterialIcons name="people-outline" size={32} color="#ef4444" />
+                    </View>
+                    <Text style={[styles.noConnectionsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      No participants yet
+                    </Text>
+                    <Text style={[styles.noConnectionsSubtext, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Participants will appear here once they join the activity
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -1712,6 +2206,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
+  participantsHeaderButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  manageButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  manageButtonText: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   viewAllButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1723,19 +2236,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  participantsScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
+  participantsContainer: {
+    flex: 1,
+    paddingTop: 8,
   },
-  participantItem: {
-    alignItems: 'center',
-    marginRight: 16,
-    minWidth: 60,
+  participantsScrollContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  participantsScroll: {
+    flex: 1,
   },
   participantName: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  participantLocation: {
     fontSize: 12,
-    fontWeight: '500',
-    marginTop: 8,
+    fontWeight: '400',
     textAlign: 'center',
   },
   noParticipants: {
@@ -2228,5 +2748,239 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
+  },
+  privacyDescription: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  privacyOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  privacyOptionContent: {
+    flex: 1,
+  },
+  privacyOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  privacyOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  privacyOptionDescription: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginLeft: 28,
+  },
+  managementParticipant: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(55, 164, 200, 0.1)',
+  },
+  managementParticipantInfo: {
+    flex: 1,
+  },
+  managementParticipantName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  managementParticipantSubtitle: {
+    fontSize: 14,
+  },
+  removeButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    borderWidth: 1,
+    shadowColor: "#ef4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  removeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  removeButtonTextActive: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  organizerNote: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  organizerNoteText: {
+    color: '#37a4c8',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  creatorLabel: {
+    color: '#37a4c8',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+  },
+  participantsTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  participantCountBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  participantCountText: {
+    color: '#37a4c8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  headerButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  headerButtonText: {
+    color: '#37a4c8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  participantsContainer: {
+    flex: 1,
+  },
+  participantsScrollContent: {
+    paddingHorizontal: 20,
+  },
+  participantCard: {
+    alignItems: 'center',
+    marginRight: 16,
+    minWidth: 120,
+    paddingVertical: 8,
+  },
+  participantAvatarContainer: {
+    position: 'relative',
+    marginBottom: 8,
+    paddingTop: 4,
+  },
+  creatorBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#37a4c8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  moreParticipantsCard: {
+    alignItems: 'center',
+    marginRight: 16,
+    minWidth: 120,
+    paddingVertical: 8,
+  },
+  moreParticipantsAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  moreParticipantsText: {
+    color: '#37a4c8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  moreParticipantsLabel: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  emptyParticipantsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginTop: 20,
+  },
+  emptyParticipantsIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyParticipantsText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptyParticipantsSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  removeParticipantButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    borderWidth: 1,
+    shadowColor: "#ef4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    flexDirection: 'row',
+    gap: 8,
   },
 }); 

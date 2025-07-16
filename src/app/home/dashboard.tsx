@@ -44,6 +44,7 @@ import * as Notifications from 'expo-notifications';
 import LoadingImage from "../../components/LoadingImage";
 import PingEventModal from "../../components/PingEventModal";
 import { isProfileComplete } from "../../utils/profileCompletionCheck";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type FeatureButton = {
   icon: React.ReactNode;
@@ -1312,6 +1313,9 @@ export default function Dashboard() {
     }
   };
 
+  // Add state to track if profile completion has been checked
+  const [profileCompletionChecked, setProfileCompletionChecked] = useState(false);
+
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     
@@ -1322,14 +1326,45 @@ export default function Dashboard() {
           const data = doc.data() as UserData;
           setUserData(data);
           
-          console.log('🔄 Dashboard - User data updated, checking profile completion...');
-          
-          // Check if profile is complete and redirect if not
-          if (data && !isProfileComplete(data)) {
-            console.log('🔄 Dashboard - Profile incomplete, redirecting to /profileComplete');
-            router.replace("/profileComplete");
-          } else if (data) {
-            console.log('✅ Dashboard - Profile complete, staying on dashboard');
+          // Only check profile completion once per device
+          if (!profileCompletionChecked && data) {
+            console.log('🔄 Dashboard - Checking profile completion...');
+            
+            // Check if we've already verified this user's profile completion
+            const storageKey = `profileComplete_${userId}`;
+            try {
+              const storedCompletionStatus = await AsyncStorage.getItem(storageKey);
+              
+              if (storedCompletionStatus === 'true') {
+                // Profile was previously verified as complete, skip check
+                console.log('✅ Dashboard - Profile completion previously verified, skipping check');
+                setProfileCompletionChecked(true);
+                return;
+              }
+              
+              // Check profile completion
+              const isComplete = isProfileComplete(data);
+              
+              if (!isComplete) {
+                console.log('🔄 Dashboard - Profile incomplete, redirecting to /profileComplete');
+                router.replace("/profileComplete");
+              } else {
+                console.log('✅ Dashboard - Profile complete, saving to storage');
+                // Save completion status to AsyncStorage
+                await AsyncStorage.setItem(storageKey, 'true');
+                setProfileCompletionChecked(true);
+              }
+            } catch (error) {
+              console.error('Error checking profile completion status:', error);
+              // Fallback to checking without storage
+              if (!isProfileComplete(data)) {
+                console.log('🔄 Dashboard - Profile incomplete, redirecting to /profileComplete');
+                router.replace("/profileComplete");
+              } else {
+                console.log('✅ Dashboard - Profile complete');
+                setProfileCompletionChecked(true);
+              }
+            }
           }
         }
       });
@@ -1340,7 +1375,7 @@ export default function Dashboard() {
         unsubscribe();
       }
     };
-  }, [userId, router]);
+  }, [userId, router, profileCompletionChecked]);
 
 
 
