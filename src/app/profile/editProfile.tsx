@@ -731,7 +731,7 @@ const EditProfile = () => {
             {/* Profile Picture Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.profileHeader}>
@@ -761,7 +761,7 @@ const EditProfile = () => {
             {/* Basic Info Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.sectionHeader}>
@@ -780,7 +780,7 @@ const EditProfile = () => {
                     styles.input,
                     { 
                       backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                      borderColor: fieldErrors['name'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8",
+                      borderColor: fieldErrors['name'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#374151",
                       color: theme === "light" ? "#1E293B" : "#e4fbfe"
                     }
                   ]}
@@ -808,7 +808,7 @@ const EditProfile = () => {
                     styles.multilineInput,
                     { 
                       backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                      borderColor: fieldErrors['bio'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#37a4c8",
+                      borderColor: fieldErrors['bio'] ? "#ff4444" : theme === "light" ? "#E2E8F0" : "#374151",
                       color: theme === "light" ? "#1E293B" : "#e4fbfe"
                     }
                   ]}
@@ -831,7 +831,7 @@ const EditProfile = () => {
             {/* Languages Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.sectionHeader}>
@@ -849,7 +849,7 @@ const EditProfile = () => {
                 <TouchableOpacity
                   style={[styles.selectionButton, {
                     backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                    borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+                    borderColor: theme === "light" ? "#E2E8F0" : "#374151"
                   }]}
                   onPress={openLanguageModal}
                   activeOpacity={0.7}
@@ -890,7 +890,7 @@ const EditProfile = () => {
             {/* Connection Intents Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.sectionHeader}>
@@ -908,7 +908,7 @@ const EditProfile = () => {
                 <TouchableOpacity
                   style={[styles.selectionButton, {
                     backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                    borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+                    borderColor: theme === "light" ? "#E2E8F0" : "#374151"
                   }]}
                   onPress={openConnectionIntentsModal}
                   activeOpacity={0.7}
@@ -949,7 +949,7 @@ const EditProfile = () => {
             {/* Personal Tags Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.sectionHeader}>
@@ -967,7 +967,7 @@ const EditProfile = () => {
                 <TouchableOpacity
                   style={[styles.selectionButton, {
                     backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
-                    borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8"
+                    borderColor: theme === "light" ? "#E2E8F0" : "#374151"
                   }]}
                   onPress={openPersonalTagsModal}
                   activeOpacity={0.7}
@@ -1008,7 +1008,7 @@ const EditProfile = () => {
             {/* Availability Settings Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.sectionHeader}>
@@ -1234,7 +1234,7 @@ const EditProfile = () => {
             {/* Event Preferences Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.sectionHeader}>
@@ -1431,7 +1431,7 @@ const EditProfile = () => {
             {/* Social Media Section */}
             <View style={[styles.card, { 
               backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-              borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
+              borderColor: theme === "light" ? "#E2E8F0" : "#374151",
               shadowColor: theme === "light" ? "#0F172A" : "#38a5c9"
             }]}>
               <View style={styles.sectionHeader}>

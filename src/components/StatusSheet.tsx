@@ -7,10 +7,12 @@ import {
   TextInput,
   Animated,
   ScrollView,
+  Modal,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../context/ThemeContext";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
 
 // Define preset statuses with typed array
 export type PresetStatus = {
@@ -230,13 +232,24 @@ export default function StatusSheet({
   const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
   const [selectedCategory, setSelectedCategory] = React.useState<string>("all");
+  const cardAnim = useRef(new Animated.Value(0)).current;
 
-  // Reset category to "all" when sheet is shown
   useEffect(() => {
     if (showStatusSheet) {
       setSelectedCategory("all");
+      Animated.timing(cardAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(cardAnim, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
     }
-  }, [showStatusSheet]);
+  }, [showStatusSheet, cardAnim]);
 
   const categories = [
     { id: "all", label: "All" },
@@ -246,56 +259,79 @@ export default function StatusSheet({
     { id: "travel", label: "Travel" }
   ];
 
-  // Get only the first 6 statuses for the selected category
   const filteredStatuses = presetStatuses
     .filter(status => status.category === selectedCategory)
     .slice(0, 6);
 
   return (
-    showStatusSheet && (
+    <Modal
+      visible={showStatusSheet}
+      transparent
+      animationType="none"
+      onRequestClose={toggleStatusSheet}
+    >
       <Animated.View
         style={[
-          styles.statusSheet,
+          styles.modalOverlay,
           {
-            transform: [
-              {
-                translateY: sheetAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [100, 0],
-                }),
-              },
-            ],
-            paddingBottom: insets.bottom + 16,
-            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-            zIndex: 2,
-          },
+            opacity: cardAnim,
+            backgroundColor: cardAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]
+            })
+          }
         ]}
       >
-        <View style={styles.headerContainer}>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={toggleStatusSheet}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons 
-              name="close" 
-              size={24} 
-              color={theme === "light" ? "#666666" : "#a0a0a0"} 
-            />
-          </TouchableOpacity>
-        </View>
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme === "light" ? "#fff" : "#1a1a1a",
+              shadowColor: theme === "light" ? "#38a5c9" : "#000",
+              transform: [
+                {
+                  scale: cardAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.95, 1]
+                  })
+                },
+                {
+                  translateY: cardAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [50, 0]
+                  })
+                }
+              ],
+              opacity: cardAnim
+            }
+          ]}
+        >
+          {/* Header */}
+          <View style={styles.headerRow}>
+            <View style={[styles.headerIconContainer, {
+              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+            }]}> 
+              <MaterialIcons name="mood" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+            </View>
+            <Text style={[styles.headerTitle, { color: theme === "light" ? "#000" : "#e4fbfe" }]}>Set Mood Status</Text>
+            <TouchableOpacity
+              style={[styles.closeButton, {
+                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+              }]}
+              onPress={toggleStatusSheet}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
+            >
+              <Feather name="x" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+            </TouchableOpacity>
+          </View>
 
-        <View style={styles.contentContainer}>
-          <ScrollView 
-            horizontal 
+          {/* Category Chips */}
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.categoriesContainer}
-            contentContainerStyle={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexGrow: 1,
-              paddingHorizontal: 16
-            }}
+            contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 8 }}
           >
             {categories.map((category) => (
               <TouchableOpacity
@@ -303,8 +339,10 @@ export default function StatusSheet({
                 style={[
                   styles.categoryChip,
                   selectedCategory === category.id && styles.categoryChipActive,
-                  { 
-                    backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                  {
+                    backgroundColor: selectedCategory === category.id
+                      ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                      : (theme === "light" ? "#f5f5f5" : "#2a2a2a"),
                     borderColor: selectedCategory === category.id ? "#38a5c9" : "transparent"
                   }
                 ]}
@@ -314,7 +352,7 @@ export default function StatusSheet({
                 <Text style={[
                   styles.categoryChipText,
                   selectedCategory === category.id && styles.categoryChipTextActive,
-                  { color: theme === "light" ? "#666666" : "#a0a0a0" }
+                  { color: selectedCategory === category.id ? "#fff" : (theme === "light" ? "#666" : "#a0a0a0") }
                 ]}>
                   {category.label}
                 </Text>
@@ -322,41 +360,57 @@ export default function StatusSheet({
             ))}
           </ScrollView>
 
+          {/* Status Grid */}
           <View style={styles.statusGrid}>
             {filteredStatuses.map((status, index) => (
               <TouchableOpacity
                 key={index}
-                style={[styles.statusChip, { backgroundColor: status.color }]}
+                style={[
+                  styles.statusCard,
+                  {
+                    backgroundColor: status.color,
+                    shadowColor: status.color,
+                  }
+                ]}
                 onPress={() => {
                   handleUpdateMoodStatus(status.label);
                   toggleStatusSheet();
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.8}
               >
                 <Text style={styles.statusEmoji}>{status.emoji}</Text>
-                <Text style={styles.statusText} numberOfLines={3} ellipsizeMode="tail">{status.label}</Text>
+                <Text style={styles.statusText} numberOfLines={2} ellipsizeMode="tail">{status.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
+          {/* Custom Status Input */}
           <View style={styles.customStatusContainer}>
             <TextInput
-              style={[styles.customStatusInput, { 
-                backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
-                color: theme === "light" ? "#000000" : "#e4fbfe",
+              style={[styles.customStatusInput, {
+                backgroundColor: theme === "light" ? "#f8fafc" : "#2a2a2a",
+                color: theme === "light" ? "#000" : "#e4fbfe",
+                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(56, 165, 201, 0.3)"
               }]}
               value={customStatus}
               onChangeText={setCustomStatus}
               placeholder="Custom status..."
-              placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
+              placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
               maxLength={50}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (customStatus.trim().length > 0) {
+                  handleUpdateMoodStatus(customStatus);
+                  toggleStatusSheet();
+                }
+              }}
             />
             <TouchableOpacity
               style={[
-                styles.submitButton,
-                { 
+                styles.setButton,
+                {
                   opacity: customStatus.trim().length > 0 ? 1 : 0.5,
-                  backgroundColor: "#38a5c9"
+                  backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
                 }
               ]}
               disabled={customStatus.trim().length === 0}
@@ -364,118 +418,144 @@ export default function StatusSheet({
                 handleUpdateMoodStatus(customStatus);
                 toggleStatusSheet();
               }}
-              activeOpacity={0.7}
+              activeOpacity={0.8}
             >
-              <Text style={styles.submitButtonText}>Set</Text>
+              <Text style={styles.setButtonText}>Set</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </Animated.View>
-    )
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  statusSheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
-  headerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    marginBottom: 16,
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 24,
+    padding: 24,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  headerIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'left',
+    letterSpacing: -0.2,
   },
   closeButton: {
-    padding: 4,
-  },
-  contentContainer: {
-    flex: 1,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
   },
   categoriesContainer: {
-    marginBottom: 16,
+    marginBottom: 18,
+    marginHorizontal: -8,
   },
   categoryChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 16,
     marginRight: 8,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: 'transparent',
   },
   categoryChipActive: {
-    backgroundColor: "#38a5c9",
-    borderColor: "#38a5c9",
+    borderColor: '#38a5c9',
   },
   categoryChipText: {
     fontSize: 13,
-    fontWeight: "500",
+    fontWeight: '600',
   },
   categoryChipTextActive: {
-    color: "#FFFFFF",
+    color: '#fff',
   },
   statusGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 16,
-    gap: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+    gap: 10,
   },
-  statusChip: {
-    width: "48%",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
+  statusCard: {
+    width: '48%',
+    padding: 18,
+    borderRadius: 16,
+    marginBottom: 10,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
     minHeight: 80,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
   },
   statusEmoji: {
-    fontSize: 24,
+    fontSize: 26,
     marginBottom: 8,
   },
   statusText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "600",
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
     textAlign: 'center',
     lineHeight: 18,
     flexShrink: 1,
   },
   customStatusContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 2,
   },
   customStatusInput: {
     flex: 1,
-    padding: 12,
+    padding: 14,
     borderRadius: 12,
-    fontSize: 14,
+    fontSize: 15,
+    borderWidth: 1.5,
+    marginRight: 6,
   },
-  submitButton: {
-    padding: 12,
+  setButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     borderRadius: 12,
-    minWidth: 60,
-    alignItems: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 70,
   },
-  submitButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
+  setButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.1,
   },
 });

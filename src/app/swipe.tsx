@@ -86,6 +86,33 @@ interface User {
   notifications?: Notification[];
   blockedUsers?: string[];
   hasMeBlocked?: string[];
+  availabilitySchedule?: {
+    [key: string]: {
+      start: string;
+      end: string;
+    };
+  };
+  // New profile fields
+  currentCity?: string;
+  connectionIntents?: string[];
+  personalTags?: string[];
+  availableNow?: boolean;
+  groupAffiliations?: string[];
+  reputationTags?: string[];
+  eventPreferences?: {
+    likesBars: boolean;
+    prefersSmallGroups: boolean;
+    prefersWeekendEvents: boolean;
+    prefersEveningEvents: boolean;
+    prefersIndoorVenues: boolean;
+    prefersStructuredActivities: boolean;
+    prefersSpontaneousPlans: boolean;
+    prefersLocalMeetups: boolean;
+    prefersTravelEvents: boolean;
+    prefersQuietEnvironments: boolean;
+    prefersActiveLifestyles: boolean;
+    prefersIntellectualDiscussions: boolean;
+  };
 }
 
 interface Connection {
@@ -98,31 +125,7 @@ const CARD_WIDTH = width * 0.85;
 const CARD_HEIGHT = height * 0.55;
 const IMAGE_HEIGHT = CARD_HEIGHT * 0.54;
 
-// Airport name lookup hook
-function useAirportName(airportCode: string | undefined) {
-  const [airportName, setAirportName] = useState<string | null>(null);
-  useEffect(() => {
-    const fetchAirportName = async () => {
-      if (!airportCode) return;
-      try {
-        const airportsRef = collection(db, "airports");
-        const q = query(airportsRef, where("airportCode", "==", airportCode));
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const airportDoc = snapshot.docs[0];
-          const data = airportDoc.data();
-          setAirportName(data.name || airportCode);
-        } else {
-          setAirportName(airportCode);
-        }
-      } catch (err) {
-        setAirportName(airportCode);
-      }
-    };
-    fetchAirportName();
-  }, [airportCode]);
-  return airportName;
-}
+
 
 // Memoized DataToggle component
 const MemoizedDataToggle = React.memo(({ 
@@ -462,7 +465,7 @@ const SwipeCard = React.memo(({
           styles.cardContainer, 
           cardStyle, 
           { 
-            borderColor: "#37a4c8",
+            borderColor: theme === "light" ? "#37a4c8" : "rgba(55, 164, 200, 0.4)",
           }
         ]}
       >
@@ -471,7 +474,7 @@ const SwipeCard = React.memo(({
         ) : (
           <>
             <LinearGradient
-              colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#000000", "#1a1a1a"]}
+              colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#1a1a1a", "#1a1a1a"]}
               style={[styles.cardContent]}
             >
               <View style={styles.imageContainer}> 
@@ -484,60 +487,100 @@ const SwipeCard = React.memo(({
                     defaultSource={require('../../assets/adaptive-icon.png')}
                   />
                 </Animated.View>
-                <LinearGradient
-                  colors={['transparent', theme === "light" ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.8)']}
-                  style={styles.imageOverlay}
-                >
+                <View style={styles.imageOverlay}>
                   <Animated.View style={[styles.profileHeader, animatedContentStyle]}>
                     <Text style={styles.nameText}>
                       {user.name}, {user.age}
                     </Text>
-                    <View style={[styles.locationContainer, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]}> 
-                      <MaterialIcons name="location-on" size={16} color="#37a4c8" />
-                      <Text style={styles.locationText}>{user.airportCode}</Text>
-                    </View>
+                    {/* Availability indicator */}
+                    {user.availableNow && (
+                      <View style={[styles.availabilityBadge, { 
+                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
+                      }]}>
+                        <View style={[styles.availabilityDot, { 
+                          backgroundColor: "#37a4c8",
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
+                        }]} />
+                        <Text style={[styles.availabilityText, { 
+                          color: "#37a4c8"
+                        }]}>Available Now</Text>
+                      </View>
+                    )}
                   </Animated.View>
-                </LinearGradient>
+                </View>
               </View>
               <Animated.View style={[styles.contentContainer]}> 
-                {user.bio && (
-                  <View style={styles.section}> 
-                    <View style={styles.sectionHeader}> 
-                      <MaterialIcons name="person" size={18} color="#37a4c8" />
-                      <Text 
-                        style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
-                        numberOfLines={3}
-                        ellipsizeMode="tail"
-                      >
-                        {user.bio.length > 120 ? `${user.bio.substring(0, 120)}...` : user.bio}
+                {/* Location Section */}
+                {(user.currentCity || user.airportCode) && (
+                  <View style={[styles.locationSection, { 
+                    borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
+                  }]}>
+                    <View style={styles.locationContainer}>
+                      <MaterialIcons name="location-on" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
+                      <Text style={[styles.locationText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
+                        {user.currentCity || user.airportCode}
                       </Text>
                     </View>
-                    <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
                   </View>
                 )}
-                <View style={styles.section}> 
-                  <View style={styles.sectionHeader}> 
-                    <MaterialIcons name="translate" size={18} color="#37a4c8" />
-                    <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}> 
-                      {user.languages?.join(" • ")}
-                      {user.interests && user.interests.length > 0 && (
-                        <Text style={{ color: theme === "light" ? "#64748B" : "#94A3B8" }}>
-                          {" • "}{user.interests.join(" • ")}
-                        </Text>
-                      )}
+
+                {/* Today's Schedule Section */}
+                {user.availabilitySchedule && (() => {
+                  const now = new Date();
+                  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                  const currentDay = days[now.getDay()];
+                  const todaySchedule = user.availabilitySchedule[currentDay];
+                  
+                  if (todaySchedule && todaySchedule.start && todaySchedule.end) {
+                    // Format time to AM/PM
+                    const formatTimeToAMPM = (militaryTime: string): string => {
+                      if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
+                      
+                      const [hours, minutes] = militaryTime.split(':').map(Number);
+                      const period = hours >= 12 ? 'PM' : 'AM';
+                      const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                      
+                      return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+                    };
+
+                    const startTime = formatTimeToAMPM(todaySchedule.start);
+                    const endTime = formatTimeToAMPM(todaySchedule.end);
+                    
+                    return (
+                      <View style={[styles.scheduleSection, { 
+                        borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
+                      }]}>
+                        <View style={styles.scheduleHeader}>
+                          <MaterialIcons name="schedule" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
+                          <Text style={[styles.scheduleTitle, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
+                            Available Today
+                          </Text>
+                        </View>
+                        <View style={[styles.scheduleBadge, { 
+                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)",
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.4)"
+                        }]}>
+                          <Text style={[styles.scheduleText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>
+                            {startTime} - {endTime}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Bio Section */}
+                {user.bio && (
+                  <View style={styles.bioSection}>
+                    <Text 
+                      style={[styles.bioText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}
+                      numberOfLines={4}
+                      ellipsizeMode="tail"
+                    >
+                      {user.bio}
                     </Text>
-                  </View>
-                  <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-                </View>
-                {user.moodStatus && (
-                  <View style={[styles.moodContainer, { 
-                    backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                    alignSelf: 'center',
-                    marginTop: 'auto',
-                    marginBottom: 8
-                  }]}> 
-                    <MaterialIcons name="mood" size={16} color="#37a4c8" />
-                    <Text style={styles.moodText}>{user.moodStatus}</Text>
                   </View>
                 )}
               </Animated.View>
@@ -594,7 +637,7 @@ const Swipe = () => {
   const currentIndex = useSharedValue(0);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const airportName = useAirportName(currentUserData?.airportCode);
+
 
   const screenOpacity = useSharedValue(0);
   const screenScale = useSharedValue(0.95);
@@ -1092,37 +1135,41 @@ const Swipe = () => {
     }
   }, [currentUserData]);
 
-  /** Fetch users and filter based on airport code and recent activity */
+  /** Fetch users and filter based on recent activity and availability */
   const fetchUsers = async () => {
     try {
       setIsLoadingUsers(true);
       console.log('Starting to fetch users...');
 
-      // Get current user's airport code and blocked users
+      // Get current user's blocked users
       const currentUserDoc = await doc(db, "users", currentUserUID);
       const currentUserSnapshot = await getDoc(currentUserDoc);
       const currentUserData = currentUserSnapshot.data();
-      const currentUserAirport = currentUserData?.airportCode;
       const blockedUsers = currentUserData?.blockedUsers || [];
       const hasMeBlocked = currentUserData?.hasMeBlocked || [];
       const dislikedUsers = currentUserData?.dislikedUsers || [];
       const likedUsers = currentUserData?.likedUsers || [];
       
-      console.log('Current user airport:', currentUserAirport);
       console.log('Current user blocked users:', blockedUsers);
       console.log('Users who blocked current user:', hasMeBlocked);
       console.log('Disliked users:', dislikedUsers);
       console.log('Liked users:', likedUsers);
 
-      if (!currentUserAirport) {
-        console.log('No airport code found for current user');
-        return;
-      }
+      // Calculate timestamp for 1 month ago
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      console.log('Filtering users active since:', oneMonthAgo.toISOString());
 
-      // Calculate timestamp for 1 hour ago
-      const oneHourAgo = new Date();
-      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
-      console.log('Filtering users active since:', oneHourAgo.toISOString());
+      // Get current time for availability check
+      const now = new Date();
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const currentDay = days[now.getDay()];
+      const currentTime = now.toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      console.log('Current day:', currentDay, 'Current time:', currentTime);
 
       // Get all pending connections for current user
       const connectionsRef = collection(db, "connections");
@@ -1143,16 +1190,10 @@ const Swipe = () => {
 
       console.log('Found connections with users:', Array.from(connectedUserIds));
 
-      // First, get all users at the same airport
+      // Get all users (removed airport filter)
       const usersRef = collection(db, "users");
-      const airportQuery = query(
-        usersRef,
-        where("airportCode", "==", currentUserAirport)
-      );
-
-      console.log('Executing airport query...');
-      const querySnapshot = await getDocs(airportQuery);
-      console.log('Total users at airport:', querySnapshot.docs.length);
+      const querySnapshot = await getDocs(usersRef);
+      console.log('Total users:', querySnapshot.docs.length);
 
       // Get all users' documents to check their blocked lists
       const userDocs = await Promise.all(
@@ -1188,8 +1229,36 @@ const Swipe = () => {
             return false;
           }
 
+          // Check if user has logged in within the past month
           const lastLogin = user.lastLogin?.toDate?.() || new Date(0);
-          const isRecent = lastLogin >= oneHourAgo;
+          const isRecent = lastLogin >= oneMonthAgo;
+
+          // Check if user is available at current time
+          const isAvailable = (() => {
+            if (!user.availabilitySchedule) {
+              console.log('User has no availability schedule:', user.id);
+              return false;
+            }
+
+            const daySchedule = user.availabilitySchedule[currentDay];
+            if (!daySchedule) {
+              console.log('User has no schedule for current day:', user.id, currentDay);
+              return false;
+            }
+
+            const { start, end } = daySchedule;
+            if (!start || !end) {
+              console.log('User has incomplete schedule for current day:', user.id, currentDay);
+              return false;
+            }
+
+            // Convert times to comparable format (HH:MM)
+            const isCurrentlyAvailable = currentTime >= start && currentTime <= end;
+            console.log(`User ${user.id} availability check: ${currentTime} between ${start}-${end} = ${isCurrentlyAvailable}`);
+            
+            return isCurrentlyAvailable;
+          })();
+
           const isNotConnected = !connectedUserIds.has(user.id);
           const isNotBlocked = !blockedUsers.includes(user.id);
           const hasNotBlockedMe = !hasMeBlocked.includes(user.id);
@@ -1198,10 +1267,26 @@ const Swipe = () => {
           const isNotDisliked = !dislikedUsers.includes(user.id);
           const isNotLiked = !likedUsers.includes(user.id);
           
-          return isRecent && isNotConnected && 
+          const shouldShow = isRecent && isAvailable && isNotConnected && 
                  isNotBlocked && hasNotBlockedMe && 
                  hasNotBlockedCurrentUser && currentUserHasNotBlockedThem &&
                  isNotDisliked && isNotLiked;
+
+          if (!shouldShow) {
+            console.log(`Filtering out user ${user.id}:`, {
+              isRecent,
+              isAvailable,
+              isNotConnected,
+              isNotBlocked,
+              hasNotBlockedMe,
+              hasNotBlockedCurrentUser,
+              currentUserHasNotBlockedThem,
+              isNotDisliked,
+              isNotLiked
+            });
+          }
+          
+          return shouldShow;
         });
       
       console.log('Final filtered users count:', fetchedUsers.length);
@@ -1415,7 +1500,7 @@ const Swipe = () => {
   };
 
   /** Render individual user card */
-  const renderCard = (user: User) => {
+    const renderCard = (user: User) => {
     if (!user) return null;
 
     return (
@@ -1428,67 +1513,110 @@ const Swipe = () => {
               size={400}
               style={styles.profileImage}
             />
-            <LinearGradient
-              colors={['transparent', theme === "light" ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.8)']}
-              style={styles.imageOverlay}
-            >
+            <View style={styles.imageOverlay}>
               <View style={styles.profileHeader}>
                 <Text style={styles.nameText}>
                   {user.name}, {user.age}
                 </Text>
-                <View style={[styles.locationContainer, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]}>
-                  <MaterialIcons name="location-on" size={16} color="#37a4c8" />
-                  <Text style={styles.locationText}>{user.airportCode}</Text>
-                </View>
+                {/* Location */}
+                {(user.currentCity || user.airportCode) && (
+                  <View style={styles.locationOverlayContainer}>
+                    <Text style={styles.locationText}>
+                      📍 {user.currentCity || user.airportCode}
+                    </Text>
+                  </View>
+                )}
+                {/* Availability indicator */}
+                {user.availableNow && (
+                  <View style={[styles.availabilityBadge, { 
+                    backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
+                  }]}>
+                    <View style={[styles.availabilityDot, { 
+                      backgroundColor: "#37a4c8",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
+                    }]} />
+                    <Text style={[styles.availabilityText, { 
+                      color: "#37a4c8"
+                    }]}>Available Now</Text>
+                  </View>
+                )}
               </View>
-            </LinearGradient>
+            </View>
           </View>
 
-          {/* Content Section - Now with only 3 rows */}
+                    {/* Content Section - Clean and Minimal */}
           <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
-            {/* Row 1: Bio - Most important for initial connection */}
-            {user.bio && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <MaterialIcons name="person" size={18} color="#37a4c8" />
-                  <Text 
-                    style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
-                    numberOfLines={3}
-                    ellipsizeMode="tail"
-                  >
-                    {user.bio.length > 120 ? `${user.bio.substring(0, 120)}...` : user.bio}
+            {/* Location Section */}
+            {(user.currentCity || user.airportCode) && (
+              <View style={[styles.locationSection, { 
+                borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
+              }]}>
+                <View style={styles.locationContainer}>
+                  <MaterialIcons name="location-on" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
+                  <Text style={[styles.locationText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
+                    {user.currentCity || user.airportCode}
                   </Text>
                 </View>
-                <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
               </View>
             )}
 
-            {/* Row 2: Languages & Interests - Combined for better space usage */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <MaterialIcons name="translate" size={18} color="#37a4c8" />
-                <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                  {user.languages?.join(" • ")}
-                  {user.interests && user.interests.length > 0 && (
-                    <Text style={{ color: theme === "light" ? "#64748B" : "#94A3B8" }}>
-                      {" • "}{user.interests.join(" • ")}
-                    </Text>
-                  )}
-                </Text>
-              </View>
-              <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-            </View>
+            {/* Today's Schedule Section */}
+            {user.availabilitySchedule && (() => {
+              const now = new Date();
+              const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+              const currentDay = days[now.getDay()];
+              const todaySchedule = user.availabilitySchedule[currentDay];
+              
+              if (todaySchedule && todaySchedule.start && todaySchedule.end) {
+                // Format time to AM/PM
+                const formatTimeToAMPM = (militaryTime: string): string => {
+                  if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
+                  
+                  const [hours, minutes] = militaryTime.split(':').map(Number);
+                  const period = hours >= 12 ? 'PM' : 'AM';
+                  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                  
+                  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+                };
 
-            {/* Row 3: Mood Status - Small badge at the bottom */}
-            {user.moodStatus && (
-              <View style={[styles.moodContainer, { 
-                backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                alignSelf: 'center',
-                marginTop: 'auto',
-                marginBottom: 8
-              }]}> 
-                <MaterialIcons name="mood" size={16} color="#37a4c8" />
-                <Text style={styles.moodText}>{user.moodStatus}</Text>
+                const startTime = formatTimeToAMPM(todaySchedule.start);
+                const endTime = formatTimeToAMPM(todaySchedule.end);
+                
+                return (
+                  <View style={[styles.scheduleSection, { 
+                    borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
+                  }]}>
+                    <View style={styles.scheduleHeader}>
+                      <MaterialIcons name="schedule" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
+                      <Text style={[styles.scheduleTitle, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
+                        Available Today
+                      </Text>
+                    </View>
+                    <View style={[styles.scheduleBadge, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.4)"
+                    }]}>
+                      <Text style={[styles.scheduleText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>
+                        {startTime} - {endTime}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Bio Section */}
+            {user.bio && (
+              <View style={styles.bioSection}>
+                <Text 
+                  style={[styles.bioText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}
+                  numberOfLines={4}
+                  ellipsizeMode="tail"
+                >
+                  {user.bio}
+                </Text>
               </View>
             )}
           </View>
@@ -1623,7 +1751,7 @@ const Swipe = () => {
                 ]}
               >
                 <LinearGradient
-                  colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#000000", "#1a1a1a"]}
+                  colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#1a1a1a", "#1a1a1a"]}
                   style={styles.cardContent}
                 >
                   {/* Image Container - Empty State */}
@@ -1642,20 +1770,17 @@ const Swipe = () => {
                         }}
                       />
                     </View>
-                    <LinearGradient
-                      colors={['transparent', theme === "light" ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.8)']}
-                      style={styles.imageOverlay}
-                    >
+                    <View style={styles.imageOverlay}>
                       <View style={styles.profileHeader}>
                         <Text style={styles.nameText}>
                           No Nearby Users
                         </Text>
                       </View>
-                    </LinearGradient>
+                    </View>
                   </View>
 
                   {/* Content Container - Empty State */}
-                  <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                  <View style={[styles.contentContainer]}>
                     <View style={styles.section}>
                       <View style={styles.sectionHeader}>
                         <MaterialIcons name="info" size={18} color="#37a4c8" />
@@ -1735,7 +1860,6 @@ const styles = StyleSheet.create({
     marginBottom: 21,
     backfaceVisibility: 'hidden',
     borderWidth: 1,
-    borderColor: "#38a5c9",
     position: 'relative',
   },
   cardShadow: {
@@ -1789,11 +1913,11 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "700",
     color: "#FFFFFF",
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
     textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 4,
   },
-  locationContainer: {
+  locationOverlayContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(56, 165, 201, 0.2)",
@@ -1803,15 +1927,154 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   locationText: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.2,
     color: "#FFFFFF",
-    marginLeft: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  availabilityContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(76, 217, 100, 0.2)",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  availabilityText: {
+    fontSize: 12,
+    marginLeft: 6,
+    fontWeight: "700",
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  availabilityBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    marginTop: 4,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  availabilityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+    borderWidth: 1,
+  },
+  bioSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+    flex: 1,
+  },
+  bioText: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: "400",
+  },
+  tagsSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  tagGroup: {
+    marginBottom: 16,
+  },
+  tagGroupTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  tagContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  tag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  tagText: {
+    fontSize: 13,
     fontWeight: "500",
+  },
+  statusSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    alignItems: "center",
+  },
+  statusBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: "500",
+    textAlign: "center",
+  },
+  locationSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scheduleSection: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  scheduleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  scheduleTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  scheduleBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+  },
+  scheduleText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
   contentContainer: {
     flex: 1,
     padding: 12,
-    backgroundColor: "#FFFFFF",
   },
   section: {
     marginBottom: 8,

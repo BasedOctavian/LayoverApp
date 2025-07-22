@@ -323,7 +323,7 @@ export default function EventChat() {
       // Get event data to get event name
       const eventDoc = await getDoc(doc(db, 'events', eventId));
       const eventData = eventDoc.exists() ? eventDoc.data() : null;
-      const eventName = eventData?.name || 'Event';
+      const eventName = eventData?.title || 'Event';
 
       // Get receiver's data to check notification preferences and push token
       const receiverDoc = await getDoc(doc(db, 'users', receiverId));
@@ -468,14 +468,14 @@ export default function EventChat() {
       }
 
       const eventData = eventDoc.data();
-      const attendees = eventData?.attendees || [];
+      const participants = eventData?.participants || [];
       
-      // Send notifications to all attendees except the sender
+      // Send notifications to all participants except the sender
       await Promise.all(
-        attendees
-          .filter((attendeeId: string) => attendeeId !== user.uid) // Exclude sender
-          .map((attendeeId: string) => 
-            sendPushNotification(attendeeId, newMessage, id as string)
+        participants
+          .filter((participantId: string) => participantId !== user.uid) // Exclude sender
+          .map((participantId: string) => 
+            sendPushNotification(participantId, newMessage, id as string)
           )
       );
       
@@ -531,19 +531,19 @@ export default function EventChat() {
               <Text style={[styles.eventName, { 
                 color: theme === "light" ? "#1a1a1a" : "#ffffff",
               }]}>
-                {eventDetails?.name || "Loading..."}
+                {eventDetails?.title || "Loading..."}
               </Text>
             </View>
             <View style={styles.infoRow}>
-              {eventDetails?.airportCode && (
+              {eventDetails?.location && (
                 <View style={[styles.infoBadge, { 
                   backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a"
                 }]}>
-                  <Ionicons name="airplane" size={14} color="#37a4c8" />
+                  <Ionicons name="location" size={14} color="#37a4c8" />
                   <Text style={[styles.infoText, { 
                     color: theme === "light" ? "#666666" : "#a0a0a0"
                   }]}>
-                    {eventDetails.airportCode}
+                    {eventDetails.location}
                   </Text>
                 </View>
               )}

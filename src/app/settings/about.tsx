@@ -33,6 +33,8 @@ export default function About() {
   const featureAnimations = useRef([
     new Animated.Value(0),
     new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
     new Animated.Value(0)
   ]).current;
   const versionAnim = useRef(new Animated.Value(0)).current;
@@ -144,11 +146,11 @@ export default function About() {
               borderColor: theme === "light" ? "#E2E8F0" : "#37a4c8",
             }]}>
               <Image
-                source={require('../../../assets/adaptive-icon.png')}
-                style={[
-                  styles.logo,
-                  { tintColor: theme === "light" ? "#000000" : "#e4fbfe" }
-                ]}
+                source={theme === "light" 
+                  ? require('../../../assets/images/splash-icon.png')
+                  : require('../../../assets/images/splash-icon-dark.png')
+                }
+                style={styles.logo}
                 resizeMode="contain"
               />
             </View>
@@ -166,7 +168,7 @@ export default function About() {
                 { color: theme === "light" ? "#64748B" : "#94A3B8" },
               ]}
             >
-              Connect on Layovers
+              Connect with Like-Minded People
             </Text>
           </Animated.View>
 
@@ -206,7 +208,7 @@ export default function About() {
                   { color: theme === "light" ? "#000000" : "#e4fbfe" },
                 ]}
               >
-                Wingman is a mobile app that connects travelers during layovers, fostering meaningful interactions at airports worldwide. Users can discover nearby travelers, match with those sharing similar interests, join or create local events, and chat seamlessly to plan meetups or share travel tips. With an intuitive interface and real-time updates, Wingman enhances the layover experience by turning downtime into opportunities for connection and adventure.
+                Wingman is a comprehensive mobile app that connects people with similar interests through spontaneous connections and local events. Our advanced matching system considers your personality, interests, availability, and preferences to connect you with like-minded individuals in your area. Whether you're seeking professional networking, social activities, or meaningful companionship, Wingman's intelligent algorithms and detailed profile system ensure authentic connections that match your lifestyle and goals.
               </Text>
             </View>
 
@@ -242,7 +244,7 @@ export default function About() {
                   backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
                   borderColor: "#37a4c8"
                 }]}>
-                  <Ionicons name="airplane" size={24} color="#37a4c8" />
+                  <Ionicons name="people" size={24} color="#37a4c8" />
                 </View>
                 <View style={styles.featureTextContainer}>
                   <Text
@@ -251,7 +253,7 @@ export default function About() {
                       { color: theme === "light" ? "#000000" : "#e4fbfe" },
                     ]}
                   >
-                    Connect with Travelers
+                    Smart Matching System
                   </Text>
                   <Text
                     style={[
@@ -259,7 +261,7 @@ export default function About() {
                       { color: theme === "light" ? "#64748B" : "#94A3B8" },
                     ]}
                   >
-                    Connect with fellow travelers at your airport
+                    Advanced algorithms match you with compatible people based on personality, interests, and preferences
                   </Text>
                 </View>
               </Animated.View>
@@ -286,7 +288,7 @@ export default function About() {
                       { color: theme === "light" ? "#000000" : "#e4fbfe" },
                     ]}
                   >
-                    Join Events
+                    Personalized Availability
                   </Text>
                   <Text
                     style={[
@@ -294,7 +296,7 @@ export default function About() {
                       { color: theme === "light" ? "#64748B" : "#94A3B8" },
                     ]}
                   >
-                    Join or create events during your layover
+                    Set your weekly schedule and preferences to find connections that fit your timeline and location
                   </Text>
                 </View>
               </Animated.View>
@@ -303,6 +305,76 @@ export default function About() {
                 opacity: featureAnimations[2],
                 transform: [{
                   translateX: featureAnimations[2].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 0]
+                  })
+                }]
+              }]}>
+                <View style={[styles.featureIconContainer, {
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                  borderColor: "#37a4c8"
+                }]}>
+                  <Ionicons name="heart" size={24} color="#37a4c8" />
+                </View>
+                <View style={styles.featureTextContainer}>
+                  <Text
+                    style={[
+                      styles.featureTitle,
+                      { color: theme === "light" ? "#000000" : "#e4fbfe" },
+                    ]}
+                  >
+                    Personality Matching
+                  </Text>
+                  <Text
+                    style={[
+                      styles.featureText,
+                      { color: theme === "light" ? "#64748B" : "#94A3B8" },
+                    ]}
+                  >
+                    Connect based on personality types, lifestyle preferences, and personal tags for meaningful relationships
+                  </Text>
+                </View>
+              </Animated.View>
+
+              <Animated.View style={[styles.featureItem, {
+                opacity: featureAnimations[3],
+                transform: [{
+                  translateX: featureAnimations[3].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 0]
+                  })
+                }]
+              }]}>
+                <View style={[styles.featureIconContainer, {
+                  backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
+                  borderColor: "#37a4c8"
+                }]}>
+                  <Ionicons name="location" size={24} color="#37a4c8" />
+                </View>
+                <View style={styles.featureTextContainer}>
+                  <Text
+                    style={[
+                      styles.featureTitle,
+                      { color: theme === "light" ? "#000000" : "#e4fbfe" },
+                    ]}
+                  >
+                    Flexible Meetup Radius
+                  </Text>
+                  <Text
+                    style={[
+                      styles.featureText,
+                      { color: theme === "light" ? "#64748B" : "#94A3B8" },
+                    ]}
+                  >
+                    Choose how far you're willing to travel for connections, from spontaneous local meetups to planned regional events
+                  </Text>
+                </View>
+              </Animated.View>
+
+              <Animated.View style={[styles.featureItem, {
+                opacity: featureAnimations[4],
+                transform: [{
+                  translateX: featureAnimations[4].interpolate({
                     inputRange: [0, 1],
                     outputRange: [-20, 0]
                   })
@@ -321,7 +393,7 @@ export default function About() {
                       { color: theme === "light" ? "#000000" : "#e4fbfe" },
                     ]}
                   >
-                    Chat & Connect
+                    Rich Communication
                   </Text>
                   <Text
                     style={[
@@ -329,7 +401,7 @@ export default function About() {
                       { color: theme === "light" ? "#64748B" : "#94A3B8" },
                     ]}
                   >
-                    Chat with travelers who share your interests
+                    Send pings for spontaneous connections or chat to coordinate local events with detailed preferences
                   </Text>
                 </View>
               </Animated.View>
@@ -366,7 +438,7 @@ export default function About() {
                   { color: theme === "light" ? "#64748B" : "#94A3B8" },
                 ]}
               >
-                Version 1.1.1
+                Version 2.0.0
               </Text>
               <Text
                 style={[

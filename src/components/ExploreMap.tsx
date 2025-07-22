@@ -12,7 +12,7 @@ import MapView, { Marker, Region, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebaseConfig';
 
 const { width } = Dimensions.get('window');
@@ -27,17 +27,8 @@ interface Event {
   name: string;
   latitude: string;
   longitude: string;
-  airportCode: string;
   startTime: Date | null;
   attendees: string[];
-}
-
-interface Airport {
-  airportCode: string;
-  name: string;
-  lat: number;
-  long: number;
-  location?: string;
 }
 
 interface User {
@@ -51,62 +42,57 @@ interface User {
 
 interface ExploreMapProps {
   events: Event[];
-  airports: Airport[];
-  selectedAirport: Airport | null;
-  onAirportSelect: (airport: Airport) => void;
   onEventPress: (event: Event) => void;
   currentUserId?: string; // Add current user ID prop
 }
 
 export default function ExploreMap({
   events,
-  airports,
-  selectedAirport,
-  onAirportSelect,
   onEventPress,
   currentUserId,
 }: ExploreMapProps) {
   const { theme } = React.useContext(ThemeContext);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [region, setRegion] = useState<Region>({
-    latitude: 40.7128, // New York City as default
+    latitude: 40.7128, // Default to NYC until we get user's actual coordinates
     longitude: -74.0060,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [usersWithNullCoordinates, setUsersWithNullCoordinates] = useState<number>(0);
-  const [usersWithLocation, setUsersWithLocation] = useState<User[]>([]);
-
-  // Function to count users with location data
-  const countUsersWithLocationData = async () => {
-    try {
-      const usersCollection = collection(db, "users");
-      const snapshot = await getDocs(usersCollection);
-      const users = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as User[];
-      
-      const usersWithLocationData = users.filter(user => 
-        user.lastKnownCoordinates !== null && 
-        user.lastKnownCoordinates !== undefined &&
-        typeof user.lastKnownCoordinates === 'object' && 
-        user.lastKnownCoordinates.latitude !== null && 
-        user.lastKnownCoordinates.longitude !== null &&
-        user.id !== currentUserId // Exclude the authenticated user
-      );
-      
-      setUsersWithLocation(usersWithLocationData);
-      setUsersWithNullCoordinates(usersWithLocationData.length);
-    } catch (error) {
-      console.error('Error counting users with location data:', error);
-      setUsersWithNullCoordinates(0);
-      setUsersWithLocation([]);
-    }
-  };
 
   // Get current location on component mount
   useEffect(() => {
     const getCurrentLocation = async () => {
       try {
+        // First, try to get user's last known coordinates from their auth document
+        let userLastKnownCoords = null;
+        if (currentUserId) {
+          try {
+            const userDocRef = doc(db, 'users', currentUserId);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              if (userData?.lastKnownCoordinates?.latitude && userData?.lastKnownCoordinates?.longitude) {
+                userLastKnownCoords = {
+                  latitude: userData.lastKnownCoordinates.latitude,
+                  longitude: userData.lastKnownCoordinates.longitude,
+                };
+                
+                // Set initial region to user's last known location
+                setRegion({
+                  latitude: userLastKnownCoords.latitude,
+                  longitude: userLastKnownCoords.longitude,
+                  latitudeDelta: 0.0922,
+                  longitudeDelta: 0.0421,
+                });
+              }
+            }
+          } catch (error) {
+            console.error('Error getting user last known coordinates:', error);
+          }
+        }
+
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert(
@@ -139,26 +125,21 @@ export default function ExploreMap({
         setRegion(newRegion);
       } catch (error) {
         console.error('Error getting location:', error);
-        // Keep the default New York location if getting user location fails
+        // Keep the default user location if getting current location fails
       } finally {
         setIsLoading(false);
       }
     };
 
     getCurrentLocation();
-    countUsersWithLocationData();
-  }, []);
+  }, [currentUserId]);
 
   const handleMapPress = () => {
     // Optional: Handle map press events
   };
 
-  const handleMarkerPress = (markerType: 'event' | 'airport', data: Event | Airport) => {
-    if (markerType === 'event') {
-      onEventPress(data as Event);
-    } else if (markerType === 'airport') {
-      onAirportSelect(data as Airport);
-    }
+  const handleMarkerPress = (event: Event) => {
+    onEventPress(event);
   };
 
   const centerOnCurrentLocation = () => {
@@ -210,35 +191,6 @@ export default function ExploreMap({
             </Marker>
           )}
 
-          {/* User markers */}
-          {usersWithLocation.map((user) => (
-            <React.Fragment key={`user-${user.id}`}>
-              {/* User location circle */}
-              <Circle
-                center={{
-                  latitude: user.lastKnownCoordinates!.latitude!,
-                  longitude: user.lastKnownCoordinates!.longitude!,
-                }}
-                radius={100}
-                fillColor="rgba(55, 164, 200, 0.6)"
-                strokeColor="rgba(55, 164, 200, 0.8)"
-                strokeWidth={1}
-              />
-              <Marker
-                coordinate={{
-                  latitude: user.lastKnownCoordinates!.latitude!,
-                  longitude: user.lastKnownCoordinates!.longitude!,
-                }}
-                title={user.name || 'Anonymous User'}
-                description={user.airportCode || 'Unknown location'}
-              >
-                <View style={styles.userMarker}>
-                  <MaterialIcons name="person" size={16} color="#FFFFFF" />
-                </View>
-              </Marker>
-            </React.Fragment>
-          ))}
-
           {/* Event markers */}
           {events.map((event) => (
             <Marker
@@ -249,7 +201,7 @@ export default function ExploreMap({
               }}
               title={event.name}
               description={`${event.attendees?.length || 0} attending`}
-              onPress={() => handleMarkerPress('event', event)}
+              onPress={() => handleMarkerPress(event)}
             >
               <View style={styles.eventMarker}>
                 <MaterialIcons name="event" size={20} color="#FFFFFF" />
@@ -287,11 +239,11 @@ export default function ExploreMap({
           borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
         }]}>
           <View style={styles.mapInfoContent}>
-            <Ionicons name="people" size={16} color="#37a4c8" />
+            <Ionicons name="calendar" size={16} color="#37a4c8" />
             <Text style={[styles.mapInfoText, { 
               color: theme === "light" ? "#0F172A" : "#e4fbfe" 
             }]}>
-              {usersWithNullCoordinates} users with location data
+              {events.length} {events.length === 1 ? 'event found' : 'events found'}
             </Text>
           </View>
         </View>
@@ -302,12 +254,11 @@ export default function ExploreMap({
 
 const styles = StyleSheet.create({
   container: {
-    height: 300,
-    marginBottom: 16,
+    flex: 1,
   },
   mapContainer: {
     flex: 1,
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -345,10 +296,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
   },
   eventMarkerBadge: {
     position: 'absolute',
@@ -382,9 +333,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
     elevation: 2,
   },
   mapInfo: {
@@ -396,9 +347,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
     elevation: 2,
   },
   mapInfoContent: {

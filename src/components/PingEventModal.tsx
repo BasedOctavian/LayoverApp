@@ -71,6 +71,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [selectedPingType, setSelectedPingType] = useState('open');
   const [pingStep, setPingStep] = useState(1);
+  const [allowAutoAdvance, setAllowAutoAdvance] = useState(true);
 
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [showLocationOptions, setShowLocationOptions] = useState(false);
@@ -88,8 +89,8 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
     latitudeDelta: number;
     longitudeDelta: number;
   }>({
-    latitude: 37.78825,
-    longitude: -122.4324,
+    latitude: 40.7128, // Default to NYC until we get user's actual coordinates
+    longitude: -74.0060,
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
   });
@@ -192,6 +193,9 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
     if (pingFormErrors.category) {
       setPingFormErrors(prev => ({ ...prev, category: '' }));
     }
+    
+    // Re-enable auto-advance when user selects a category
+    setAllowAutoAdvance(true);
   };
 
   // Handle template selection
@@ -211,6 +215,9 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
     if (pingFormErrors.template) {
       setPingFormErrors(prev => ({ ...prev, template: '' }));
     }
+    
+    // Re-enable auto-advance when user selects a template
+    setAllowAutoAdvance(true);
   };
 
   // Handle ping type selection
@@ -388,6 +395,9 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
     const isValid = validateForm(pingStep);
     if (isValid) {
       if (pingStep < 8) {
+        // Re-enable auto-advance when manually going forward
+        setAllowAutoAdvance(true);
+        
         // Enhanced step transition animation
         Animated.sequence([
           Animated.timing(pingStepAnim, {
@@ -410,6 +420,9 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
 
   const handlePrevStep = () => {
     if (pingStep > 1) {
+      // Disable auto-advance when going back
+      setAllowAutoAdvance(false);
+      
       // Enhanced step transition animation
       Animated.sequence([
         Animated.timing(pingStepAnim, {
@@ -471,6 +484,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
       onClose();
       // Reset form state
       setPingStep(1);
+      setAllowAutoAdvance(true);
       setPingFormData({
         title: '',
         description: '',
@@ -531,21 +545,21 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
 
   // Auto-advance when category is selected on step 1
   useEffect(() => {
-    if (pingStep === 1 && selectedCategory && visible) {
+    if (pingStep === 1 && selectedCategory && visible && allowAutoAdvance) {
       setTimeout(() => {
         handleNextStep();
       }, 300);
     }
-  }, [selectedCategory, pingStep, visible]);
+  }, [selectedCategory, pingStep, visible, allowAutoAdvance]);
 
   // Auto-advance when template is selected on step 2
   useEffect(() => {
-    if (pingStep === 2 && selectedTemplate && visible) {
+    if (pingStep === 2 && selectedTemplate && visible && allowAutoAdvance) {
       setTimeout(() => {
         handleNextStep();
       }, 300);
     }
-  }, [selectedTemplate, pingStep, visible]);
+  }, [selectedTemplate, pingStep, visible, allowAutoAdvance]);
 
   // Get current location when reaching step 2
   useEffect(() => {
@@ -698,7 +712,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
               backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
             }]}>
               <MaterialIcons 
-                name="event" 
+                name="send" 
                 size={18} 
                 color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
               />

@@ -19,7 +19,7 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
-import { MaterialIcons, Feather, FontAwesome5 } from "@expo/vector-icons";
+import { MaterialIcons, Feather, FontAwesome5, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, orderBy, limit, startAfter, onSnapshot } from "firebase/firestore";
@@ -1030,7 +1030,7 @@ export default function Dashboard() {
       }
     };
     fetchNearbyUsers();
-  }, [userId, getNearbyUsers, userLocation, usersLoaded, getUsers]);
+  }, [userId, getNearbyUsers, userLocation, getUsers]);
 
   // Update loading state based on users loading status
   useEffect(() => {
@@ -1047,16 +1047,10 @@ export default function Dashboard() {
       description: "Swipe to find the perfect match"
     },
     { 
-      icon: <Feather name="plus" size={24} color="#38a5c9" />, 
-      title: "Create Event", 
-      screen: "eventCreation",
-      description: "Start a new event or activity"
-    },
-    { 
-      icon: <MaterialIcons name="event" size={24} color="#38a5c9" />, 
-      title: "Events", 
-      screen: "eventScreen",
-      description: "Browse all events at your airport"
+      icon: <MaterialIcons name="explore" size={24} color="#38a5c9" />, 
+      title: "Explore", 
+      screen: "explore",
+      description: "Discover events and people nearby"
     },
     { 
       icon: <MaterialIcons name="message" size={24} color="#38a5c9" />, 
@@ -1069,6 +1063,12 @@ export default function Dashboard() {
       title: "Profile", 
       screen: userId ? `profile/${userId}` : "profile",
       description: "Manage your account settings"
+    },
+    { 
+      icon: <MaterialIcons name="edit" size={24} color="#38a5c9" />, 
+      title: "Edit Profile", 
+      screen: "profile/editProfile",
+      description: "Update your profile information"
     },
     { 
       icon: <MaterialIcons name="settings" size={24} color="#38a5c9" />, 
@@ -1092,12 +1092,7 @@ export default function Dashboard() {
   }, [isRefreshing, showPopup]);
 
   const filteredResults: SearchItem[] = useMemo(() => [
-    {
-      id: 'create-event',
-      name: 'Create Event',
-      description: 'Start a new event',
-      isCreateEvent: true
-    }
+    // Search results can be added here if needed
   ], [searchQuery]);
 
   const visibleResults: SearchItem[] = useMemo(() => filteredResults, [filteredResults]);
@@ -1541,7 +1536,7 @@ export default function Dashboard() {
                           <View style={styles.headerLeft}>
                             <MaterialIcons name="local-activity" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
                             <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                              Nearby Activities
+                              What's Happening
                             </Text>
                           </View>
                         </View>
@@ -2034,8 +2029,8 @@ export default function Dashboard() {
                     }]}
                     activeOpacity={0.8}
                     onPress={() => {
-                      // Do nothing for now as requested
-                      console.log("Event button pressed");
+                      router.push('eventCreation');
+                      toggleFabExpansion(); // Close the FAB
                     }}
                   >
                     <MaterialIcons 

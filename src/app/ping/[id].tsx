@@ -12,7 +12,8 @@ import {
   Dimensions,
   StatusBar,
   Platform,
-  TextInput
+  TextInput,
+  Linking
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons, FontAwesome5 } from "@expo/vector-icons";
@@ -73,9 +74,12 @@ const notifyPingParticipants = async (ping: Ping, updateType: string) => {
       ping.participants.map((participantId: string) => getDoc(doc(db, 'users', participantId)))
     );
 
-    // Process each participant
+    // Process each participant (excluding the creator)
     const notificationPromises = participantDocs.map(async (participantDoc: any) => {
       if (!participantDoc.exists()) return;
+
+      // Skip if this participant is the creator of the ping
+      if (participantDoc.id === ping.creatorId) return;
 
       const participantData = participantDoc.data();
       const notification = {
@@ -161,8 +165,8 @@ export default function PingEvent() {
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [creatorData, setCreatorData] = useState<any>(null);
   const [mapRegion, setMapRegion] = useState({
-    latitude: 42.7168, // Default to Hamburg, NY area
-    longitude: -78.8297,
+    latitude: 40.7128, // Default to NYC until we get user's actual coordinates
+    longitude: -74.0060,
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
   });
@@ -872,6 +876,44 @@ export default function PingEvent() {
     }
   };
 
+  // Handle opening directions in maps
+  const handleGetDirections = async () => {
+    if (!ping?.coordinates) {
+      Alert.alert(
+        'No Location Available',
+        'This activity doesn\'t have location coordinates.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const { latitude, longitude } = ping.coordinates;
+    const label = ping.title || 'Activity Location';
+    
+    try {
+      const url = Platform.OS === 'ios' 
+        ? `http://maps.apple.com/?daddr=${latitude},${longitude}&dirflg=d`
+        : `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+      
+      const supported = await Linking.canOpenURL(url);
+      
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        // Fallback to generic maps URL
+        const fallbackUrl = `https://maps.google.com/maps?daddr=${latitude},${longitude}`;
+        await Linking.openURL(fallbackUrl);
+      }
+    } catch (error) {
+      console.error('Error opening directions:', error);
+      Alert.alert(
+        'Error',
+        'Unable to open directions. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   if (loading || !ping) {
     return (
       <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
@@ -1284,6 +1326,32 @@ export default function PingEvent() {
 
             {/* Action Buttons */}
             <View style={styles.bottomButtons}>
+              {/* Directions Button */}
+              {ping.coordinates && (isAttending || isOrganizer) && (
+                <TouchableOpacity 
+                  style={styles.directionsButton}
+                  onPress={handleGetDirections}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.directionsButtonGradient,
+                    { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+                  ]}>
+                    <MaterialIcons 
+                      name="directions" 
+                      size={20} 
+                      color={theme === "light" ? "#0F172A" : "#e4fbfe"} 
+                    />
+                    <Text style={[
+                      styles.directionsButtonText,
+                      { color: theme === "light" ? "#0F172A" : "#e4fbfe" }
+                    ]}>
+                      Get Directions
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
               {(isAttending || isOrganizer) && (
                 <View style={styles.topButtonRow}>
                   <TouchableOpacity
@@ -2982,5 +3050,32 @@ const styles = StyleSheet.create({
     elevation: 2,
     flexDirection: 'row',
     gap: 8,
+  },
+  directionsButton: {
+    width: '100%',
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 4,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(55, 164, 200, 0.1)',
+  },
+  directionsButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+  },
+  directionsButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 }); 

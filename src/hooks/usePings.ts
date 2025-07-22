@@ -422,6 +422,8 @@ const usePings = ({ user }: UsePingsProps) => {
         throw new Error('User not authenticated');
       }
 
+      const organizerUid = user.uid; // Store organizer UID for notification filtering
+
       // Find matching users first
       const matchingUsers = await findMatchingUsers(pingFormData, selectedMapLocation);
       
@@ -471,8 +473,8 @@ const usePings = ({ user }: UsePingsProps) => {
             return;
           }
           
-          // Skip if this is the creator
-          if (user.id === user.uid) {
+          // Skip if this is the organizer/authUser
+          if (user.id === organizerUid) {
             return;
           }
           

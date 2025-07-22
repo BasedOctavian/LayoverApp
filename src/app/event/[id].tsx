@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Easing, Modal } from "react-native";
+import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Easing, Modal, TextInput, Linking, Platform } from "react-native";
 import useEvents from "../../hooks/useEvents";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
@@ -10,7 +10,7 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { StatusBar, Platform } from "react-native";
+import { StatusBar } from "react-native";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
@@ -23,17 +23,44 @@ import * as Haptics from 'expo-haptics';
 
 interface Event {
   id: string;
-  name: string;
+  title: string;
   description: string;
   category: string;
   eventImage?: string;
   createdAt: any;
   startTime: any;
-  attendees: string[];
-  organizer: string | null;
-  organizedAt?: any;
-  airportCode?: string;
+  participants: string[];
+  creatorId: string;
+  creatorName: string;
+  location: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
   eventUID: string;
+  status: string;
+  pingType: string;
+  template: string;
+  duration: string;
+  maxParticipants: string;
+  participantCount: number;
+  connectionIntents: string[];
+  eventPreferences: {
+    likesBars: boolean;
+    prefersActiveLifestyles: boolean;
+    prefersEveningEvents: boolean;
+    prefersIndoorVenues: boolean;
+    prefersIntellectualDiscussions: boolean;
+    prefersLocalMeetups: boolean;
+    prefersQuietEnvironments: boolean;
+    prefersSmallGroups: boolean;
+    prefersSpontaneousPlans: boolean;
+    prefersStructuredActivities: boolean;
+    prefersTravelEvents: boolean;
+    prefersWeekendEvents: boolean;
+  };
+  visibilityRadius: string;
+  updatedAt: any;
 }
 
 interface UserData {
@@ -142,18 +169,21 @@ const notifyAdmins = async (eventName: string) => {
   }
 };
 
-const notifyAttendees = async (event: Event, eventName: string, updateType: string, eventUID: string) => {
+  const notifyAttendees = async (event: Event, eventName: string, updateType: string, eventUID: string) => {
   try {
-    if (!event?.attendees?.length) return;
+    if (!event?.participants?.length) return;
 
-    // Get all attendee documents
+    // Get all participant documents
     const attendeeDocs = await Promise.all(
-      event.attendees.map((attendeeId: string) => getDoc(doc(db, 'users', attendeeId)))
+      event.participants.map((participantId: string) => getDoc(doc(db, 'users', participantId)))
     );
 
-    // Process each attendee
+    // Process each attendee (excluding the organizer)
     const notificationPromises = attendeeDocs.map(async (attendeeDoc: any) => {
       if (!attendeeDoc.exists()) return;
+
+      // Skip if this attendee is the creator/organizer of the event
+      if (attendeeDoc.id === event.creatorId) return;
 
       const attendeeData = attendeeDoc.data();
       const notification = {
@@ -262,6 +292,7 @@ export default function Event() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [attendeesList, setAttendeesList] = useState<UserData[]>([]);
+  const [participants, setParticipants] = useState<UserData[]>([]);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const insets = useSafeAreaInsets();
@@ -276,13 +307,46 @@ export default function Event() {
   const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
   const loadingStartTime = useRef<number | null>(null);
 
+  // Edit functionality state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [showSelectionModal, setShowSelectionModal] = useState(false);
+  const [selectionOptions, setSelectionOptions] = useState<Array<{id: string, label: string, icon?: string}>>([]);
+  const [selectionType, setSelectionType] = useState<string>('');
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+
+  // Privacy options for organizers
+  const privacyOptions = [
+    { id: 'open', label: 'Open', description: 'Anyone can join', icon: 'public' },
+    { id: 'invite-only', label: 'Invite Only', description: 'You approve requests', icon: 'person-add' },
+    { id: 'friends-only', label: 'Friends Only', description: 'Only your available connections', icon: 'people' }
+  ];
+
   // Existing useEffect hooks
   useEffect(() => {
     if (event && user) {
-      const isUserAttending = event.attendees?.includes(user.uid) ?? false;
+      const isUserAttending = event.participants?.includes(user.uid) ?? false;
       setIsAttending(isUserAttending);
     }
   }, [event, user]);
+
+  useEffect(() => {
+    const fetchParticipants = async () => {
+      if (!event) return;
+      const users = await Promise.all(
+        (event.participants || []).map(async (uid: string) => {
+          try {
+            return await getUser(uid) as UserData;
+          } catch {
+            return null;
+          }
+        })
+      );
+      setParticipants(users.filter((user): user is UserData => user !== null));
+    };
+    if (event) fetchParticipants();
+  }, [event]);
 
   useEffect(() => {
     if (eventId) {
@@ -292,10 +356,10 @@ export default function Event() {
         if (eventData) {
           const typedEventData = eventData as Event;
           setEvent(typedEventData);
-          const organizerID = typedEventData.organizer;
-          if (organizerID) {
-            const organizerData = await getUser(organizerID) as UserData;
-            setOrganizer(organizerData || null);
+          const creatorID = typedEventData.creatorId;
+          if (creatorID) {
+            const creatorData = await getUser(creatorID) as UserData;
+            setOrganizer(creatorData || null);
           } else {
             setOrganizer(null);
           }
@@ -388,34 +452,33 @@ export default function Event() {
   const handleAttend = async () => {
     if (!user?.uid || !event) return;
     
-    // Prevent attending if there's no organizer
-    if (!event.organizer) {
-      Alert.alert(
-        "No Organizer",
-        "This event needs an organizer before you can attend. Please wait for someone to claim organization or become the organizer yourself.",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-    
     setLoading(true);
     setLoadingMessage("Updating attendance...");
     try {
-      const currentAttendees = event.attendees || [];
-      const newAttendees = isAttending
-        ? currentAttendees.filter((uid: string) => uid !== user.uid)
-        : [...currentAttendees, user.uid];
+      const currentParticipants = event.participants || [];
+      const newParticipants = isAttending
+        ? currentParticipants.filter((uid: string) => uid !== user.uid)
+        : [...currentParticipants, user.uid];
 
-      await updateEvent(event.id, { attendees: newAttendees });
-      setEvent((prev: Event | null) => prev ? { ...prev, attendees: newAttendees } : null);
+      const newParticipantCount = newParticipants.length;
 
-      // If user is attending (not leaving) and there's an organizer, notify them
-      if (!isAttending && event.organizer) {
+      await updateEvent(event.id, { 
+        participants: newParticipants,
+        participantCount: newParticipantCount
+      });
+      setEvent((prev: Event | null) => prev ? { 
+        ...prev, 
+        participants: newParticipants,
+        participantCount: newParticipantCount
+      } : null);
+
+      // If user is attending (not leaving) and there's a creator, notify them
+      if (!isAttending && event.creatorId) {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         const userData = userDoc.data();
         const attendeeName = userData?.name || 'Someone';
         
-        await notifyOrganizer(event.organizer, event.name, attendeeName, event.eventUID);
+        await notifyOrganizer(event.creatorId, event.title, attendeeName, event.eventUID);
       }
     } catch (error) {
       console.error("Error updating attendance:", error);
@@ -425,16 +488,20 @@ export default function Event() {
   };
 
   const handleBecomeOrganizer = async () => {
-    if (!user?.uid || !event || event.organizer !== null) return;
+    if (!user?.uid || !event) return;
     setLoading(true);
     setLoadingMessage("Claiming organization...");
     try {
-      const currentAttendees = event.attendees || [];
-      const newAttendees = [...currentAttendees, user.uid];
+      const currentParticipants = event.participants || [];
+      const newParticipants = [...currentParticipants, user.uid];
+      const newParticipantCount = newParticipants.length;
+      
       await updateEvent(event.id, {
-        organizer: user.uid,
-        organizedAt: new Date().toISOString(),
-        attendees: newAttendees
+        creatorId: user.uid,
+        creatorName: user.displayName || 'Unknown',
+        participants: newParticipants,
+        participantCount: newParticipantCount,
+        updatedAt: new Date().toISOString()
       });
       const updatedEvent = await getEvent(eventId) as Event;
       setEvent(updatedEvent);
@@ -470,16 +537,19 @@ export default function Event() {
 
   const handleConfirmDate = async (date: Date) => {
     setShowDatePicker(false);
-    if (!user?.uid || !event || user.uid !== event.organizer) return;
+    if (!user?.uid || !event || user.uid !== event.creatorId) return;
     setLoading(true);
     setLoadingMessage("Updating event time...");
     try {
       const timestamp = date.toISOString();
-      await updateEvent(event.id, { startTime: timestamp });
+      await updateEvent(event.id, { 
+        startTime: timestamp,
+        updatedAt: new Date().toISOString()
+      });
       setEvent((prev: Event | null) => prev ? { ...prev, startTime: timestamp } : null);
       
-      // Notify all attendees about the update
-      await notifyAttendees(event, event.name, 'startTime', event.eventUID);
+      // Notify all participants about the update
+      await notifyAttendees(event, event.title, 'startTime', event.eventUID);
     } catch (error) {
       console.error("Error updating start time:", error);
     } finally {
@@ -505,7 +575,7 @@ export default function Event() {
               const reportData = {
                 reportedEventId: eventId,
                 reportedBy: authUser?.uid,
-                reportedEventName: event?.name || 'Unknown Event',
+                reportedEventName: event?.title || 'Unknown Event',
                 reportedByUserName: authUser?.displayName || 'Anonymous',
                 createdAt: serverTimestamp(),
                 status: "pending",
@@ -515,21 +585,21 @@ export default function Event() {
                 reviewNotes: null,
                 reviewDate: null,
                 reportedEvent: {
-                  name: event?.name || 'Unknown Event',
+                  title: event?.title || 'Unknown Event',
                   description: event?.description,
                   category: event?.category,
-                  organizer: event?.organizer,
-                  airportCode: event?.airportCode,
+                  creatorId: event?.creatorId,
+                  location: event?.location,
                   createdAt: event?.createdAt,
                   startTime: event?.startTime,
-                  attendees: event?.attendees?.length || 0,
+                  participants: event?.participantCount || 0,
                 }
               };
               
               await addDoc(collection(db, "reports"), reportData);
               
               // Notify admins about the report
-              await notifyAdmins(event?.name || 'Unknown Event');
+              await notifyAdmins(event?.title || 'Unknown Event');
               
               Alert.alert(
                 "Report Submitted",
@@ -560,17 +630,17 @@ export default function Event() {
     try {
       const allAttendees: UserData[] = [];
       
-      // Add organizer if exists
-      if (event.organizer && organizer) {
+      // Add creator if exists
+      if (event.creatorId && organizer) {
         allAttendees.push(organizer);
       }
       
-      // Fetch all attendee data
-      const attendeePromises = event.attendees
-        .filter(attendeeId => attendeeId !== event.organizer) // Don't duplicate organizer
-        .map(async (attendeeId) => {
+      // Fetch all participant data
+      const attendeePromises = event.participants
+        .filter(participantId => participantId !== event.creatorId) // Don't duplicate creator
+        .map(async (participantId) => {
           try {
-            const attendeeData = await getUser(attendeeId) as UserData;
+            const attendeeData = await getUser(participantId) as UserData;
             return attendeeData;
           } catch (error) {
             console.error("Error fetching attendee:", error);
@@ -601,20 +671,20 @@ export default function Event() {
     );
   }
 
-  const isOrganizer = user?.uid === event.organizer;
+  const isOrganizer = user?.uid === event.creatorId;
 
   // Debug logging
-  console.log('Event organizer:', event.organizer);
+  console.log('Event creator:', event.creatorId);
   console.log('Is attending:', isAttending);
-  console.log('Should disable attend button:', !event.organizer && !isAttending);
+  console.log('Should disable attend button:', !event.creatorId && !isAttending);
 
   // Attend button state variables
-  const attendButtonDisabled = !event.organizer && !isAttending;
+  const attendButtonDisabled = !event.creatorId && !isAttending;
   const attendButtonColors = attendButtonDisabled 
-    ? ["#cccccc", "#999999"] 
+    ? ["#cccccc", "#999999"] as const
     : isAttending 
-    ? ["#FF416C", "#FF4B2B"] 
-    : ["#37a4c8", "#37a4c8"];
+    ? ["#FF416C", "#FF4B2B"] as const
+    : ["#37a4c8", "#37a4c8"] as const;
 
 
 
@@ -687,15 +757,15 @@ export default function Event() {
                           <Text style={[styles.attendeeName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                             {attendee.name}
                           </Text>
-                          {event.organizer === attendee.id && (
-                            <View style={[styles.organizerBadge, {
-                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)",
-                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.25)"
-                            }]}>
-                              <MaterialIcons name="star" size={10} color="#37a4c8" />
-                              <Text style={styles.organizerBadgeText}>Organizer</Text>
-                            </View>
-                          )}
+                                                {event.creatorId === attendee.id && (
+                        <View style={[styles.organizerBadge, {
+                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)",
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.25)"
+                        }]}>
+                          <MaterialIcons name="star" size={10} color="#37a4c8" />
+                          <Text style={styles.organizerBadgeText}>Creator</Text>
+                        </View>
+                      )}
                         </View>
                         <View style={styles.attendeeDetails}>
                           {attendee.age && (
@@ -750,6 +820,194 @@ export default function Event() {
     </Modal>
   );
 
+  // Edit functionality handlers
+  const handleEditField = (field: string, currentValue: string) => {
+    setEditingField(field);
+    setEditValue(currentValue);
+    
+    // Check if this field should use selection instead of text input
+    if (field === 'duration' || field === 'maxParticipants' || field === 'visibilityRadius') {
+      setSelectionType(field);
+      setSelectionOptions(getSelectionOptions(field));
+      setShowSelectionModal(true);
+    } else {
+      setShowEditModal(true);
+    }
+  };
+
+  const getSelectionOptions = (field: string) => {
+    switch (field) {
+      case 'duration':
+        return [
+          { id: '30 minutes', label: '30 minutes' },
+          { id: '1 hour', label: '1 hour' },
+          { id: '2 hours', label: '2 hours' },
+          { id: '3 hours', label: '3 hours' },
+          { id: '4 hours', label: '4 hours' },
+          { id: 'All day', label: 'All day' }
+        ];
+      case 'maxParticipants':
+        return [
+          { id: '2 people', label: '2 people' },
+          { id: '3 people', label: '3 people' },
+          { id: '4 people', label: '4 people' },
+          { id: '5 people', label: '5 people' },
+          { id: '6 people', label: '6 people' },
+          { id: 'Unlimited', label: 'Unlimited' }
+        ];
+      case 'visibilityRadius':
+        return [
+          { id: '5 miles', label: '5 miles' },
+          { id: '10 miles', label: '10 miles' },
+          { id: '15 miles', label: '15 miles' },
+          { id: '20 miles', label: '20 miles' },
+          { id: '25 miles', label: '25 miles' },
+          { id: '50 miles', label: '50 miles' }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  const handleSelection = (selectedValue: string) => {
+    setEditValue(selectedValue);
+    setShowSelectionModal(false);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingField || !event || !user) return;
+    
+    setLoading(true);
+    setLoadingMessage("Updating event...");
+    try {
+      // Update the event document in Firestore
+      const eventRef = doc(db, 'events', event.id);
+      await updateDoc(eventRef, {
+        [editingField]: editValue,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update local state
+      setEvent(prev => prev ? { ...prev, [editingField]: editValue } : null);
+      
+      // Notify attendees about the update
+      await notifyAttendees(event, event.title, editingField, event.eventUID);
+      
+      setShowEditModal(false);
+      setEditingField(null);
+      setEditValue('');
+      
+      // Provide haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+    } catch (error) {
+      console.error('Error updating event:', error);
+      Alert.alert('Error', 'Failed to update event. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getFieldDisplayName = (field: string) => {
+    switch (field) {
+      case 'title': return 'Title';
+      case 'description': return 'Description';
+      case 'duration': return 'Duration';
+      case 'maxParticipants': return 'Max Participants';
+      case 'visibilityRadius': return 'Visibility Radius';
+      case 'location': return 'Location';
+      case 'category': return 'Category';
+      case 'template': return 'Template';
+      case 'pingType': return 'Event Type';
+      default: return field.charAt(0).toUpperCase() + field.slice(1);
+    }
+  };
+
+  const getPrivacyTypeLabel = (pingType: string) => {
+    switch (pingType) {
+      case 'open':
+        return 'Open';
+      case 'invite-only':
+        return 'Invite Only';
+      case 'friends-only':
+        return 'Friends Only';
+      default:
+        return pingType;
+    }
+  };
+
+  // Handle opening directions in maps
+  const handleGetDirections = async () => {
+    if (!event?.coordinates) {
+      Alert.alert(
+        'No Location Available',
+        'This event doesn\'t have location coordinates.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const { latitude, longitude } = event.coordinates;
+    const label = event.title || 'Event Location';
+    
+    try {
+      const url = Platform.OS === 'ios' 
+        ? `http://maps.apple.com/?daddr=${latitude},${longitude}&dirflg=d`
+        : `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+      
+      const supported = await Linking.canOpenURL(url);
+      
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        // Fallback to generic maps URL
+        const fallbackUrl = `https://maps.google.com/maps?daddr=${latitude},${longitude}`;
+        await Linking.openURL(fallbackUrl);
+      }
+    } catch (error) {
+      console.error('Error opening directions:', error);
+      Alert.alert(
+        'Error',
+        'Unable to open directions. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  // Handle privacy setting change
+  const handlePrivacyChange = async (newPrivacyType: string) => {
+    if (!event || !user) return;
+    
+    setLoading(true);
+    setLoadingMessage("Updating privacy settings...");
+    try {
+      const eventRef = doc(db, 'events', event.id);
+      await updateDoc(eventRef, {
+        pingType: newPrivacyType,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update local state
+      setEvent(prev => prev ? { ...prev, pingType: newPrivacyType } : null);
+      
+      // Notify attendees about the privacy change
+      await notifyAttendees(event, event.title, 'privacy', event.eventUID);
+      
+      setShowPrivacyModal(false);
+      Alert.alert('Privacy Updated', `Event is now ${getPrivacyTypeLabel(newPrivacyType)}`);
+      
+      // Provide haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+    } catch (error) {
+      console.error('Error updating privacy setting:', error);
+      Alert.alert('Error', 'Failed to update privacy setting. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
       <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
@@ -802,25 +1060,40 @@ export default function Event() {
                   />
                   <View style={styles.titleContent}>
                     <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                      {event.name}
+                      {event.title}
                     </Text>
                     <Text style={[styles.category, { color: "#37a4c8" }]}>
                       {event.category}
                     </Text>
                   </View>
+                  {isOrganizer && (
+                    <TouchableOpacity 
+                      style={styles.editButton}
+                      onPress={() => handleEditField('title', event.title)}
+                    >
+                      <Feather name="edit-2" size={16} color="#37a4c8" />
+                    </TouchableOpacity>
+                  )}
                 </View>
                 
-                {/* Status badge */}
-                <View style={[styles.statusBadge, { backgroundColor: event.organizer ? '#10B981' : '#F59E0B' }]}>
-                  <Text style={styles.statusText}>{event.organizer ? 'Organized' : 'Needs Organizer'}</Text>
-                </View>
+
               </View>
 
               {/* Description Section */}
               <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
-                <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                  Description
-                </Text>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Description
+                  </Text>
+                  {isOrganizer && (
+                    <TouchableOpacity 
+                      style={styles.editButton}
+                      onPress={() => handleEditField('description', event.description)}
+                    >
+                      <Feather name="edit-2" size={16} color="#37a4c8" />
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <Text style={[styles.description, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
                   {event.description}
                 </Text>
@@ -890,12 +1163,20 @@ export default function Event() {
                   </View>
                   <View style={styles.detailContent}>
                     <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      Attendees
+                      Participants
                     </Text>
                     <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                      {event.attendees?.length || 0} people
+                      {event.participantCount || 0} / {event.maxParticipants ? (event.maxParticipants.includes('people') ? event.maxParticipants : `${event.maxParticipants} people`) : '∞ people'}
                     </Text>
                   </View>
+                  {isOrganizer && (
+                    <TouchableOpacity 
+                      style={styles.editButton}
+                      onPress={() => handleEditField('maxParticipants', event.maxParticipants || '4 people')}
+                    >
+                      <Feather name="edit-2" size={14} color="#37a4c8" />
+                    </TouchableOpacity>
+                  )}
                 </View>
                 
                 <View style={[styles.detailItem, { 
@@ -906,33 +1187,36 @@ export default function Event() {
                   borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
                 }]}>
                   <View style={styles.detailIconContainer}>
-                    <MaterialIcons name="flight" size={18} color="#37a4c8" />
+                    <MaterialIcons name="location-on" size={18} color="#37a4c8" />
                   </View>
                   <View style={styles.detailContent}>
                     <Text style={[styles.detailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      Airport
+                      Location
                     </Text>
                     <Text style={[styles.detailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                      {event.airportCode || "Not set"}
+                      {event.location || "Not set"}
                     </Text>
                   </View>
                 </View>
               </View>
 
-              {/* Organizer Section */}
+              {/* Creator Section */}
               <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
                 <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                  {event.organizer ? 'Organized by' : 'Organization'}
+                  {event.creatorId ? 'Created by' : 'Organization'}
                 </Text>
-                {event.organizer ? (
+                {event.creatorId ? (
                   <View style={styles.creatorRow}>
-                    <UserAvatar user={{ name: organizer?.name || 'Unknown' }} size={50} />
+                    <UserAvatar user={{ 
+                      name: organizer?.name || event.creatorName || 'Unknown',
+                      profilePicture: organizer?.profilePicture
+                    }} size={50} />
                     <View style={styles.creatorInfo}>
                       <Text style={[styles.creatorName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                        {organizer?.name || "Unknown"}
+                        {organizer?.name || event.creatorName || "Unknown"}
                       </Text>
                       <Text style={[styles.creatorDate, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                        Organized {formatDateTime(event.organizedAt)}
+                        Created {formatDateTime(event.createdAt)}
                       </Text>
                     </View>
                   </View>
@@ -954,7 +1238,7 @@ export default function Event() {
                   </View>
                 )}
 
-                {event.organizer === null && (
+                {!event.creatorId && (
                   <TouchableOpacity
                     style={styles.becomeOrganizerButton}
                     onPress={confirmOrganizerTakeover}
@@ -974,11 +1258,11 @@ export default function Event() {
                 )}
               </View>
 
-              {/* Attendees Section */}
+              {/* Participants Section */}
               <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
                 <View style={styles.participantsHeader}>
                   <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    Attendees ({event.attendees?.length || 0})
+                    Participants ({event.participantCount || 0})
                   </Text>
                   <TouchableOpacity 
                     style={styles.viewAllButton}
@@ -988,22 +1272,212 @@ export default function Event() {
                   </TouchableOpacity>
                 </View>
                 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.participantsScroll}>
-                  {attendeesList.slice(0, 5).map((attendee, index) => (
-                    <View key={attendee.id || index} style={styles.participantItem}>
-                      <UserAvatar user={attendee} size={40} />
-                      <Text style={[styles.participantName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                        {attendee.name}
+                <View style={styles.participantsContainer}>
+                  {participants.length > 0 ? (
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false} 
+                      contentContainerStyle={styles.participantsScrollContent}
+                      style={styles.participantsScroll}
+                    >
+                      {participants.slice(0, 5).map((participant, index) => (
+                        <View key={participant.id || index} style={styles.participantCard}>
+                          <View style={styles.participantAvatarContainer}>
+                            <UserAvatar user={participant} size={48} />
+                            {participant.id === event.creatorId && (
+                              <View style={[styles.creatorBadge, { 
+                                backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                              }]}>
+                                <MaterialIcons name="star" size={12} color="#FFFFFF" />
+                              </View>
+                            )}
+                          </View>
+                          <Text style={[styles.participantName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]} numberOfLines={1}>
+                            {participant.name}
+                          </Text>
+                          {participant.airportCode && (
+                            <Text style={[styles.participantLocation, { color: theme === "light" ? "#64748B" : "#94A3B8" }]} numberOfLines={1}>
+                              {participant.airportCode}
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                      {participants.length > 5 && (
+                        <View style={styles.moreParticipantsCard}>
+                          <View style={[styles.moreParticipantsAvatar, { 
+                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
+                          }]}>
+                            <Text style={[styles.moreParticipantsText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+                              +{participants.length - 5}
+                            </Text>
+                          </View>
+                          <Text style={[styles.moreParticipantsLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                            More
+                          </Text>
+                        </View>
+                      )}
+                    </ScrollView>
+                  ) : (
+                    <View style={[styles.emptyParticipantsContainer, { 
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(56, 165, 201, 0.05)",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                    }]}>
+                      <View style={[styles.emptyParticipantsIcon, { 
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                      }]}>
+                        <MaterialIcons name="people-outline" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                      </View>
+                      <Text style={[styles.emptyParticipantsText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        No participants yet
+                      </Text>
+                      <Text style={[styles.emptyParticipantsSubtext, { color: theme === "light" ? "#94A3B8" : "#64748B" }]}>
+                        Be the first to join this event!
                       </Text>
                     </View>
-                  ))}
-                  {attendeesList.length === 0 && (
-                    <Text style={[styles.noParticipants, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      No attendees yet
-                    </Text>
                   )}
-                </ScrollView>
+                </View>
               </View>
+
+              {/* Event Details Section */}
+              <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                  Event Details
+                </Text>
+                
+                <View style={styles.eventDetailsGrid}>
+                  <View style={[styles.eventDetailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.eventDetailHeader}>
+                      <MaterialIcons name="schedule" size={16} color="#37a4c8" />
+                      <Text style={[styles.eventDetailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Duration
+                      </Text>
+                      {isOrganizer && (
+                        <TouchableOpacity 
+                          style={styles.editButton}
+                          onPress={() => handleEditField('duration', event.duration || '1 hour')}
+                        >
+                          <Feather name="edit-2" size={12} color="#37a4c8" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <Text style={[styles.eventDetailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {event.duration || "Not set"}
+                    </Text>
+                  </View>
+                  
+                  <View style={[styles.eventDetailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.eventDetailHeader}>
+                      <MaterialIcons name="visibility" size={16} color="#37a4c8" />
+                      <Text style={[styles.eventDetailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Visibility
+                      </Text>
+                      {isOrganizer && (
+                        <TouchableOpacity 
+                          style={styles.editButton}
+                          onPress={() => handleEditField('visibilityRadius', event.visibilityRadius || '10 miles')}
+                        >
+                          <Feather name="edit-2" size={12} color="#37a4c8" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <Text style={[styles.eventDetailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {event.visibilityRadius || "Not set"}
+                    </Text>
+                  </View>
+                  
+                  <View style={[styles.eventDetailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.eventDetailHeader}>
+                      <MaterialIcons name="category" size={16} color="#37a4c8" />
+                      <Text style={[styles.eventDetailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Template
+                      </Text>
+                    </View>
+                    <Text style={[styles.eventDetailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {event.template || "Not set"}
+                    </Text>
+                  </View>
+                  
+                  <View style={[styles.eventDetailItem, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"
+                  }]}>
+                    <View style={styles.eventDetailHeader}>
+                      <MaterialIcons name="public" size={16} color="#37a4c8" />
+                      <Text style={[styles.eventDetailLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                        Type
+                      </Text>
+                      {isOrganizer && (
+                        <TouchableOpacity 
+                          style={styles.editButton}
+                          onPress={() => setShowPrivacyModal(true)}
+                        >
+                          <Feather name="settings" size={12} color="#37a4c8" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <Text style={[styles.eventDetailText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {getPrivacyTypeLabel(event.pingType || 'open')}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Connection Intents Section */}
+              {event.connectionIntents && event.connectionIntents.length > 0 && (
+                <View style={[styles.section, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+                  <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Connection Goals
+                  </Text>
+                  <View style={styles.intentsContainer}>
+                    {event.connectionIntents.map((intent, index) => (
+                      <View key={index} style={[styles.intentChip, {
+                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)",
+                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.25)"
+                      }]}>
+                        <Text style={[styles.intentText, { color: "#37a4c8" }]}>
+                          {intent}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Directions Button */}
+              {event.coordinates && (isAttending || isOrganizer) && (
+                <TouchableOpacity 
+                  style={styles.directionsButton}
+                  onPress={handleGetDirections}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.directionsButtonGradient,
+                    { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+                  ]}>
+                    <MaterialIcons 
+                      name="directions" 
+                      size={20} 
+                      color={theme === "light" ? "#0F172A" : "#e4fbfe"} 
+                    />
+                    <Text style={[
+                      styles.directionsButtonText,
+                      { color: theme === "light" ? "#0F172A" : "#e4fbfe" }
+                    ]}>
+                      Get Directions
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {/* Action Buttons */}
               <View style={styles.bottomButtons}>
@@ -1057,7 +1531,7 @@ export default function Event() {
                         ? "Processing..."
                         : isAttending
                         ? "Leave Event"
-                        : !event.organizer
+                        : !event.creatorId
                         ? "Need Organizer"
                         : "Attend Event"}
                     </Text>
@@ -1066,7 +1540,7 @@ export default function Event() {
               </View>
 
               {/* Report Button */}
-              {authUser && event.organizer !== authUser.uid && (
+              {authUser && event.creatorId !== authUser.uid && (
                 <View style={styles.reportButtonContainer}>
                   <TouchableOpacity
                     style={[styles.reportButton, { 
@@ -1097,6 +1571,241 @@ export default function Event() {
           isDarkModeEnabled={theme === "dark"}
           buttonTextColorIOS="#37a4c8"
         />
+
+        {/* Selection Modal */}
+        <Modal 
+          visible={showSelectionModal} 
+          animationType="slide" 
+          transparent={true}
+          onRequestClose={() => setShowSelectionModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.editModalContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+              <View style={[styles.editModalHeader, { 
+                borderBottomColor: theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)" 
+              }]}>
+                <View style={styles.inviteModalHeaderContent}>
+                  <Text style={[styles.editModalTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Select {selectionType ? getFieldDisplayName(selectionType) : 'Option'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.closeButton, { 
+                    backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)" 
+                  }]}
+                  onPress={() => setShowSelectionModal(false)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.editModalBody}>
+                <ScrollView 
+                  style={styles.selectionOptionsContainer}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.selectionOptionsScrollContent}
+                >
+                {selectionOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.selectionOption,
+                      {
+                        backgroundColor: option.id === editValue 
+                          ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"),
+                        borderColor: option.id === editValue 
+                          ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)")
+                      }
+                    ]}
+                    onPress={() => handleSelection(option.id)}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[
+                      styles.selectionOptionText,
+                      {
+                        color: option.id === editValue 
+                          ? "#FFFFFF"
+                          : (theme === "light" ? "#37a4c8" : "#38a5c9")
+                      }
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                </ScrollView>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Edit Modal */}
+        <Modal 
+          visible={showEditModal} 
+          animationType="slide" 
+          transparent={true}
+          onRequestClose={() => setShowEditModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.editModalContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+              <View style={[styles.editModalHeader, { 
+                borderBottomColor: theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)" 
+              }]}>
+                <View style={styles.inviteModalHeaderContent}>
+                  <Text style={[styles.editModalTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Edit {editingField ? getFieldDisplayName(editingField) : 'Field'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.closeButton, { 
+                    backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)" 
+                  }]}
+                  onPress={() => setShowEditModal(false)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.editModalBody}>
+                {editingField === 'duration' || editingField === 'maxParticipants' || editingField === 'visibilityRadius' ? (
+                  <View style={[styles.editInput, { 
+                    backgroundColor: theme === "light" ? "#f8f9fa" : "#2a2a2a",
+                    borderColor: theme === "light" ? "#e2e8f0" : "#404040",
+                    justifyContent: 'center'
+                  }]}>
+                    <Text style={[styles.editValueText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      {editValue}
+                    </Text>
+                  </View>
+                ) : (
+                  <TextInput
+                    style={[styles.editInput, { 
+                      backgroundColor: theme === "light" ? "#f8f9fa" : "#2a2a2a",
+                      color: theme === "light" ? "#0F172A" : "#e4fbfe",
+                      borderColor: theme === "light" ? "#e2e8f0" : "#404040"
+                    }]}
+                    value={editValue}
+                    onChangeText={setEditValue}
+                    multiline={editingField === 'description'}
+                    numberOfLines={editingField === 'description' ? 4 : 1}
+                    placeholder={`Enter ${editingField ? getFieldDisplayName(editingField).toLowerCase() : 'value'}...`}
+                    placeholderTextColor={theme === "light" ? "#94A3B8" : "#64748B"}
+                  />
+                )}
+                
+                <View style={styles.editModalButtons}>
+                  <TouchableOpacity 
+                    style={[styles.editModalButton, styles.cancelButton]} 
+                    onPress={() => setShowEditModal(false)}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.editModalButton, styles.saveButton]} 
+                    onPress={handleSaveEdit}
+                  >
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Privacy Settings Modal */}
+        <Modal 
+          visible={showPrivacyModal} 
+          animationType="slide" 
+          transparent={true}
+          onRequestClose={() => setShowPrivacyModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.editModalContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+              <View style={[styles.editModalHeader, { 
+                borderBottomColor: theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)" 
+              }]}>
+                <View style={styles.inviteModalHeaderContent}>
+                  <Text style={[styles.editModalTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Privacy Settings
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.closeButton, { 
+                    backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)" 
+                  }]}
+                  onPress={() => setShowPrivacyModal(false)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.editModalBody}>
+                <Text style={[styles.privacyDescription, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                  Choose who can join this event
+                </Text>
+                
+                <ScrollView 
+                  style={styles.selectionOptionsContainer}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.selectionOptionsScrollContent}
+                >
+                {privacyOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.privacyOption,
+                      {
+                        backgroundColor: option.id === event?.pingType 
+                          ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"),
+                        borderColor: option.id === event?.pingType 
+                          ? (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          : (theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)")
+                      }
+                    ]}
+                    onPress={() => handlePrivacyChange(option.id)}
+                    activeOpacity={0.6}
+                  >
+                    <View style={styles.privacyOptionContent}>
+                      <View style={styles.privacyOptionHeader}>
+                        <MaterialIcons 
+                          name={option.icon as any} 
+                          size={20} 
+                          color={option.id === event?.pingType ? "#FFFFFF" : "#37a4c8"} 
+                        />
+                        <Text style={[
+                          styles.privacyOptionTitle,
+                          {
+                            color: option.id === event?.pingType 
+                              ? "#FFFFFF"
+                              : (theme === "light" ? "#37a4c8" : "#38a5c9")
+                          }
+                        ]}>
+                          {option.label}
+                        </Text>
+                      </View>
+                      <Text style={[
+                        styles.privacyOptionDescription,
+                        {
+                          color: option.id === event?.pingType 
+                            ? "rgba(255, 255, 255, 0.8)"
+                            : (theme === "light" ? "#64748B" : "#94A3B8")
+                        }
+                      ]}>
+                        {option.description}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                </ScrollView>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {renderAttendeesModal()}
       </LinearGradient>
@@ -1464,10 +2173,12 @@ const styles = StyleSheet.create({
   },
 
   titleSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: 20,
     borderRadius: 20,
     marginBottom: 16,
-    padding: 20,
-    borderWidth: 1,
     elevation: 4,
     shadowColor: "#37a4c8",
     shadowOffset: { width: 0, height: 2 },
@@ -1509,10 +2220,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   section: {
+    padding: 20,
     borderRadius: 20,
     marginBottom: 16,
-    padding: 20,
-    borderWidth: 1,
     elevation: 4,
     shadowColor: "#37a4c8",
     shadowOffset: { width: 0, height: 2 },
@@ -1590,5 +2300,314 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  eventDetailsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  eventDetailItem: {
+    width: '48%',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 6,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  eventDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  eventDetailLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  eventDetailText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  intentsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  intentChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  intentText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  participantsContainer: {
+    flex: 1,
+  },
+  participantsScrollContent: {
+    paddingHorizontal: 20,
+  },
+  participantCard: {
+    alignItems: 'center',
+    marginRight: 16,
+    minWidth: 120,
+    paddingVertical: 8,
+  },
+  participantAvatarContainer: {
+    position: 'relative',
+    marginBottom: 8,
+    paddingTop: 4,
+  },
+  creatorBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#37a4c8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  participantLocation: {
+    fontSize: 12,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  moreParticipantsCard: {
+    alignItems: 'center',
+    marginRight: 16,
+    minWidth: 120,
+    paddingVertical: 8,
+  },
+  moreParticipantsAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  moreParticipantsText: {
+    color: '#37a4c8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  moreParticipantsLabel: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  emptyParticipantsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginTop: 20,
+  },
+  emptyParticipantsIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyParticipantsText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptyParticipantsSubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  // Edit functionality styles
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editModalContent: {
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '85%',
+    borderRadius: 20,
+    padding: 0,
+    elevation: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    overflow: 'hidden',
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+  },
+  editModalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+    flex: 1,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    marginBottom: 20,
+    minHeight: 50,
+  },
+  editModalBody: {
+    maxHeight: 450,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+  },
+  inviteModalHeaderContent: {
+    flex: 1,
+    marginRight: 16,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  editValueText: {
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  editModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  editModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(55, 164, 200, 0.2)',
+  },
+  saveButton: {
+    backgroundColor: '#37a4c8',
+  },
+  cancelButtonText: {
+    color: '#37a4c8',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectionOptionsContainer: {
+    maxHeight: 300,
+  },
+  selectionOptionsScrollContent: {
+    paddingBottom: 24,
+  },
+  selectionOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  selectionOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  // Privacy modal styles
+  privacyDescription: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  privacyOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  privacyOptionContent: {
+    gap: 8,
+  },
+  privacyOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  privacyOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  privacyOptionDescription: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 18,
+  },
+  directionsButton: {
+    width: '100%',
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 4,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(55, 164, 200, 0.1)',
+  },
+  directionsButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+  },
+  directionsButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 });

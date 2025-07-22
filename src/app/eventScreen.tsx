@@ -131,8 +131,8 @@ export default function EventScreen() {
   const [allAirports, setAllAirports] = useState<Airport[]>([]);
   const { theme } = React.useContext(ThemeContext);
   const [mapRegion, setMapRegion] = useState({
-    latitude: 39.8283,
-    longitude: -98.5795,
+    latitude: 40.7128, // Default to NYC until we get user's actual coordinates
+    longitude: -74.0060,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });

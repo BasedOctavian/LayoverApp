@@ -32,6 +32,28 @@ interface PingActivity {
   status: string;
   createdAt: any;
   connectionIntents: string[];
+  type?: 'ping';
+}
+
+interface EventActivity {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  location: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  creatorName: string;
+  creatorId: string;
+  startTime: any;
+  participantCount: number;
+  maxParticipants?: string;
+  status: string;
+  createdAt: any;
+  eventImage?: string;
+  type?: 'event';
 }
 
 interface ActivityCardProps {
@@ -120,6 +142,41 @@ const formatTimeAgo = (timestamp: any): string => {
   return created.toLocaleDateString();
 };
 
+// Helper to calculate ping end time from createdAt and duration
+const getPingEndTime = (createdAt: any, duration: string): Date | null => {
+  if (!createdAt || !duration) return null;
+  
+  let start: Date;
+  if (typeof createdAt === 'string' || createdAt instanceof String) {
+    start = new Date(createdAt as string);
+  } else if (createdAt?.toDate) {
+    start = createdAt.toDate();
+  } else if (createdAt instanceof Date) {
+    start = createdAt;
+  } else {
+    return null;
+  }
+  
+  let minutes = 0;
+  const d = duration.trim().toLowerCase();
+  
+  if (d.endsWith('h')) {
+    minutes = parseFloat(d) * 60;
+  } else if (d.endsWith('m')) {
+    minutes = parseFloat(d);
+  } else if (d.includes('hour')) {
+    // e.g. '1 hour', '2 hours'
+    const match = d.match(/(\d+(?:\.\d+)?)/);
+    if (match) minutes = parseFloat(match[1]) * 60;
+  } else if (d.includes('all day')) {
+    minutes = 24 * 60; // 24 hours
+  } else if (!isNaN(Number(d))) {
+    minutes = Number(d);
+  }
+  
+  return new Date(start.getTime() + minutes * 60000);
+};
+
 const ModernLoadingDot = ({ color }: { color: string }) => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -181,7 +238,9 @@ const ModernLoadingDot = ({ color }: { color: string }) => {
 export default function ActivityCard({ userLocation, userId, isCollapsed, onToggleCollapse }: ActivityCardProps) {
   const { theme } = React.useContext(ThemeContext);
   const router = useRouter();
-  const [activities, setActivities] = useState<PingActivity[]>([]);
+  const [pings, setPings] = useState<PingActivity[]>([]);
+  const [events, setEvents] = useState<EventActivity[]>([]);
+  const [activities, setActivities] = useState<(PingActivity | EventActivity)[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -192,74 +251,154 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
   const cardScale = useRef(new Animated.Value(1)).current;
   const cardOpacity = useRef(new Animated.Value(1)).current;
 
+  // Fetch pings
   useEffect(() => {
     if (!userLocation) {
       setLoading(false);
       return;
     }
-
     const unsubscribe = onSnapshot(
       query(
         collection(db, 'pings'),
         where('status', '==', 'active'),
         orderBy('createdAt', 'desc'),
-        limit(5)
+        limit(10)
       ),
       (snapshot) => {
         try {
-          const activitiesData = snapshot.docs.map(doc => ({
+          const pingsData = snapshot.docs.map(doc => ({
             id: doc.id,
-            ...doc.data()
+            ...doc.data(),
+            type: 'ping',
           })) as PingActivity[];
-
-          // Filter activities within 50 miles and sort by distance
-          const nearbyActivities = activitiesData
-            .filter(activity => {
-              if (!activity.coordinates) return false;
-              const distanceKm = haversineDistance(
-                userLocation.lat,
-                userLocation.long,
-                activity.coordinates.latitude,
-                activity.coordinates.longitude
-              );
-              const distanceMiles = distanceKm * 0.621371;
-              return distanceMiles <= 50;
-            })
-            .sort((a, b) => {
-              if (!a.coordinates || !b.coordinates) return 0;
-              const distanceA = haversineDistance(
-                userLocation.lat,
-                userLocation.long,
-                a.coordinates.latitude,
-                a.coordinates.longitude
-              );
-              const distanceB = haversineDistance(
-                userLocation.lat,
-                userLocation.long,
-                b.coordinates.latitude,
-                b.coordinates.longitude
-              );
-              return distanceA - distanceB;
-            })
-            .slice(0, 3); // Show only top 3 closest activities
-
-          setActivities(nearbyActivities);
-          setLoading(false);
+          // Filter by distance and time
+          const now = new Date();
+          const filtered = pingsData.filter(activity => {
+            if (!activity.coordinates) return false;
+            
+            // Check distance
+            const distanceKm = haversineDistance(
+              userLocation.lat,
+              userLocation.long,
+              activity.coordinates.latitude,
+              activity.coordinates.longitude
+            );
+            const distanceMiles = distanceKm * 0.621371;
+            if (distanceMiles > 50) return false;
+            
+            // Check if ping is still active based on duration
+            const endTime = getPingEndTime(activity.createdAt, activity.duration);
+            if (!endTime) return false; // Skip if we can't calculate end time
+            
+            // Add a small buffer (30 minutes) to allow for some flexibility
+            const bufferMs = 30 * 60 * 1000; // 30 minutes in milliseconds
+            const isStillActive = now.getTime() < (endTime.getTime() + bufferMs);
+            
+            if (!isStillActive) {
+              console.log('[ActivityCard] Ping expired:', activity.title, 'End time:', endTime, 'Now:', now);
+            }
+            
+            return isStillActive;
+          });
+          setPings(filtered);
         } catch (err) {
-          console.error('Error processing activities:', err);
-          setError('Failed to load activities');
-          setLoading(false);
+          setError('Failed to load pings');
         }
       },
       (err) => {
-        console.error('Error fetching activities:', err);
-        setError('Failed to load activities');
-        setLoading(false);
+        setError('Failed to load pings');
       }
     );
-
     return () => unsubscribe();
   }, [userLocation]);
+
+  // Fetch events
+  useEffect(() => {
+    if (!userLocation) return;
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, 'events'),
+        where('status', '==', 'active'),
+        orderBy('createdAt', 'desc'),
+        limit(10)
+      ),
+      (snapshot) => {
+        try {
+          console.log('[ActivityCard] Events snapshot size:', snapshot.size);
+          const eventsData = snapshot.docs.map(doc => {
+            const data = doc.data();
+            console.log('[ActivityCard] Event doc:', doc.id, data);
+            return {
+              id: doc.id,
+              title: data.name || data.title || '',
+              description: (data.description || '').trim(),
+              category: data.category || '',
+              location: data.location || '',
+              coordinates: data.coordinates || (data.latitude && data.longitude ? { latitude: data.latitude, longitude: data.longitude } : undefined),
+              creatorName: data.organizerName || data.creatorName || '',
+              creatorId: data.organizer || data.creatorId || '',
+              startTime: data.startTime,
+              participantCount: Array.isArray(data.attendees) ? data.attendees.length : (data.participantCount || 0),
+              maxParticipants: data.maxParticipants || '',
+              status: data.status || '',
+              createdAt: data.createdAt,
+              eventImage: data.eventImage,
+              type: 'event',
+            } as EventActivity;
+          });
+          // Filter by distance and time
+          const now = new Date();
+          const filtered = eventsData.filter(event => {
+            if (!event.coordinates) {
+              console.log('[ActivityCard] Event missing coordinates:', event);
+              return false;
+            }
+            const distanceKm = haversineDistance(
+              userLocation.lat,
+              userLocation.long,
+              event.coordinates.latitude,
+              event.coordinates.longitude
+            );
+            const distanceMiles = distanceKm * 0.621371;
+            let isUpcoming = true;
+            if (event.startTime) {
+              const start = event.startTime.toDate ? event.startTime.toDate() : new Date(event.startTime);
+              isUpcoming = start > now;
+              if (!isUpcoming) {
+                console.log('[ActivityCard] Event expired:', event.title, start, now);
+              }
+            }
+            if (distanceMiles > 50) {
+              console.log('[ActivityCard] Event too far:', event.title, distanceMiles, 'miles');
+            }
+            return distanceMiles <= 50 && isUpcoming;
+          });
+          console.log('[ActivityCard] Filtered events:', filtered);
+          setEvents(filtered);
+        } catch (err) {
+          console.error('[ActivityCard] Error processing events:', err);
+          setError('Failed to load events');
+        }
+      },
+      (err) => {
+        console.error('[ActivityCard] Error fetching events:', err);
+        setError('Failed to load events');
+      }
+    );
+    return () => unsubscribe();
+  }, [userLocation]);
+
+  // Merge and sort activities
+  useEffect(() => {
+    // Combine, sort by createdAt/startTime (most recent/upcoming first)
+    const combined = [...pings, ...events].sort((a, b) => {
+      const aTime = a.type === 'event' ? (a.startTime ? (a.startTime.toDate ? a.startTime.toDate() : new Date(a.startTime)) : (a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt))) : (a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt));
+      const bTime = b.type === 'event' ? (b.startTime ? (b.startTime.toDate ? b.startTime.toDate() : new Date(b.startTime)) : (b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt))) : (b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt));
+      return bTime.getTime() - aTime.getTime();
+    });
+    setActivities(combined.slice(0, 3)); // Show top 3
+    setLoading(false);
+  }, [pings, events]);
 
   // Auto-scroll effect - changed to 10 seconds
   useEffect(() => {
@@ -351,6 +490,10 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
     setShowPingModal(false);
   };
 
+  const handleCreateEvent = () => {
+    router.push('/eventCreation');
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, { 
@@ -360,7 +503,7 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
         <View style={styles.loadingContainer}>
           <ModernLoadingDot color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
           <Text style={[styles.loadingText, { color: theme === "light" ? "#000000" : "#64748B" }]}>
-            Finding activities...
+            Discovering what's happening nearby...
           </Text>
         </View>
       </View>
@@ -387,11 +530,12 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
     );
   }
 
-  const renderActivity = (activity: PingActivity) => {
+  const renderActivity = (activity: PingActivity | EventActivity) => {
     const distance = activity.coordinates && userLocation 
       ? formatDistance(userLocation.lat, userLocation.long, activity.coordinates.latitude, activity.coordinates.longitude)
       : null;
-
+    const isPing = activity.type === 'ping';
+    const isEvent = activity.type === 'event';
     return (
       <View style={styles.activityWrapper}>
         <TouchableOpacity
@@ -399,25 +543,33 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
             backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
             borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
           }]}
-          onPress={() => router.push(`/ping/${activity.id}`)}
+          onPress={() => router.push(isPing ? `/ping/${activity.id}` : `/event/${activity.id}`)}
           activeOpacity={0.9}
         >
-          {/* Header with gradient background */}
+          {/* Header with enhanced gradient background */}
           <LinearGradient
             colors={theme === "light" 
-              ? ['rgba(55, 164, 200, 0.1)', 'rgba(55, 164, 200, 0.05)'] 
-              : ['rgba(56, 165, 201, 0.1)', 'rgba(56, 165, 201, 0.05)']
+              ? ['rgba(55, 164, 200, 0.15)', 'rgba(55, 164, 200, 0.08)', 'rgba(55, 164, 200, 0.02)'] 
+              : ['rgba(56, 165, 201, 0.15)', 'rgba(56, 165, 201, 0.08)', 'rgba(56, 165, 201, 0.02)']
             }
             style={styles.activityHeaderGradient}
           >
             <View style={styles.activityHeader}>
               <View style={[styles.activityIconContainer, {
-                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(56, 165, 201, 0.15)"
-              }]}>
-                {getTemplateIcon(activity.template)}
+                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
+              }]}> 
+                <LinearGradient
+                  colors={theme === "light" 
+                    ? ['rgba(55, 164, 200, 0.3)', 'rgba(55, 164, 200, 0.1)'] 
+                    : ['rgba(56, 165, 201, 0.3)', 'rgba(56, 165, 201, 0.1)']
+                  }
+                  style={styles.iconGradient}
+                >
+                  {isPing ? getTemplateIcon((activity as PingActivity).template) : <Ionicons name="calendar" size={20} color="#38a5c9" />}
+                </LinearGradient>
               </View>
               <View style={styles.activityInfo}>
-                <Text style={[styles.activityTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]} numberOfLines={2}>
+                <Text style={[styles.activityTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]} numberOfLines={1} ellipsizeMode="tail">
                   {activity.title}
                 </Text>
                 <Text style={[styles.activityCreator, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]} numberOfLines={1}>
@@ -426,27 +578,33 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
                 <View style={styles.activityMeta}>
                   {distance && (
                     <View style={[styles.metaBadge, {
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                    }]}>
-                      <Ionicons name="location" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                      <Text style={[styles.distanceText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                        {distance}
-                      </Text>
+                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+                    }]}> 
+                      <Ionicons name="location" size={13} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                      <Text style={[styles.distanceText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}> {distance} </Text>
                     </View>
                   )}
                   <View style={[styles.metaBadge, {
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                  }]}>
-                    <Ionicons name="time" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                    <Text style={[styles.timeText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                      {formatTimeAgo(activity.createdAt)}
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+                  }]}> 
+                    <Ionicons name="time" size={13} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                    <Text style={[styles.timeText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}> 
+                      {isPing ? formatTimeAgo(activity.createdAt) : (activity as EventActivity).startTime ? (() => {
+                        const now = new Date();
+                        const start = (activity as EventActivity).startTime?.toDate ? (activity as EventActivity).startTime.toDate() : new Date((activity as EventActivity).startTime);
+                        const diff = start.getTime() - now.getTime();
+                        if (diff <= 0) return 'Now';
+                        const hours = Math.floor(diff / (1000 * 60 * 60));
+                        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        if (hours > 0) return `${hours}h ${minutes}m`;
+                        return `${minutes}m`;
+                      })() : 'No start time'}
                     </Text>
                   </View>
                 </View>
               </View>
             </View>
           </LinearGradient>
-          
           {/* Description */}
           {activity.description && (
             <View style={styles.descriptionContainer}>
@@ -455,47 +613,72 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
               </Text>
             </View>
           )}
-          
           {/* Footer with category and participants */}
-          <View style={styles.activityFooter}>
-            <View style={[styles.categoryTag, { 
-              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-            }]}>
+          <View style={styles.activityFooterRow}>
+            <View style={[
+              styles.metaBadge,
+              styles.badgeUniform,
+              {
+                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+              }
+            ]}>
               {getCategoryIcon(activity.category)}
-              <Text style={[styles.categoryText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                {activity.category}
-              </Text>
             </View>
-            
-            <View style={[styles.participantInfo, {
-              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-            }]}>
-              <Ionicons name="people" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-              <Text style={[styles.participantText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                {activity.participantCount}/{activity.maxParticipants}
-              </Text>
+            {/* Styled Ping/Event Badge */}
+            <View style={[
+              styles.metaBadge,
+              styles.badgeUniform,
+              {
+                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+              }
+            ]}>
+              <Ionicons name={isPing ? 'flash' : 'calendar'} size={13} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+              <Text style={[
+                styles.participantText,
+                { color: theme === "light" ? "#37a4c8" : "#38a5c9" }
+              ]}>{isPing ? 'PING' : 'EVENT'}</Text>
+            </View>
+            <View style={[
+              styles.metaBadge,
+              styles.badgeUniform,
+              {
+                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
+              }
+            ]}>
+              <Ionicons name="people" size={13} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+              {activity.maxParticipants && String(activity.maxParticipants).toLowerCase().includes('unlimited') ? (
+                <View style={styles.unlimitedContainer}>
+                  <Text
+                    style={[
+                      styles.participantText,
+                      styles.participantTextPolished,
+                      { color: theme === "light" ? "#37a4c8" : "#38a5c9" }
+                    ]}
+                  >
+                    {activity.participantCount}
+                  </Text>
+                  <Ionicons 
+                    name="infinite" 
+                    size={14} 
+                    color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                    style={styles.infiniteIcon}
+                  />
+                </View>
+              ) : (
+                <Text
+                  style={[
+                    styles.participantText,
+                    styles.participantTextPolished,
+                    { color: theme === "light" ? "#37a4c8" : "#38a5c9" }
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {activity.participantCount}{activity.maxParticipants ? `/${String(activity.maxParticipants).replace(/ people/i, '')}` : ''}
+                </Text>
+              )}
             </View>
           </View>
-        </TouchableOpacity>
-
-        {/* Enhanced Create Ping Button */}
-        <TouchableOpacity
-          style={[styles.createPingButton, { 
-            backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-          }]}
-          onPress={handleOpenPingModal}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={theme === "light" 
-              ? ['#37a4c8', '#2d8bb8'] 
-              : ['#38a5c9', '#2d8bb8']
-            }
-            style={styles.createPingGradient}
-          >
-            <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.createPingText}>Create Ping</Text>
-          </LinearGradient>
         </TouchableOpacity>
       </View>
     );
@@ -505,7 +688,7 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
     <View style={[styles.container, { 
       backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
       borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-    }]}>
+    }]}> 
       {activities.length > 0 ? (
         <View style={styles.activityContainer}>
           {/* Swipeable Activity Content */}
@@ -518,8 +701,8 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
               <Animated.View
                 style={{
                   transform: [
-                    { translateX: constrainedTranslateX },
-                    { scale: swipeScale }
+                    { translateX: constrainedTranslateX }
+                    // Removed scale: swipeScale to prevent card resizing
                   ],
                   opacity: swipeOpacity,
                 }}
@@ -533,7 +716,48 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
             </View>
           )}
 
-          {/* Enhanced Pagination Dots */}
+          {/* Always show create buttons below activities */}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={[styles.createButton, { 
+                backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+              }]}
+              onPress={handleOpenPingModal}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={theme === "light" 
+                  ? ['#37a4c8', '#2d8bb8'] 
+                  : ['#38a5c9', '#2d8bb8']
+                }
+                style={styles.createButtonGradient}
+              >
+                <Ionicons name="add-circle" size={20} color="#FFFFFF" />
+                <Text style={styles.createButtonText}>Create Ping</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.createButton, { 
+                backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+              }]}
+              onPress={handleCreateEvent}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={theme === "light" 
+                  ? ['#37a4c8', '#2d8bb8'] 
+                  : ['#38a5c9', '#2d8bb8']
+                }
+                style={styles.createButtonGradient}
+              >
+                <Ionicons name="calendar" size={20} color="#FFFFFF" />
+                <Text style={styles.createButtonText}>Create Event</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          {/* Move pagination dots below the create buttons */}
           {activities.length > 1 && (
             <View style={styles.paginationContainer}>
               {activities.map((_, index) => (
@@ -562,36 +786,57 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
           }]}>
             <Ionicons 
               name="calendar-outline" 
-              size={32} 
+              size={24} 
               color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
             />
           </View>
           <Text style={[styles.emptyText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-            No activities nearby
+            Nothing happening nearby
           </Text>
           <Text style={[styles.emptySubtext, { color: theme === "light" ? "#64748B" : "#64748B" }]}>
-            Create a ping to start connecting!
+            Be the first to create something exciting!
           </Text>
           
-          {/* Enhanced Create Ping Button for empty state */}
-          <TouchableOpacity
-            style={[styles.createPingButton, { 
-              backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-            }]}
-            onPress={handleOpenPingModal}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={theme === "light" 
-                ? ['#37a4c8', '#2d8bb8'] 
-                : ['#38a5c9', '#2d8bb8']
-              }
-              style={styles.createPingGradient}
+          {/* Compact Create Buttons for empty state */}
+          <View style={styles.emptyButtonContainer}>
+            <TouchableOpacity
+              style={[styles.emptyCreateButton, { 
+                backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+              }]}
+              onPress={handleOpenPingModal}
+              activeOpacity={0.8}
             >
-              <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-              <Text style={styles.createPingText}>Create Ping</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+              <LinearGradient
+                colors={theme === "light" 
+                  ? ['#37a4c8', '#2d8bb8'] 
+                  : ['#38a5c9', '#2d8bb8']
+                }
+                style={styles.emptyCreateButtonGradient}
+              >
+                <Ionicons name="add-circle" size={18} color="#FFFFFF" />
+                <Text style={styles.emptyCreateButtonText}>Create Ping</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.emptyCreateButton, { 
+                backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+              }]}
+              onPress={handleCreateEvent}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={theme === "light" 
+                  ? ['#37a4c8', '#2d8bb8'] 
+                  : ['#38a5c9', '#2d8bb8']
+                }
+                style={styles.emptyCreateButtonGradient}
+              >
+                <Ionicons name="calendar" size={18} color="#FFFFFF" />
+                <Text style={styles.emptyCreateButtonText}>Create Event</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -610,31 +855,40 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 28,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    marginBottom: 24,
     borderWidth: 1,
-    elevation: 8,
+    borderColor: 'rgba(56, 165, 201, 0.13)',
+    elevation: 6,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.13,
+    shadowRadius: 18,
   },
   activityContainer: {
     position: 'relative',
+    width: '100%',
   },
   activityWrapper: {
     position: 'relative',
+    width: '100%',
+    height: 260, // Fixed height for consistent card size
   },
   activityItem: {
-    borderRadius: 20,
+    borderRadius: 22,
     overflow: 'hidden',
-    elevation: 4,
+    elevation: 3,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.10,
+    shadowRadius: 7,
     borderWidth: 1,
+    borderColor: 'rgba(56, 165, 201, 0.10)',
+    marginBottom: 8,
+    width: '100%',
+    height: 260, // Fixed height for consistent card size
   },
   activityHeaderGradient: {
     padding: 20,
@@ -651,22 +905,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
-    elevation: 2,
+    elevation: 3,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    overflow: 'hidden',
+  },
+  iconGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
   },
   activityInfo: {
     flex: 1,
     marginRight: 12,
+    flexShrink: 1, // Allow container to shrink if needed
   },
   activityTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginBottom: 6,
-    lineHeight: 24,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginBottom: 8,
+    lineHeight: 22, // Reduced line height to prevent wrapping
   },
   activityCreator: {
     fontSize: 14,
@@ -682,24 +945,29 @@ const styles = StyleSheet.create({
   metaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 5,
+    elevation: 1,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   distanceText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.1,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   timeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.1,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   descriptionContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 18,
   },
   activityDescription: {
     fontSize: 15,
@@ -715,43 +983,71 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingTop: 12,
   },
+  activityFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10, // Polished, even spacing between badges
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingTop: 12,
+    justifyContent: 'space-between',
+  },
   categoryTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    gap: 7,
+    elevation: 1,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   categoryText: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.1,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   participantInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    gap: 5,
+    elevation: 1,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   participantText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.1,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
-  createPingButton: {
-    marginTop: 16,
-    borderRadius: 16,
+  buttonContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 28,
+    marginBottom: 10,
+    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createButton: {
+    flex: 1,
+    borderRadius: 18,
     overflow: 'hidden',
-    elevation: 4,
+    elevation: 6,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
   },
-  createPingGradient: {
+  createButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -759,7 +1055,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 8,
   },
-  createPingText: {
+  createButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
@@ -769,13 +1065,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 18,
     gap: 10,
+    marginBottom: 2,
   },
   paginationDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+  divider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: 'rgba(56, 165, 201, 0.10)',
+    marginTop: 18,
+    marginBottom: 2,
+    alignSelf: 'center',
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -803,29 +1108,62 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 28,
     gap: 16,
   },
   emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.2,
     textAlign: 'center',
   },
   emptySubtext: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '400',
     letterSpacing: 0.2,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  emptyButtonContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 20,
+    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCreateButton: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  emptyCreateButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    gap: 7,
+  },
+  emptyCreateButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
   loadingIndicatorContainer: {
     alignItems: 'center',
@@ -835,5 +1173,33 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
+  },
+  participantBadgePolished: {
+    minWidth: 44,
+    // Remove maxWidth to allow auto width for all values
+    flexShrink: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  participantTextPolished: {
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'], // Monospace numbers for better alignment (if supported)
+  },
+  badgeUniform: {
+    flex: 1,
+    height: 36,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 0, // Ensures flex works well in row
+  },
+  unlimitedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  infiniteIcon: {
+    marginLeft: 2,
   },
 }); 
