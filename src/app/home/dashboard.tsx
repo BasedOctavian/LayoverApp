@@ -618,6 +618,7 @@ export default function Dashboard() {
   const textFadeAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const displayTextRef = useRef<string>("");
 
   // FAB expansion state and animations
   const [fabExpanded, setFabExpanded] = useState(false);
@@ -716,6 +717,7 @@ export default function Dashboard() {
     }).start(() => {
       // Change text
       setDisplayText(newText);
+      displayTextRef.current = newText;
       // Wait 0.3 seconds before fading in
       setTimeout(() => {
         Animated.timing(textFadeAnim, {
@@ -742,7 +744,9 @@ export default function Dashboard() {
     }
 
     // Set initial text to mood status with prefix
-    setDisplayText(`Current status: ${userData.moodStatus}`);
+    const initialText = `Current status: ${userData.moodStatus}`;
+    setDisplayText(initialText);
+    displayTextRef.current = initialText;
     setIsShowingRandom(false);
 
     // Trigger glow and scale animation for initial load
@@ -782,8 +786,11 @@ export default function Dashboard() {
     }
 
     const interval = setInterval(() => {
+      // Use ref to get current text without causing re-renders
+      const currentText = displayTextRef.current;
+      
       // If current text starts with "Current status:", show random message
-      if (displayText.startsWith("Current status:")) {
+      if (currentText.startsWith("Current status:")) {
         const randomIndex = Math.floor(Math.random() * randomMessages.length);
         transitionText(randomMessages[randomIndex]);
       } else {
@@ -793,7 +800,7 @@ export default function Dashboard() {
     }, 10000); // 10 seconds
 
     return () => clearInterval(interval);
-  }, [userData?.moodStatus, displayText, transitionText]);
+  }, [userData?.moodStatus, transitionText, randomMessages]);
 
   const hasUpdatedRef = useRef(false);
   const [scrollY] = useState(new Animated.Value(0));
@@ -1030,7 +1037,7 @@ export default function Dashboard() {
       }
     };
     fetchNearbyUsers();
-  }, [userId, getNearbyUsers, userLocation, getUsers]);
+  }, [userId, userLocation, getUsers]);
 
   // Update loading state based on users loading status
   useEffect(() => {
@@ -1311,56 +1318,64 @@ export default function Dashboard() {
   // Add state to track if profile completion has been checked
   const [profileCompletionChecked, setProfileCompletionChecked] = useState(false);
 
+  // Separate effect for profile completion check (runs only once)
+  useEffect(() => {
+    if (!userId || profileCompletionChecked) return;
+
+    const checkProfileCompletion = async () => {
+      try {
+        // Check if we've already verified this user's profile completion
+        const storageKey = `profileComplete_${userId}`;
+        const storedCompletionStatus = await AsyncStorage.getItem(storageKey);
+        
+        if (storedCompletionStatus === 'true') {
+          // Profile was previously verified as complete, skip check
+          console.log('✅ Dashboard - Profile completion previously verified, skipping check');
+          setProfileCompletionChecked(true);
+          return;
+        }
+        
+        // Get current user data to check profile completion
+        const userRef = doc(db, "users", userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const data = userDoc.data() as UserData;
+          console.log('🔄 Dashboard - Checking profile completion...');
+          
+          // Check profile completion
+          const isComplete = isProfileComplete(data);
+          
+          if (!isComplete) {
+            console.log('🔄 Dashboard - Profile incomplete, redirecting to /profileComplete');
+            router.replace("/profileComplete");
+          } else {
+            console.log('✅ Dashboard - Profile complete, saving to storage');
+            // Save completion status to AsyncStorage
+            await AsyncStorage.setItem(storageKey, 'true');
+            setProfileCompletionChecked(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking profile completion status:', error);
+        // Mark as checked to prevent infinite retries
+        setProfileCompletionChecked(true);
+      }
+    };
+
+    checkProfileCompletion();
+  }, [userId, profileCompletionChecked]);
+
+  // Separate effect for real-time user data updates
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     
     if (userId) {
       const userRef = doc(db, "users", userId);
-      unsubscribe = onSnapshot(userRef, async (doc) => {
+      unsubscribe = onSnapshot(userRef, (doc) => {
         if (doc.exists()) {
           const data = doc.data() as UserData;
           setUserData(data);
-          
-          // Only check profile completion once per device
-          if (!profileCompletionChecked && data) {
-            console.log('🔄 Dashboard - Checking profile completion...');
-            
-            // Check if we've already verified this user's profile completion
-            const storageKey = `profileComplete_${userId}`;
-            try {
-              const storedCompletionStatus = await AsyncStorage.getItem(storageKey);
-              
-              if (storedCompletionStatus === 'true') {
-                // Profile was previously verified as complete, skip check
-                console.log('✅ Dashboard - Profile completion previously verified, skipping check');
-                setProfileCompletionChecked(true);
-                return;
-              }
-              
-              // Check profile completion
-              const isComplete = isProfileComplete(data);
-              
-              if (!isComplete) {
-                console.log('🔄 Dashboard - Profile incomplete, redirecting to /profileComplete');
-                router.replace("/profileComplete");
-              } else {
-                console.log('✅ Dashboard - Profile complete, saving to storage');
-                // Save completion status to AsyncStorage
-                await AsyncStorage.setItem(storageKey, 'true');
-                setProfileCompletionChecked(true);
-              }
-            } catch (error) {
-              console.error('Error checking profile completion status:', error);
-              // Fallback to checking without storage
-              if (!isProfileComplete(data)) {
-                console.log('🔄 Dashboard - Profile incomplete, redirecting to /profileComplete');
-                router.replace("/profileComplete");
-              } else {
-                console.log('✅ Dashboard - Profile complete');
-                setProfileCompletionChecked(true);
-              }
-            }
-          }
         }
       });
     }
@@ -1370,7 +1385,7 @@ export default function Dashboard() {
         unsubscribe();
       }
     };
-  }, [userId, router, profileCompletionChecked]);
+  }, [userId]);
 
 
 

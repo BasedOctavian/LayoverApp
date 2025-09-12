@@ -39,11 +39,6 @@ import Animated, {
   Easing,
   withRepeat,
 } from "react-native-reanimated";
-import {
-  Gesture,
-  GestureDetector,
-  PanGestureHandler,
-} from "react-native-gesture-handler";
 import { ThemeContext } from "../context/ThemeContext";
 import TopBar from "../components/TopBar";
 import useNotificationCount from "../hooks/useNotificationCount";
@@ -113,6 +108,10 @@ interface User {
     prefersActiveLifestyles: boolean;
     prefersIntellectualDiscussions: boolean;
   };
+  lastKnownCoordinates?: {
+    latitude: number;
+    longitude: number;
+  }; // Location data for proximity calculation
 }
 
 interface Connection {
@@ -127,487 +126,24 @@ const IMAGE_HEIGHT = CARD_HEIGHT * 0.54;
 
 
 
-// Memoized DataToggle component
-const MemoizedDataToggle = React.memo(({ 
-  useFakeData, 
-  isTestLoading, 
-  setUseFakeData, 
-  setIsTestLoading,
-  theme 
-}: { 
-  useFakeData: boolean;
-  isTestLoading: boolean;
-  setUseFakeData: (value: boolean) => void;
-  setIsTestLoading: (value: boolean) => void;
-  theme: "light" | "dark";
-}) => (
-  <View style={styles.dataToggleContainer}>
-    <TouchableOpacity 
-      style={[
-        styles.dataToggleButton,
-        !useFakeData && !isTestLoading && styles.dataToggleButtonActive,
-        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
-      ]}
-      onPress={() => {
-        setUseFakeData(false);
-        setIsTestLoading(false);
-      }}
-    >
-      <MaterialIcons name="people" size={20} color={!useFakeData && !isTestLoading ? "#37a4c8" : "#64748B"} />
-      <Text style={[
-        styles.dataToggleText,
-        { color: !useFakeData && !isTestLoading ? "#37a4c8" : "#64748B" }
-      ]}>Real Users</Text>
-    </TouchableOpacity>
-    <TouchableOpacity 
-      style={[
-        styles.dataToggleButton,
-        useFakeData && !isTestLoading && styles.dataToggleButtonActive,
-        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
-      ]}
-      onPress={() => {
-        setUseFakeData(true);
-        setIsTestLoading(false);
-      }}
-    >
-      <MaterialIcons name="computer" size={20} color={useFakeData && !isTestLoading ? "#37a4c8" : "#64748B"} />
-      <Text style={[
-        styles.dataToggleText,
-        { color: useFakeData && !isTestLoading ? "#37a4c8" : "#64748B" }
-      ]}>Test Data</Text>
-    </TouchableOpacity>
-    <TouchableOpacity 
-      style={[
-        styles.dataToggleButton,
-        isTestLoading && styles.dataToggleButtonActive,
-        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
-      ]}
-      onPress={() => {
-        setUseFakeData(false);
-        setIsTestLoading(true);
-      }}
-    >
-      <MaterialIcons name="hourglass-empty" size={20} color={isTestLoading ? "#37a4c8" : "#64748B"} />
-      <Text style={[
-        styles.dataToggleText,
-        { color: isTestLoading ? "#37a4c8" : "#64748B" }
-      ]}>Test Loading</Text>
-    </TouchableOpacity>
-  </View>
-));
+// MemoizedDataToggle component removed - no longer needed
 
-// Memoized Navigation Buttons component
-const MemoizedNavigationButtons = React.memo(({ 
-  onBack, 
-  onProfile, 
-  currentUser,
-  theme 
-}: { 
-  onBack: () => void;
-  onProfile: () => void;
-  currentUser: User | null;
-  theme: "light" | "dark";
-}) => (
-  <View style={styles.navigationButtons}>
-    <TouchableOpacity 
-      style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
-      onPress={onBack}
-    >
-      <MaterialIcons name="arrow-back" size={24} color="#37a4c8" />
-      <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Go Back</Text>
-    </TouchableOpacity>
-    <TouchableOpacity 
-      style={[styles.navButton, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]} 
-      onPress={onProfile}
-      disabled={!currentUser}
-    >
-      <MaterialIcons name="person" size={24} color="#37a4c8" />
-      <Text style={[styles.navButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>View Profile</Text>
-    </TouchableOpacity>
-  </View>
-));
+// MemoizedNavigationButtons component removed - no longer needed
 
-// Data Mode Toggle component
-const DataModeToggle = React.memo(({ 
-  dataMode, 
-  setDataMode,
-  theme 
-}: { 
-  dataMode: 'real' | 'fake' | 'none';
-  setDataMode: (mode: 'real' | 'fake' | 'none') => void;
-  theme: "light" | "dark";
-}) => (
-  <View style={styles.dataModeToggleContainer}>
-    <TouchableOpacity 
-      style={[
-        styles.dataModeToggleButton,
-        dataMode === 'real' && styles.dataModeToggleButtonActive,
-        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
-      ]}
-      onPress={() => setDataMode('real')}
-    >
-      <MaterialIcons name="people" size={16} color={dataMode === 'real' ? "#37a4c8" : "#64748B"} />
-      <Text style={[
-        styles.dataModeToggleText,
-        { color: dataMode === 'real' ? "#37a4c8" : "#64748B" }
-      ]}>Real</Text>
-    </TouchableOpacity>
-    <TouchableOpacity 
-      style={[
-        styles.dataModeToggleButton,
-        dataMode === 'fake' && styles.dataModeToggleButtonActive,
-        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
-      ]}
-      onPress={() => setDataMode('fake')}
-    >
-      <MaterialIcons name="computer" size={16} color={dataMode === 'fake' ? "#37a4c8" : "#64748B"} />
-      <Text style={[
-        styles.dataModeToggleText,
-        { color: dataMode === 'fake' ? "#37a4c8" : "#64748B" }
-      ]}>Fake</Text>
-    </TouchableOpacity>
-    <TouchableOpacity 
-      style={[
-        styles.dataModeToggleButton,
-        dataMode === 'none' && styles.dataModeToggleButtonActive,
-        { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
-      ]}
-      onPress={() => setDataMode('none')}
-    >
-      <MaterialIcons name="person-off" size={16} color={dataMode === 'none' ? "#37a4c8" : "#64748B"} />
-      <Text style={[
-        styles.dataModeToggleText,
-        { color: dataMode === 'none' ? "#37a4c8" : "#64748B" }
-      ]}>None</Text>
-    </TouchableOpacity>
-  </View>
-));
+// DataModeToggle component removed - no longer needed
 
-// New LoadingCard component
-const LoadingCard = React.memo(({ theme }: { theme: "light" | "dark" }) => {
-  const pulseAnim = useSharedValue(1);
+// LoadingCard component removed - no longer needed
 
-  useEffect(() => {
-    pulseAnim.value = withRepeat(
-      withTiming(1.2, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true
-    );
-  }, []);
+// SwipeCard component removed - replaced with vertical scroll interface
+// SwipeCard component variables and effects removed
 
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseAnim.value }],
-    opacity: interpolate(
-      pulseAnim.value,
-      [1, 1.2],
-      [0.5, 1],
-      Extrapolate.CLAMP
-    )
-  }));
-
-  return (
-    <View style={[styles.cardContainer, styles.cardShadow]}>
-      <View style={[styles.cardContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a", position: 'relative' }]}>
-        <View style={[styles.imageContainer, { backgroundColor: theme === "light" ? "#f3f4f6" : "#2a2a2a" }]}>
-          <View style={styles.imageOverlay}>
-            <View style={styles.profileHeader}>
-              <View style={{ width: "60%", height: 24, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
-              <View style={{ width: "40%", height: 20, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginTop: 8, borderRadius: 4 }} />
-            </View>
-          </View>
-        </View>
-        <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={{ width: 18, height: 18, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
-              <View style={{ width: "80%", height: 16, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginLeft: 8, borderRadius: 4 }} />
-            </View>
-            <View style={[styles.divider, { backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a" }]} />
-          </View>
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={{ width: 18, height: 18, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
-              <View style={{ width: "90%", height: 16, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginLeft: 8, borderRadius: 4 }} />
-            </View>
-            <View style={[styles.divider, { backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a" }]} />
-          </View>
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={{ width: 18, height: 18, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", borderRadius: 4 }} />
-              <View style={{ width: "70%", height: 16, backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a", marginLeft: 8, borderRadius: 4 }} />
-            </View>
-            <View style={[styles.divider, { backgroundColor: theme === "light" ? "#e5e7eb" : "#3a3a3a" }]} />
-          </View>
-        </View>
-        <View style={styles.loadingContainer}>
-          <Animated.View style={[styles.loadingDot, pulseStyle, { backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9" }]} />
-        </View>
-      </View>
-    </View>
-  );
-});
-
-// Modify SwipeCard component to handle loading state
-const SwipeCard = React.memo(({ 
-  user, 
-  gesture, 
-  cardStyle, 
-  likeStyle, 
-  nopeStyle,
-  theme,
-  isAnimating
-}: { 
-  user: User | null;
-  gesture: any;
-  cardStyle: any;
-  likeStyle: any;
-  nopeStyle: any;
-  theme: "light" | "dark";
-  isAnimating: boolean;
-}) => {
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const imageOpacity = useSharedValue(0);
-  const contentOpacity = useSharedValue(0);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
-
-  // Move useEffect outside of any conditions
-  useEffect(() => {
-    const loadImage = async () => {
-      if (!user?.profilePicture) {
-        setImageLoaded(true);
-        imageOpacity.value = withTiming(1, {
-          duration: 300,
-          easing: Easing.out(Easing.cubic),
-        });
-        contentOpacity.value = withTiming(1, {
-          duration: 300,
-          easing: Easing.out(Easing.cubic),
-        });
-        return;
-      }
-
-      try {
-        // Reset states
-        setImageLoaded(false);
-        imageOpacity.value = 0;
-        contentOpacity.value = 0;
-
-        // Preload image
-        await Image.prefetch(user.profilePicture);
-        
-        // Fade in image first
-        imageOpacity.value = withTiming(1, {
-          duration: 500,
-          easing: Easing.out(Easing.cubic),
-        });
-        
-        // Then fade in content
-        contentOpacity.value = withTiming(1, {
-          duration: 500,
-          easing: Easing.out(Easing.cubic),
-        });
-        
-        setImageLoaded(true);
-      } catch (error) {
-        console.error('Error preloading image:', error);
-        setImageLoaded(true);
-        // Still fade in content even if image fails
-        imageOpacity.value = withTiming(1, {
-          duration: 500,
-          easing: Easing.out(Easing.cubic),
-        });
-        contentOpacity.value = withTiming(1, {
-          duration: 500,
-          easing: Easing.out(Easing.cubic),
-        });
-      } finally {
-        setIsInitialLoad(false);
-      }
-    };
-
-    loadImage();
-  }, [user?.profilePicture]);
-
-  const imageStyle = useAnimatedStyle(() => ({
-    opacity: imageOpacity.value,
-    transform: [
-      {
-        scale: interpolate(
-          imageOpacity.value,
-          [0, 1],
-          [0.95, 1],
-          Extrapolate.CLAMP
-        ),
-      },
-    ],
-  }));
-
-  const animatedContentStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value,
-    transform: [
-      {
-        translateY: interpolate(
-          contentOpacity.value,
-          [0, 1],
-          [10, 0],
-          Extrapolate.CLAMP
-        ),
-      },
-    ],
-  }));
-
-  if (!user) return null;
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View 
-        style={[
-          styles.cardContainer, 
-          cardStyle, 
-          { 
-            borderColor: theme === "light" ? "#37a4c8" : "rgba(55, 164, 200, 0.4)",
-          }
-        ]}
-      >
-        {isAnimating || isInitialLoad ? (
-          <LoadingCard theme={theme} />
-        ) : (
-          <>
-            <LinearGradient
-              colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#1a1a1a", "#1a1a1a"]}
-              style={[styles.cardContent]}
-            >
-              <View style={styles.imageContainer}> 
-                <Animated.View style={[styles.profileImageContainer, imageStyle]}>
-                  <Image
-                    source={{ 
-                      uri: user.profilePicture || 'https://via.placeholder.com/400x400?text=No+Photo'
-                    }}
-                    style={styles.profileImage}
-                    defaultSource={require('../../assets/adaptive-icon.png')}
-                  />
-                </Animated.View>
-                <View style={styles.imageOverlay}>
-                  <Animated.View style={[styles.profileHeader, animatedContentStyle]}>
-                    <Text style={styles.nameText}>
-                      {user.name}, {user.age}
-                    </Text>
-                    {/* Availability indicator */}
-                    {user.availableNow && (
-                      <View style={[styles.availabilityBadge, { 
-                        backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
-                      }]}>
-                        <View style={[styles.availabilityDot, { 
-                          backgroundColor: "#37a4c8",
-                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
-                        }]} />
-                        <Text style={[styles.availabilityText, { 
-                          color: "#37a4c8"
-                        }]}>Available Now</Text>
-                      </View>
-                    )}
-                  </Animated.View>
-                </View>
-              </View>
-              <Animated.View style={[styles.contentContainer]}> 
-                {/* Location Section */}
-                {(user.currentCity || user.airportCode) && (
-                  <View style={[styles.locationSection, { 
-                    borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
-                  }]}>
-                    <View style={styles.locationContainer}>
-                      <MaterialIcons name="location-on" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
-                      <Text style={[styles.locationText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
-                        {user.currentCity || user.airportCode}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                {/* Today's Schedule Section */}
-                {user.availabilitySchedule && (() => {
-                  const now = new Date();
-                  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                  const currentDay = days[now.getDay()];
-                  const todaySchedule = user.availabilitySchedule[currentDay];
-                  
-                  if (todaySchedule && todaySchedule.start && todaySchedule.end) {
-                    // Format time to AM/PM
-                    const formatTimeToAMPM = (militaryTime: string): string => {
-                      if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
-                      
-                      const [hours, minutes] = militaryTime.split(':').map(Number);
-                      const period = hours >= 12 ? 'PM' : 'AM';
-                      const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-                      
-                      return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-                    };
-
-                    const startTime = formatTimeToAMPM(todaySchedule.start);
-                    const endTime = formatTimeToAMPM(todaySchedule.end);
-                    
-                    return (
-                      <View style={[styles.scheduleSection, { 
-                        borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
-                      }]}>
-                        <View style={styles.scheduleHeader}>
-                          <MaterialIcons name="schedule" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
-                          <Text style={[styles.scheduleTitle, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
-                            Available Today
-                          </Text>
-                        </View>
-                        <View style={[styles.scheduleBadge, { 
-                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)",
-                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.4)"
-                        }]}>
-                          <Text style={[styles.scheduleText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>
-                            {startTime} - {endTime}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {/* Bio Section */}
-                {user.bio && (
-                  <View style={styles.bioSection}>
-                    <Text 
-                      style={[styles.bioText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}
-                      numberOfLines={4}
-                      ellipsizeMode="tail"
-                    >
-                      {user.bio}
-                    </Text>
-                  </View>
-                )}
-              </Animated.View>
-            </LinearGradient>
-            <Animated.View style={[styles.overlayLabel, styles.likeLabel, likeStyle]}> 
-              <View style={styles.labelContainer}> 
-                <MaterialIcons name="people" size={32} color="#4CD964" />
-                <Text style={styles.likeText}>CONNECT</Text>
-              </View>
-            </Animated.View>
-            <Animated.View style={[styles.overlayLabel, styles.nopeLabel, nopeStyle]}> 
-              <View style={styles.labelContainer}> 
-                <MaterialIcons name="thumb-down" size={32} color="#FF3B30" />
-                <Text style={styles.nopeText}>NOPE</Text>
-              </View>
-            </Animated.View>
-          </>
-        )}
-      </Animated.View>
-    </GestureDetector>
-  );
-});
+// SwipeCard component body completely removed
 
 const Swipe = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+  const [authUserData, setAuthUserData] = useState<User | null>(null);
   const { getUsers, updateUser, loading, error } = useUsers();
   const { user } = useAuth();
   const { addMessage, getExistingChat, addChat } = useChats();
@@ -617,10 +153,9 @@ const Swipe = () => {
   const [showQuickMessage, setShowQuickMessage] = useState(false);
   const [matchedUser, setMatchedUser] = useState<User | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
-  const buttonScale = useSharedValue(1);
+  // Removed unused buttonScale
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showLoadingCard, setShowLoadingCard] = useState(false);
-  const loadingStartTime = useRef<number | null>(null);
+  // Removed unused loading states
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const { theme: colorScheme } = React.useContext(ThemeContext);
   const theme = colorScheme || "light"; // Provide default value
@@ -629,24 +164,9 @@ const Swipe = () => {
   // Get notification count
   const notificationCount = useNotificationCount(user?.uid || null);
 
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const cardRotation = useSharedValue(0);
-  const isAnimating = useSharedValue(false);
-  const lastDirection = useSharedValue<'left' | 'right' | null>(null);
-  const currentIndex = useSharedValue(0);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-
-
-
-  const screenOpacity = useSharedValue(0);
-  const screenScale = useSharedValue(0.95);
-
-  // Replace Animated.Value with useSharedValue
+  // Animation values for fade in
   const fadeAnim = useSharedValue(0);
   const scaleAnim = useSharedValue(0.95);
-  const headerSlideAnim = useSharedValue(20);
-  const listSlideAnim = useSharedValue(30);
 
   // Handle fade in animation when content is ready
   useEffect(() => {
@@ -659,251 +179,12 @@ const Swipe = () => {
         duration: 800,
         easing: Easing.out(Easing.cubic),
       });
-      headerSlideAnim.value = withTiming(0, {
-        duration: 800,
-        easing: Easing.out(Easing.cubic),
-      });
-      listSlideAnim.value = withTiming(0, {
-        duration: 800,
-        easing: Easing.out(Easing.cubic),
-      });
     }
   }, [isLoadingUsers]);
 
-  useAnimatedReaction(
-    () => currentIndex.value,
-    (current) => {
-      if (users.length > 0 && current < users.length) {
-        runOnJS(setCurrentUser)(users[current]);
-      } else {
-        runOnJS(setCurrentUser)(null);
-      }
-    },
-    [users]
-  );
+  // Remove gesture-based swiping - replaced with button-based actions
 
-  const resetCard = () => {
-    if (isAnimating.value) return;
-    
-    isAnimating.value = true;
-    translateX.value = withSpring(0, {
-      damping: 15,
-      stiffness: 100,
-    });
-    translateY.value = withSpring(0, {
-      damping: 15,
-      stiffness: 100,
-    });
-    cardRotation.value = withSpring(0, {
-      damping: 15,
-      stiffness: 100,
-    }, () => {
-      isAnimating.value = false;
-    });
-  };
-
-  const handleSwipe = (direction: "left" | "right") => {
-    try {
-      if (isAnimating.value || !users.length) return;
-      
-      isAnimating.value = true;
-      setShowLoadingCard(true);
-      loadingStartTime.current = Date.now();
-
-      const currentUserIndex = currentIndex.value;
-      if (currentUserIndex >= users.length) {
-        isAnimating.value = false;
-        setShowLoadingCard(false);
-        return;
-      }
-
-      // Start processing the swipe immediately
-      if (direction === "right") {
-        onSwipedRight(currentUserIndex);
-      } else {
-        onSwipedLeft(currentUserIndex);
-      }
-      
-      // Quick animation for current card only
-      translateX.value = withTiming(direction === "right" ? width * 1.5 : -width * 1.5, {
-        duration: 150,
-        easing: Easing.out(Easing.cubic),
-      });
-      
-      // Process the next card after animation
-      setTimeout(() => {
-        try {
-          // Reset transform values
-          translateX.value = direction === "right" ? -width * 1.5 : width * 1.5;
-          
-          // Update currentIndex to point to the next user
-          currentIndex.value = Math.min(currentUserIndex + 1, users.length - 1);
-          
-          // Quick slide in for next card
-          translateX.value = withTiming(0, {
-            duration: 150,
-            easing: Easing.out(Easing.cubic),
-          });
-          
-          // Ensure loading dot is visible for at least 1 second
-          const elapsed = Date.now() - (loadingStartTime.current || 0);
-          const minDuration = 1000;
-          const remaining = Math.max(0, minDuration - elapsed);
-          
-          setTimeout(() => {
-            isAnimating.value = false;
-            setShowLoadingCard(false);
-          }, remaining);
-        } catch (error) {
-          console.error('Error in swipe animation completion:', error);
-          isAnimating.value = false;
-          setShowLoadingCard(false);
-        }
-      }, 150);
-    } catch (error) {
-      console.error('Error in handleSwipe:', error);
-      isAnimating.value = false;
-      setShowLoadingCard(false);
-    }
-  };
-
-  const gesture = Gesture.Pan()
-    .onBegin(() => {
-      try {
-        if (isAnimating.value) return;
-        lastDirection.value = null;
-      } catch (error) {
-        console.error('Error in gesture onBegin:', error);
-      }
-    })
-    .onUpdate((event) => {
-      try {
-        if (isAnimating.value) return;
-
-        // Add resistance to the drag
-        const resistance = 0.5;
-        const dragDistance = event.translationX;
-        const resistedDistance = dragDistance > 0 
-          ? Math.min(dragDistance, width * 0.4) * resistance
-          : Math.max(dragDistance, -width * 0.4) * resistance;
-
-        // Update direction
-        if (Math.abs(resistedDistance) > 10) {
-          lastDirection.value = resistedDistance > 0 ? 'right' : 'left';
-        }
-
-        translateX.value = resistedDistance;
-        translateY.value = event.translationY * 0.3;
-        cardRotation.value = interpolate(
-          resistedDistance,
-          [-width / 2, 0, width / 2],
-          [-30, 0, 30],
-          Extrapolate.CLAMP
-        );
-      } catch (error) {
-        console.error('Error in gesture onUpdate:', error);
-      }
-    })
-    .onEnd((event) => {
-      try {
-        if (isAnimating.value) return;
-
-        const shouldSwipe = Math.abs(event.translationX) > width * 0.2;
-        const velocity = event.velocityX;
-        
-        // If moving fast enough, trigger swipe regardless of distance
-        if (Math.abs(velocity) > 500) {
-          const direction = velocity > 0 ? "right" : "left";
-          runOnJS(handleSwipe)(direction);
-          return;
-        }
-        
-        if (shouldSwipe && lastDirection.value) {
-          runOnJS(handleSwipe)(lastDirection.value);
-        } else {
-          runOnJS(resetCard)();
-        }
-      } catch (error) {
-        console.error('Error in gesture onEnd:', error);
-        runOnJS(resetCard)();
-      }
-    })
-    .onFinalize(() => {
-      try {
-        if (!isAnimating.value && Math.abs(translateX.value) < width * 0.2) {
-          runOnJS(resetCard)();
-        }
-      } catch (error) {
-        console.error('Error in gesture onFinalize:', error);
-        runOnJS(resetCard)();
-      }
-    });
-
-  const cardStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: translateX.value }
-      ],
-    };
-  });
-
-  const likeStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      translateX.value,
-      [0, width * 0.2],
-      [0, 1],
-      Extrapolate.CLAMP
-    );
-    const scale = interpolate(
-      translateX.value,
-      [0, width * 0.2],
-      [0.5, 1],
-      Extrapolate.CLAMP
-    );
-    const rotate = interpolate(
-      translateX.value,
-      [0, width * 0.2],
-      [-15, 0],
-      Extrapolate.CLAMP
-    );
-    return { 
-      opacity,
-      transform: [{ scale }, { rotate: `${rotate}deg` }],
-      position: 'absolute',
-      top: 50,
-      right: 40,
-      zIndex: 1000,
-    };
-  });
-
-  const nopeStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      translateX.value,
-      [-width * 0.2, 0],
-      [1, 0],
-      Extrapolate.CLAMP
-    );
-    const scale = interpolate(
-      translateX.value,
-      [-width * 0.2, 0],
-      [1, 0.5],
-      Extrapolate.CLAMP
-    );
-    const rotate = interpolate(
-      translateX.value,
-      [-width * 0.2, 0],
-      [0, 15],
-      Extrapolate.CLAMP
-    );
-    return { 
-      opacity,
-      transform: [{ scale }, { rotate: `${rotate}deg` }],
-      position: 'absolute',
-      top: 50,
-      left: 40,
-      zIndex: 1000,
-    };
-  });
+  // Remove unused animation styles - replaced with simple button actions
 
   const presetMessages = [
     "Hey! Great to match with you! 👋",
@@ -945,6 +226,60 @@ const Swipe = () => {
       Alert.alert("Error", "Failed to send message. Please try again.");
     }
   };
+
+  // Helper functions to find shared items
+  const getSharedConnectionIntents = useCallback((user: User) => {
+    if (!user.connectionIntents || !authUserData?.connectionIntents) {
+      return [];
+    }
+    return user.connectionIntents.filter(intent => 
+      authUserData.connectionIntents!.includes(intent)
+    );
+  }, [authUserData?.connectionIntents]);
+
+  const getSharedPersonalTags = useCallback((user: User) => {
+    if (!user.personalTags || !authUserData?.personalTags) {
+      return [];
+    }
+    return user.personalTags.filter(tag => 
+      authUserData.personalTags!.includes(tag)
+    );
+  }, [authUserData?.personalTags]);
+
+  const getSharedEventPreferences = useCallback((user: User) => {
+    if (!user.eventPreferences || !authUserData?.eventPreferences) {
+      return [];
+    }
+    
+    const sharedPreferences: string[] = [];
+    const userPrefs = user.eventPreferences;
+    const authPrefs = authUserData.eventPreferences;
+    
+    if (userPrefs.likesBars && authPrefs.likesBars) sharedPreferences.push('Enjoys bar meetups');
+    if (userPrefs.prefersSmallGroups && authPrefs.prefersSmallGroups) sharedPreferences.push('Prefers small groups');
+    if (userPrefs.prefersWeekendEvents && authPrefs.prefersWeekendEvents) sharedPreferences.push('Prefers weekend events');
+    if (userPrefs.prefersEveningEvents && authPrefs.prefersEveningEvents) sharedPreferences.push('Prefers evening events');
+    if (userPrefs.prefersIndoorVenues && authPrefs.prefersIndoorVenues) sharedPreferences.push('Prefers indoor venues');
+    if (userPrefs.prefersStructuredActivities && authPrefs.prefersStructuredActivities) sharedPreferences.push('Prefers structured activities');
+    if (userPrefs.prefersSpontaneousPlans && authPrefs.prefersSpontaneousPlans) sharedPreferences.push('Prefers spontaneous plans');
+    if (userPrefs.prefersLocalMeetups && authPrefs.prefersLocalMeetups) sharedPreferences.push('Prefers local meetups');
+    if (userPrefs.prefersTravelEvents && authPrefs.prefersTravelEvents) sharedPreferences.push('Prefers travel events');
+    if (userPrefs.prefersQuietEnvironments && authPrefs.prefersQuietEnvironments) sharedPreferences.push('Prefers quiet environments');
+    if (userPrefs.prefersActiveLifestyles && authPrefs.prefersActiveLifestyles) sharedPreferences.push('Prefers active lifestyles');
+    if (userPrefs.prefersIntellectualDiscussions && authPrefs.prefersIntellectualDiscussions) sharedPreferences.push('Prefers intellectual discussions');
+    
+    return sharedPreferences;
+  }, [authUserData?.eventPreferences]);
+
+  const isSharedItem = useCallback((item: string, type: 'connectionIntents' | 'personalTags' | 'eventPreferences', user: User) => {
+    if (type === 'connectionIntents') {
+      return getSharedConnectionIntents(user).includes(item);
+    } else if (type === 'personalTags') {
+      return getSharedPersonalTags(user).includes(item);
+    } else {
+      return getSharedEventPreferences(user).includes(item);
+    }
+  }, [getSharedConnectionIntents, getSharedPersonalTags, getSharedEventPreferences]);
 
   const sendMatchNotification = async (matchedUserId: string, matchedUserName: string) => {
     try {
@@ -1128,12 +463,34 @@ const Swipe = () => {
     return () => unsubscribe();
   }, [currentUserUID]);
 
+  // Fetch auth user data
+  const fetchAuthUserData = useCallback(async () => {
+    if (!currentUserUID) return;
+    
+    try {
+      const authUserDocRef = doc(db, "users", currentUserUID);
+      const authUserDoc = await getDoc(authUserDocRef);
+      
+      if (authUserDoc.exists()) {
+        const authUserData = authUserDoc.data() as User;
+        setAuthUserData(authUserData);
+      }
+    } catch (error) {
+      console.error("Error fetching auth user data:", error);
+    }
+  }, [currentUserUID]);
+
   // Fetch users when currentUserData is available
   useEffect(() => {
     if (currentUserData) {
       fetchUsers();
     }
   }, [currentUserData]);
+
+  // Fetch auth user data on component mount
+  useEffect(() => {
+    fetchAuthUserData();
+  }, [fetchAuthUserData]);
 
   /** Fetch users and filter based on recent activity and availability */
   const fetchUsers = async () => {
@@ -1296,7 +653,72 @@ const Swipe = () => {
         lastLogin: u.lastLogin?.toDate?.() || 'No login time'
       })));
       
-      setUsers(fetchedUsers);
+      // Sort users by shared interests and proximity
+      // Calculate shared interests score for each user
+      const getSharedInterestsScore = (user: User) => {
+        if (!authUserData) return 0;
+        
+        const sharedConnectionIntents = getSharedConnectionIntents(user);
+        const sharedPersonalTags = getSharedPersonalTags(user);
+        const sharedEventPreferences = getSharedEventPreferences(user);
+        
+        return sharedConnectionIntents.length + sharedPersonalTags.length + sharedEventPreferences.length;
+      };
+      
+      // Calculate proximity score (lower distance = higher score)
+      const getProximityScore = (user: User) => {
+        if (!authUserData?.lastKnownCoordinates || !user.lastKnownCoordinates) {
+          return 0; // No location data, neutral score
+        }
+        
+        const userLat = user.lastKnownCoordinates.latitude;
+        const userLng = user.lastKnownCoordinates.longitude;
+        const authLat = authUserData.lastKnownCoordinates.latitude;
+        const authLng = authUserData.lastKnownCoordinates.longitude;
+        
+        // Calculate distance using Haversine formula
+        const R = 6371; // Earth's radius in kilometers
+        const dLat = (userLat - authLat) * Math.PI / 180;
+        const dLng = (userLng - authLng) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(authLat * Math.PI / 180) * Math.cos(userLat * Math.PI / 180) *
+                  Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = R * c; // Distance in kilometers
+        
+        // Convert distance to score (closer = higher score)
+        // Max distance considered: 100km, score ranges from 100 to 0
+        return Math.max(0, 100 - distance);
+      };
+      
+      const sortedUsers = fetchedUsers.sort((a, b) => {
+        const aSharedScore = getSharedInterestsScore(a);
+        const bSharedScore = getSharedInterestsScore(b);
+        const aProximityScore = getProximityScore(a);
+        const bProximityScore = getProximityScore(b);
+        
+        // Combined scoring: 70% shared interests, 30% proximity
+        const aCombinedScore = (aSharedScore * 0.7) + (aProximityScore * 0.3);
+        const bCombinedScore = (bSharedScore * 0.7) + (bProximityScore * 0.3);
+        
+        // Sort in descending order (highest score first)
+        return bCombinedScore - aCombinedScore;
+      });
+      
+      console.log('Sorted users by compatibility:', sortedUsers.map(u => {
+        const sharedScore = getSharedInterestsScore(u);
+        const proximityScore = getProximityScore(u);
+        const combinedScore = (sharedScore * 0.7) + (proximityScore * 0.3);
+        return {
+          id: u.id,
+          name: u.name,
+          sharedInterests: sharedScore,
+          proximityScore: proximityScore,
+          combinedScore: combinedScore
+        };
+      }));
+      
+      setUsers(sortedUsers);
       setShowSwiper(fetchedUsers.length > 0);
     } catch (err) {
       console.error("Error fetching users:", err);
@@ -1499,135 +921,9 @@ const Swipe = () => {
     setShowMessageOptions(true);
   };
 
-  /** Render individual user card */
-    const renderCard = (user: User) => {
-    if (!user) return null;
+    // renderCard function completely removed
 
-    return (
-      <Animated.View style={[styles.cardContainer, styles.cardShadow]}>
-        <View style={[styles.cardContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
-          {/* Profile Image Section */}
-          <View style={styles.imageContainer}>
-            <UserAvatar
-              user={user}
-              size={400}
-              style={styles.profileImage}
-            />
-            <View style={styles.imageOverlay}>
-              <View style={styles.profileHeader}>
-                <Text style={styles.nameText}>
-                  {user.name}, {user.age}
-                </Text>
-                {/* Location */}
-                {(user.currentCity || user.airportCode) && (
-                  <View style={styles.locationOverlayContainer}>
-                    <Text style={styles.locationText}>
-                      📍 {user.currentCity || user.airportCode}
-                    </Text>
-                  </View>
-                )}
-                {/* Availability indicator */}
-                {user.availableNow && (
-                  <View style={[styles.availabilityBadge, { 
-                    backgroundColor: theme === "light" ? "#FFFFFF" : "#000000",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
-                  }]}>
-                    <View style={[styles.availabilityDot, { 
-                      backgroundColor: "#37a4c8",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.3)"
-                    }]} />
-                    <Text style={[styles.availabilityText, { 
-                      color: "#37a4c8"
-                    }]}>Available Now</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-
-                    {/* Content Section - Clean and Minimal */}
-          <View style={[styles.contentContainer, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
-            {/* Location Section */}
-            {(user.currentCity || user.airportCode) && (
-              <View style={[styles.locationSection, { 
-                borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
-              }]}>
-                <View style={styles.locationContainer}>
-                  <MaterialIcons name="location-on" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
-                  <Text style={[styles.locationText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
-                    {user.currentCity || user.airportCode}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Today's Schedule Section */}
-            {user.availabilitySchedule && (() => {
-              const now = new Date();
-              const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-              const currentDay = days[now.getDay()];
-              const todaySchedule = user.availabilitySchedule[currentDay];
-              
-              if (todaySchedule && todaySchedule.start && todaySchedule.end) {
-                // Format time to AM/PM
-                const formatTimeToAMPM = (militaryTime: string): string => {
-                  if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
-                  
-                  const [hours, minutes] = militaryTime.split(':').map(Number);
-                  const period = hours >= 12 ? 'PM' : 'AM';
-                  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-                  
-                  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-                };
-
-                const startTime = formatTimeToAMPM(todaySchedule.start);
-                const endTime = formatTimeToAMPM(todaySchedule.end);
-                
-                return (
-                  <View style={[styles.scheduleSection, { 
-                    borderBottomColor: theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.1)"
-                  }]}>
-                    <View style={styles.scheduleHeader}>
-                      <MaterialIcons name="schedule" size={16} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
-                      <Text style={[styles.scheduleTitle, { color: theme === "light" ? "#374151" : "#d1d5db" }]}>
-                        Available Today
-                      </Text>
-                    </View>
-                    <View style={[styles.scheduleBadge, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(55, 164, 200, 0.4)"
-                    }]}>
-                      <Text style={[styles.scheduleText, { color: theme === "light" ? "#37a4c8" : "#37a4c8" }]}>
-                        {startTime} - {endTime}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              }
-              return null;
-            })()}
-
-            {/* Bio Section */}
-            {user.bio && (
-              <View style={styles.bioSection}>
-                <Text 
-                  style={[styles.bioText, { color: theme === "light" ? "#374151" : "#d1d5db" }]}
-                  numberOfLines={4}
-                  ellipsizeMode="tail"
-                >
-                  {user.bio}
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Animated.View>
-    );
-  };
-
-  const buttonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: buttonScale.value }],
-  }));
+  // Removed unused buttonStyle
 
   const resetSwipeHistory = async () => {
     try {
@@ -1667,26 +963,10 @@ const Swipe = () => {
     }
   };
 
-  // Create animated styles
+  // Simplified animated styles for fade in
   const containerStyle = useAnimatedStyle(() => ({
     opacity: fadeAnim.value,
     transform: [{ scale: scaleAnim.value }]
-  }));
-
-  const cardsContainerStyle = useAnimatedStyle(() => ({
-    opacity: fadeAnim.value,
-    transform: [
-      { translateY: headerSlideAnim.value },
-      { scale: scaleAnim.value }
-    ]
-  }));
-
-  const quickMessageStyle = useAnimatedStyle(() => ({
-    opacity: fadeAnim.value,
-    transform: [
-      { translateY: listSlideAnim.value },
-      { scale: scaleAnim.value }
-    ]
   }));
 
   /** Loading state */
@@ -1713,127 +993,373 @@ const Swipe = () => {
     );
   }
 
-  /** Main Swiper view */
+  /** Main Vertical Scroll view */
   return (
     <View style={{ flex: 1 }}>
       <TopBar onProfilePress={() => router.push(`/profile/${currentUserUID}`)} notificationCount={notificationCount} />
       <SafeAreaWrapper edges={["bottom"]}>
-        <LinearGradient colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-          <Animated.View style={[styles.cardsContainer, cardsContainerStyle]}>
-            {users.length > 0 && currentIndex.value < users.length ? (
-              <>
-                <SwipeCard
-                  user={currentUser}
-                  gesture={gesture}
-                  cardStyle={cardStyle}
-                  likeStyle={likeStyle}
-                  nopeStyle={nopeStyle}
-                  theme={theme}
-                  isAnimating={showLoadingCard}
-                />
-                <MemoizedNavigationButtons
-                  onBack={() => router.back()}
-                  onProfile={() => currentUser && router.push(`/profile/${currentUser.id}`)}
-                  currentUser={currentUser}
-                  theme={theme}
-                />
-              </>
-            ) : (
+        <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+          {users.length > 0 ? (
+            <ScrollView 
+              style={styles.scrollContainer}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+              bounces={true}
+              decelerationRate="fast"
+            >
+              {/* Header Section */}
               <Animated.View 
-                entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
-                style={[
-                  styles.cardContainer, 
-                  styles.cardShadow,
-                  { 
-                    opacity: fadeAnim,
-                    transform: [{ scale: scaleAnim }]
-                  }
-                ]}
+                entering={FadeIn.duration(600).easing(Easing.out(Easing.cubic))}
+                style={styles.headerSection}
               >
-                <LinearGradient
-                  colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#1a1a1a", "#1a1a1a"]}
-                  style={styles.cardContent}
-                >
-                  {/* Image Container - Empty State */}
-                  <View style={styles.imageContainer}>
-                    <View style={[styles.profileImageContainer, { 
-                      backgroundColor: theme === "light" ? "#f3f4f6" : "#2a2a2a",
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }]}>
-                      <Image
-                        source={require('../../assets/icon.png')}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          resizeMode: 'cover'
-                        }}
-                      />
-                    </View>
-                    <View style={styles.imageOverlay}>
-                      <View style={styles.profileHeader}>
-                        <Text style={styles.nameText}>
-                          No Nearby Users
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+                <Text style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                  Connect with Others
+                </Text>
+                <Text style={[styles.headerSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                  {users.length} {users.length === 1 ? 'person' : 'people'} available now
+                </Text>
+              </Animated.View>
 
-                  {/* Content Container - Empty State */}
-                  <View style={[styles.contentContainer]}>
-                    <View style={styles.section}>
-                      <View style={styles.sectionHeader}>
-                        <MaterialIcons name="info" size={18} color="#37a4c8" />
-                        <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                          We couldn't find any more travelers at this airport right now.
+              {users.map((user, index) => (
+                <Animated.View 
+                  key={user.id}
+                  entering={FadeIn.duration(400).delay(index * 100).easing(Easing.out(Easing.cubic))}
+                  style={styles.verticalCard}
+                >
+                  <View style={[styles.cardContainer, { 
+                    backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                  }]}>
+                    {/* Profile Image Section */}
+                    <View style={styles.profileImageSection}>
+                      <View style={styles.profileImageContainer}>
+                        <UserAvatar
+                          user={user}
+                          size={120}
+                          style={styles.profileImage}
+                        />
+                        {/* Status indicator ring */}
+                        <View style={[styles.statusRing, { 
+                          borderColor: user.availableNow ? "#37a4c8" : "rgba(55, 164, 200, 0.3)"
+                        }]} />
+                      </View>
+                    </View>
+
+                    {/* Content Section */}
+                    <View style={styles.contentSection}>
+                      {/* Header with Name and Age */}
+                      <View style={styles.userHeader}>
+                        <Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                          {user.name}
+                        </Text>
+                        <Text style={[styles.userAge, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                          {user.age}
                         </Text>
                       </View>
-                      <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-                    </View>
-                    <View style={styles.section}>
-                      <View style={styles.sectionHeader}>
-                        <MaterialIcons name="schedule" size={18} color="#37a4c8" />
-                        <Text style={[styles.sectionContent, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                          Check back later or try resetting your history to see users again.
-                        </Text>
+
+                      {/* Location and Status Row */}
+                      <View style={styles.statusRow}>
+                        {/* Location */}
+                        {(user.currentCity || user.airportCode) && (
+                          <View style={[styles.locationBadge, { 
+                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.15)",
+                            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                          }]}>
+                            <MaterialIcons name="location-on" size={14} color="#37a4c8" />
+                            <Text style={[styles.locationText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                              {user.currentCity || user.airportCode}
+                            </Text>
+                          </View>
+                        )}
+                        
+                        {/* Availability Status */}
+                        {user.availableNow && (
+                          <View style={[styles.availabilityBadge, { 
+                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.15)",
+                            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                          }]}>
+                            <View style={[styles.availabilityDot, { backgroundColor: "#37a4c8" }]} />
+                            <Text style={[styles.availabilityText, { color: "#37a4c8" }]}>Now</Text>
+                          </View>
+                        )}
                       </View>
-                      <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-                    </View>
-                    <View style={[styles.moodContainer, { 
-                      backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                      alignSelf: 'center',
-                      marginTop: 'auto',
-                      marginBottom: 8
-                    }]}>
-                      <MaterialIcons name="refresh" size={16} color="#37a4c8" />
-                      <Text style={styles.moodText}>Ready for new connections!</Text>
+
+                      {/* Today's Schedule */}
+                      {user.availabilitySchedule && (() => {
+                        const now = new Date();
+                        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                        const currentDay = days[now.getDay()];
+                        const todaySchedule = user.availabilitySchedule[currentDay];
+                        
+                        if (todaySchedule && todaySchedule.start && todaySchedule.end) {
+                          const formatTimeToAMPM = (militaryTime: string): string => {
+                            if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
+                            
+                            const [hours, minutes] = militaryTime.split(':').map(Number);
+                            const period = hours >= 12 ? 'PM' : 'AM';
+                            const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                            
+                            return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+                          };
+
+                          const startTime = formatTimeToAMPM(todaySchedule.start);
+                          const endTime = formatTimeToAMPM(todaySchedule.end);
+                          
+                          return (
+                            <View style={[styles.scheduleSection, { 
+                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(55, 164, 200, 0.2)"
+                            }]}>
+                              <View style={styles.scheduleHeader}>
+                                <MaterialIcons name="schedule" size={16} color="#37a4c8" />
+                                <Text style={[styles.scheduleTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                                  Available Today
+                                </Text>
+                              </View>
+                              <Text style={[styles.scheduleTime, { color: "#37a4c8" }]}>
+                                {startTime} - {endTime}
+                              </Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      {/* Shared Items Section */}
+                      {authUserData && (() => {
+                        const sharedConnectionIntents = getSharedConnectionIntents(user);
+                        const sharedPersonalTags = getSharedPersonalTags(user);
+                        const sharedEventPreferences = getSharedEventPreferences(user);
+                        const totalSharedItems = sharedConnectionIntents.length + sharedPersonalTags.length + sharedEventPreferences.length;
+                        
+                        if (totalSharedItems === 0) return null;
+                        
+                        return (
+                          <View style={[styles.sharedItemsSection, { 
+                            backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.05)" : "rgba(76, 175, 80, 0.1)",
+                            borderColor: theme === "light" ? "rgba(76, 175, 80, 0.2)" : "rgba(76, 175, 80, 0.3)"
+                          }]}>
+                            <View style={styles.sharedItemsHeader}>
+                              <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
+                              <Text style={[styles.sharedItemsTitle, { color: "#4CAF50" }]}>
+                                {totalSharedItems} shared interest{totalSharedItems !== 1 ? 's' : ''}
+                              </Text>
+                            </View>
+                            
+                            <View style={styles.sharedItemsContainer}>
+                              {/* Connection Intents */}
+                              {sharedConnectionIntents.slice(0, 3).map((intent, index) => (
+                                <View key={`intent-${index}`} style={[styles.sharedItemTag, { 
+                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)",
+                                  borderColor: "#4CAF50"
+                                }]}>
+                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
+                                    {intent}
+                                  </Text>
+                                </View>
+                              ))}
+                              
+                              {/* Personal Tags */}
+                              {sharedPersonalTags.slice(0, 3).map((tag, index) => (
+                                <View key={`tag-${index}`} style={[styles.sharedItemTag, { 
+                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)",
+                                  borderColor: "#4CAF50"
+                                }]}>
+                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
+                                    {tag}
+                                  </Text>
+                                </View>
+                              ))}
+                              
+                              {/* Event Preferences */}
+                              {sharedEventPreferences.slice(0, 2).map((pref, index) => (
+                                <View key={`pref-${index}`} style={[styles.sharedItemTag, { 
+                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)",
+                                  borderColor: "#4CAF50"
+                                }]}>
+                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
+                                    {pref}
+                                  </Text>
+                                </View>
+                              ))}
+                              
+                              {/* Show more indicator if there are more items */}
+                              {(sharedConnectionIntents.length + sharedPersonalTags.length + sharedEventPreferences.length) > 8 && (
+                                <View style={[styles.sharedItemTag, { 
+                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
+                                  borderColor: "#4CAF50"
+                                }]}>
+                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
+                                    +{(sharedConnectionIntents.length + sharedPersonalTags.length + sharedEventPreferences.length) - 8} more
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })()}
+
+                      {/* Bio Section */}
+                      {user.bio && (
+                        <View style={styles.bioSection}>
+                          <Text 
+                            style={[styles.bioText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {user.bio}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Action Buttons */}
+                      <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.dislikeButton, { 
+                            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                            borderColor: theme === "light" ? "#64748B" : "#94A3B8"
+                          }]}
+                          onPress={() => onSwipedLeft(index)}
+                          disabled={isProcessing}
+                        >
+                          <MaterialIcons name="close" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} />
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.likeButton, { 
+                            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
+                            borderColor: "#37a4c8"
+                          }]}
+                          onPress={() => onSwipedRight(index)}
+                          disabled={isProcessing}
+                        >
+                          <MaterialIcons name="favorite" size={20} color="#37a4c8" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </LinearGradient>
-                
+                </Animated.View>
+              ))}
+              
+              {/* Bottom Section with Stats and Reset */}
+              <Animated.View 
+                entering={FadeIn.duration(800).delay(users.length * 100).easing(Easing.out(Easing.cubic))}
+                style={styles.bottomSection}
+              >
+                {/* Stats Cards */}
+                <View style={styles.statsContainer}>
+                  <View style={[styles.statCard, { 
+                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
+                  }]}>
+                    <MaterialIcons name="people" size={20} color="#37a4c8" />
+                    <Text style={[styles.statNumber, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                      {users.length}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Available
+                    </Text>
+                  </View>
+                  
+                  <View style={[styles.statCard, { 
+                    backgroundColor: theme === "light" ? "rgba(76, 217, 100, 0.05)" : "rgba(76, 217, 100, 0.1)",
+                    borderColor: theme === "light" ? "rgba(76, 217, 100, 0.2)" : "rgba(76, 217, 100, 0.3)"
+                  }]}>
+                    <MaterialIcons name="schedule" size={20} color="#4CD964" />
+                    <Text style={[styles.statNumber, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                      Now
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Active
+                    </Text>
+                  </View>
+                </View>
+
                 {/* Reset History Button */}
                 <TouchableOpacity
                   style={[
-                    styles.clearHistoryButton,
+                    styles.verticalResetButton,
                     { 
                       backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                      position: 'absolute',
-                      bottom: 16,
-                      left: 16,
-                      right: 16,
-                      zIndex: 10
+                      borderColor: "#37a4c8"
                     }
                   ]}
                   onPress={resetSwipeHistory}
                 >
                   <MaterialIcons name="history" size={20} color="#37a4c8" />
-                  <Text style={[styles.clearHistoryButtonText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                  <Text style={[styles.verticalResetButtonText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
                     Reset History
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
-            )}
-          </Animated.View>
+            </ScrollView>
+          ) : (
+            <Animated.View 
+              entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
+              style={[styles.emptyStateContainer]}
+            >
+              <LinearGradient
+                colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#1a1a1a", "#1a1a1a"]}
+                style={styles.cardContent}
+              >
+                {/* Image Container - Empty State */}
+                <View style={styles.imageContainer}>
+                  <View style={[styles.profileImageContainer, { 
+                    backgroundColor: theme === "light" ? "#f3f4f6" : "#2a2a2a",
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }]}>
+                    <Image
+                      source={require('../../assets/icon.png')}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        resizeMode: 'cover'
+                      }}
+                    />
+                  </View>
+                  <View style={styles.imageOverlay}>
+                    <View style={styles.profileHeader}>
+                      <Text style={styles.nameText}>
+                        No Nearby Users
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Content Container - Empty State */}
+                <View style={[styles.contentContainer]}>
+                  <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                      <MaterialIcons name="info" size={18} color="#37a4c8" />
+                      <Text style={[styles.sectionContent, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                        We couldn't find any more travelers at this airport right now.
+                      </Text>
+                    </View>
+                    <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+                  </View>
+                  <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                      <MaterialIcons name="schedule" size={18} color="#37a4c8" />
+                      <Text style={[styles.sectionContent, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
+                        Check back later or try resetting your history to see users again.
+                      </Text>
+                    </View>
+                    <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
+                  </View>
+                  <View style={[styles.moodContainer, { 
+                    backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                    alignSelf: 'center',
+                    marginTop: 'auto',
+                    marginBottom: 8
+                  }]}>
+                    <MaterialIcons name="refresh" size={16} color="#37a4c8" />
+                    <Text style={styles.moodText}>Ready for new connections!</Text>
+                  </View>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          )}
         </LinearGradient>
       </SafeAreaWrapper>
     </View>
@@ -1850,17 +1376,6 @@ const styles = StyleSheet.create({
   cardTouchable: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-  },
-  cardContainer: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    borderRadius: 20,
-    overflow: "hidden",
-    marginHorizontal: 'auto',
-    marginBottom: 21,
-    backfaceVisibility: 'hidden',
-    borderWidth: 1,
-    position: 'relative',
   },
   cardShadow: {
     shadowColor: "#38a5c9",
@@ -1885,16 +1400,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: IMAGE_HEIGHT,
     position: 'relative',
-  },
-  profileImageContainer: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-  },
-  profileImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
   },
   imageOverlay: {
     position: 'absolute',
@@ -1926,15 +1431,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 4,
   },
-  locationText: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-    color: "#FFFFFF",
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
-  },
   availabilityContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1943,134 +1439,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 12,
     marginTop: 4,
-  },
-  availabilityText: {
-    fontSize: 12,
-    marginLeft: 6,
-    fontWeight: "700",
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  availabilityBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginTop: 4,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  availabilityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-    borderWidth: 1,
-  },
-  bioSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    flex: 1,
-  },
-  bioText: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: "400",
-  },
-  tagsSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  tagGroup: {
-    marginBottom: 16,
-  },
-  tagGroupTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  tagContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  tag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-  },
-  tagText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  statusSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    alignItems: "center",
-  },
-  statusBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: "500",
-    textAlign: "center",
-  },
-  locationSection: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  scheduleSection: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  scheduleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  scheduleTitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  scheduleBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    alignSelf: "flex-start",
-    borderWidth: 1,
-  },
-  scheduleText: {
-    fontSize: 14,
-    fontWeight: "600",
   },
   contentContainer: {
     flex: 1,
@@ -2352,14 +1720,14 @@ const styles = StyleSheet.create({
     padding: 32,
     borderRadius: 20,
     marginHorizontal: 'auto',
-    marginBottom: 70,
+    marginBottom: 40,
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
     overflow: 'hidden',
   },
   emptyStateGradient: {
@@ -2474,6 +1842,301 @@ const styles = StyleSheet.create({
   dataModeToggleText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Vertical scroll styles
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  verticalCard: {
+    width: '100%',
+    maxWidth: 400,
+    marginBottom: 20,
+  },
+  cardContainer: {
+    borderRadius: 20,
+    borderWidth: 1,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  profileImageSection: {
+    alignItems: 'center',
+    paddingTop: 24,
+    paddingBottom: 16,
+    backgroundColor: 'transparent',
+  },
+  profileImageContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    resizeMode: 'cover',
+    borderRadius: 60,
+  },
+  statusRing: {
+    position: 'absolute',
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    borderWidth: 3,
+    top: -5,
+    left: -5,
+  },
+  contentSection: {
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  userHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  userAge: {
+    fontSize: 18,
+    fontWeight: '500',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  locationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  locationText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 4,
+    letterSpacing: 0.2,
+  },
+  availabilityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  availabilityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  availabilityText: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  scheduleSection: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  scheduleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 6,
+  },
+  scheduleTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  scheduleTime: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  bioSection: {
+    marginBottom: 20,
+  },
+  bioText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '400',
+    textAlign: 'center',
+    letterSpacing: 0.1,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  actionButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  dislikeButton: {
+    // Additional styles if needed
+  },
+  likeButton: {
+    // Additional styles if needed
+  },
+  verticalResetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 32,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  verticalResetButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+    color: '#37a4c8',
+    letterSpacing: 0.2,
+  },
+  // New polished design styles
+  headerSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    opacity: 0.8,
+  },
+  imageWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomSection: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 40,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+    gap: 16,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: 'rgba(0, 0, 0, 0.05)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginTop: 8,
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    opacity: 0.8,
+  },
+  // Shared items styles
+  sharedItemsSection: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  sharedItemsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 6,
+  },
+  sharedItemsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  sharedItemsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sharedItemTag: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  sharedItemText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });
 

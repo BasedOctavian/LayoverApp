@@ -633,15 +633,6 @@ export default function ChatExplore() {
         >
           {/* Chat Explore Content */}
           <View style={styles.container}>
-            <View style={styles.headerSection}>
-              <Text style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                Discover People
-              </Text>
-              <Text style={[styles.headerSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                Find new connections near you
-              </Text>
-            </View>
-
             <View style={styles.searchContainer}>
               <Ionicons name="search" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.searchIcon} />
               <TextInput
@@ -718,21 +709,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-  },
-  headerSection: {
-    marginBottom: 24,
-    paddingHorizontal: 4,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 8,
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    fontWeight: '400',
-    lineHeight: 22,
   },
   searchContainer: {
     position: 'relative',

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "../../config/firebaseConfig";
 
@@ -7,7 +7,7 @@ const useUsers = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Get all users
-  const getUsers = async () => {
+  const getUsers = useCallback(async () => {
     setLoading(true);
     try {
       const usersCollection = collection(db, "users");
@@ -21,10 +21,10 @@ const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Get a specific user by UID
-  const getUser = async (uid: string) => {
+  const getUser = useCallback(async (uid: string) => {
     setLoading(true);
     try {
       const userDoc = doc(db, "users", uid);
@@ -42,10 +42,10 @@ const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Add a new user
-  const addUser = async (userData: any) => {
+  const addUser = useCallback(async (userData: any) => {
     setLoading(true);
     try {
       const usersCollection = collection(db, "users");
@@ -58,10 +58,10 @@ const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Update a user
-  const updateUser = async (userId: string, updatedData: any) => {
+  const updateUser = useCallback(async (userId: string, updatedData: any) => {
     setLoading(true);
     try {
       const userDoc = doc(db, "users", userId);
@@ -72,10 +72,10 @@ const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Delete a user
-  const deleteUser = async (userId: string) => {
+  const deleteUser = useCallback(async (userId: string) => {
     setLoading(true);
     try {
       const userDoc = doc(db, "users", userId);
@@ -86,10 +86,10 @@ const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Update user's airport code and last login timestamp
-  const updateUserLocationAndLogin = async (userId: string, airportCode: string) => {
+  const updateUserLocationAndLogin = useCallback(async (userId: string, airportCode: string) => {
     setLoading(true);
     try {
       const userDoc = doc(db, "users", userId);
@@ -103,10 +103,10 @@ const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // New function to get nearby users
-  const getNearbyUsers = async (airportCode: string) => {
+  const getNearbyUsers = useCallback(async (airportCode: string) => {
     setLoading(true);
     try {
       const usersCollection = collection(db, "users");
@@ -124,7 +124,7 @@ const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   return { 
     getUsers, 

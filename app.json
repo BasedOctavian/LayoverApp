@@ -15,7 +15,9 @@
         "NSLocationWhenInUseUsageDescription": "Wingman uses your location to detect your current airport during a layover so you can connect with other travelers nearby, join or create local events, and discover people with similar interests.",
         "NSPhotoLibraryUsageDescription": "Wingman allows you to upload a profile photo or share pictures with fellow travelers during layovers.",
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSUserNotificationUsageDescription": "Wingman sends you notifications about new messages, events, and updates during your layover.",
         "NSFaceIDUsageDescription": "Wingman uses Face ID to securely authenticate admin access to protect sensitive administrative features."
       },
@@ -51,7 +53,10 @@
               "host": "*"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -93,7 +98,8 @@
           },
           "imageWidth": 250
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "router": {

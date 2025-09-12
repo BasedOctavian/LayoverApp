@@ -1,0 +1,13 @@
+diff --git a/node_modules/babel-preset-expo/build/index.js b/node_modules/babel-preset-expo/build/index.js
+index 0f2b05f..c3dde53 100644
+--- a/node_modules/babel-preset-expo/build/index.js
++++ b/node_modules/babel-preset-expo/build/index.js
+@@ -290,7 +290,7 @@ function babelPresetExpo(api, options = {}) {
+                 platformOptions.reanimated !== false
+                 ? [require('react-native-worklets/plugin')]
+                 : (0, common_1.hasModule)('react-native-reanimated') &&
+-                    platformOptions.reanimated !== false && [require('react-native-reanimated/plugin')],
++                    platformOptions.reanimated !== false && [require('react-native-reanimated/plugin')],
+         ].filter(Boolean),
+     };
+ }

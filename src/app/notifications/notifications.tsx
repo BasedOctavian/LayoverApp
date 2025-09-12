@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, FlatList, Alert, Animated, RefreshControl, ScrollView, StatusBar } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,6 +39,101 @@ interface Notification {
   read: boolean;
 }
 
+// Validation function to check if a notification is properly formatted
+const isValidNotification = (notification: any): notification is Notification => {
+  try {
+    // Check if notification exists and has required fields
+    if (!notification || typeof notification !== 'object') return false;
+    
+    // Check required string fields
+    if (!notification.id || typeof notification.id !== 'string') return false;
+    if (!notification.title || typeof notification.title !== 'string') return false;
+    if (!notification.body || typeof notification.body !== 'string') return false;
+    
+    // Check data object
+    if (!notification.data || typeof notification.data !== 'object') return false;
+    if (!notification.data.type || typeof notification.data.type !== 'string') return false;
+    
+    // Validate notification type
+    const validTypes = ['chat', 'eventChat', 'match', 'ping_invitation', 'ping_event'];
+    if (!validTypes.includes(notification.data.type)) return false;
+    
+    // Check timestamp (can be Firestore timestamp or Date)
+    if (!notification.timestamp) return false;
+    
+    // Check read status
+    if (typeof notification.read !== 'boolean') return false;
+    
+    return true;
+  } catch (error) {
+    console.warn('Error validating notification:', error);
+    return false;
+  }
+};
+
+// Safe data access function with fallbacks
+const getSafeNotificationData = (notification: any): Notification | null => {
+  try {
+    if (!isValidNotification(notification)) {
+      return {
+        id: 'invalid_' + Date.now(),
+        title: 'Invalid Notification',
+        body: 'This notification could not be displayed properly',
+        data: { type: 'chat' },
+        timestamp: new Date(),
+        read: false
+      };
+    }
+    
+    return notification;
+  } catch (error) {
+    console.warn('Error accessing notification data:', error);
+    return {
+      id: 'error_' + Date.now(),
+      title: 'Error Loading Notification',
+      body: 'There was a problem loading this notification',
+      data: { type: 'chat' },
+      timestamp: new Date(),
+      read: false
+    };
+  }
+};
+
+// Safe timestamp formatting with fallback
+const formatTimestamp = (timestamp: any): string => {
+  try {
+    if (!timestamp) return 'Unknown time';
+    
+    // Handle Firestore timestamp
+    if (timestamp.seconds) {
+      return new Date(timestamp.seconds * 1000).toLocaleString();
+    }
+    
+    // Handle regular Date object
+    if (timestamp instanceof Date) {
+      return timestamp.toLocaleString();
+    }
+    
+    // Handle timestamp number
+    if (typeof timestamp === 'number') {
+      return new Date(timestamp).toLocaleString();
+    }
+    
+    // Handle string timestamp
+    if (typeof timestamp === 'string') {
+      const date = new Date(timestamp);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleString();
+      }
+    }
+    
+    return 'Unknown time';
+  } catch (error) {
+    console.warn('Error formatting timestamp:', error);
+    return 'Unknown time';
+  }
+};
+
 // Configure notification handler
 ExpoNotifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -71,7 +166,7 @@ const NotificationSkeleton = ({ theme }: { theme: string }) => {
     shimmerAnimation.start();
 
     return () => shimmerAnimation.stop();
-  }, []);
+  }, [shimmerAnim]);
 
   const shimmerOpacity = shimmerAnim.interpolate({
     inputRange: [0, 1],
@@ -135,7 +230,7 @@ const AnimatedNotificationItem = ({ item, index, theme, onPress, onClear, onAcce
       delay: index * 100, // Stagger animation
       useNativeDriver: true,
     }).start();
-  }, [index]);
+  }, [index, itemAnim]);
 
   const isInvitation = item.data.type === 'ping_invitation';
   const isEvent = item.data.type === 'ping_event';
@@ -231,7 +326,7 @@ const AnimatedNotificationItem = ({ item, index, theme, onPress, onClear, onAcce
                 { color: theme === 'light' ? '#999999' : '#666666' },
               ]}
             >
-              {new Date(item.timestamp?.seconds * 1000).toLocaleString()}
+              {formatTimestamp(item.timestamp)}
             </Text>
           </View>
 
@@ -356,35 +451,7 @@ export default function Notifications() {
     fetchUserData();
   }, [user, getUser]);
 
-  useEffect(() => {
-    setupNotificationListeners();
-    setupNotificationsListener();
-
-    // Start smooth entrance animations
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    return () => {
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
-    };
-  }, []);
-
-  const setupNotificationListeners = () => {
+  const setupNotificationListeners = useCallback(() => {
     // Listen for incoming notifications while the app is foregrounded
     notificationListener.current = ExpoNotifications.addNotificationReceivedListener((notification) => {
       console.log('Notification received:', notification);
@@ -404,52 +471,79 @@ export default function Notifications() {
         handleNotificationResponse(response);
       }
     });
-  };
+  }, []);
 
-  const setupNotificationsListener = () => {
+  const setupNotificationsListener = useCallback(() => {
     if (!auth.currentUser) return;
 
     const userRef = doc(db, 'users', auth.currentUser.uid);
     const unsubscribe = onSnapshot(userRef, (doc) => {
       if (doc.exists()) {
-        const userData = doc.data();
-        const notificationList = userData.notifications || [];
-        // Sort notifications by timestamp in descending order (newest first)
-        const sortedNotifications = [...notificationList].sort((a, b) => {
-          const timeA = a.timestamp?.seconds || 0;
-          const timeB = b.timestamp?.seconds || 0;
-          return timeB - timeA;
-        });
-        
-        // Smooth transition when data loads
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }).start(() => {
-          setNotifications(sortedNotifications);
+        try {
+          const userData = doc.data();
+          const notificationList = userData.notifications || [];
+          
+          // Filter out invalid notifications and validate each one
+          const validNotifications = notificationList
+            .filter((notification: unknown) => isValidNotification(notification))
+            .map((notification: unknown) => getSafeNotificationData(notification))
+            .filter((notification: Notification | null): notification is Notification => notification !== null);
+          
+          // Sort notifications by timestamp in descending order (newest first)
+          const sortedNotifications = [...validNotifications].sort((a: Notification, b: Notification) => {
+            try {
+              const timeA = a.timestamp?.seconds || 0;
+              const timeB = b.timestamp?.seconds || 0;
+              return timeB - timeA;
+            } catch (error) {
+              console.warn('Error sorting notifications by timestamp:', error);
+              return 0;
+            }
+          });
+          
+          // Smooth transition when data loads
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }).start(() => {
+            setNotifications(sortedNotifications);
+            setLoading(false);
+          });
+        } catch (error) {
+          console.error('Error processing notifications:', error);
+          setNotifications([]);
           setLoading(false);
-        });
+        }
       } else {
         setLoading(false);
       }
     });
 
     return unsubscribe;
-  };
+  }, [fadeAnim]);
+
 
   const saveNotificationToFirestore = async (notification: ExpoNotifications.Notification) => {
     if (!auth.currentUser) return;
 
     try {
-      const senderName = notification.request.content.data.senderName;
+      const data = notification.request.content.data;
+      
+      // Validate required fields before saving
+      if (!data || !data.receiverId || !data.senderId) {
+        console.warn('Invalid notification data, skipping save:', data);
+        return;
+      }
+      
+      const senderName = data.senderName || 'Unknown User';
       const notificationData = {
         title: senderName ? `Message from ${senderName}` : 'New Message',
-        body: notification.request.content.body,
-        data: notification.request.content.data,
+        body: notification.request.content.body || 'New notification',
+        data: data,
         timestamp: serverTimestamp(),
-        userId: notification.request.content.data.receiverId,
-        senderId: notification.request.content.data.senderId,
+        userId: data.receiverId,
+        senderId: data.senderId,
         senderName: senderName,
         read: false
       };
@@ -465,17 +559,28 @@ export default function Notifications() {
   };
 
   const handleNotificationResponse = (response: ExpoNotifications.NotificationResponse) => {
-    const data = response.notification.request.content.data;
-    
-    if (data.type === 'chat') {
-      router.push(`/chat/${data.chatId}`);
-    } else if (data.type === 'eventChat') {
-      router.push(`/event/eventChat/${data.eventId}`);
-    } else if (data.type === 'match') {
-      // For match notifications, navigate to chat inbox
-      router.push('/chat/chatInbox');
-    } else if (data.type === 'ping_invitation' || data.type === 'ping_event') {
-      router.push(`/ping/${data.pingId}`);
+    try {
+      const data = response.notification.request.content.data;
+      
+      if (!data || !data.type) {
+        console.warn('Invalid notification data received');
+        return;
+      }
+      
+      if (data.type === 'chat' && data.chatId) {
+        router.push(`/chat/${data.chatId}`);
+      } else if (data.type === 'eventChat' && data.eventId) {
+        router.push(`/event/eventChat/${data.eventId}`);
+      } else if (data.type === 'match') {
+        // For match notifications, navigate to chat inbox
+        router.push('/chat/chatInbox');
+      } else if ((data.type === 'ping_invitation' || data.type === 'ping_event') && data.pingId) {
+        router.push(`/ping/${data.pingId}`);
+      } else {
+        console.warn('Unknown notification type or missing required data:', data);
+      }
+    } catch (error) {
+      console.error('Error handling notification response:', error);
     }
   };
 
@@ -492,7 +597,14 @@ export default function Notifications() {
       if (userDoc.exists()) {
         const userData = userDoc.data();
         const updatedNotifications = (userData.notifications || []).filter(
-          (n: Notification) => n.id !== notificationId
+          (n: unknown) => {
+            try {
+              return isValidNotification(n) && n.id !== notificationId;
+            } catch (error) {
+              console.warn('Error filtering notification:', error);
+              return false;
+            }
+          }
         );
         await updateDoc(userRef, { notifications: updatedNotifications });
       }
@@ -531,25 +643,43 @@ export default function Notifications() {
   };
 
   const handleNotificationPress = (item: Notification) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    
-    if (item.data.type === 'chat') {
-      router.push(`/chat/${item.data.chatId}`);
-    } else if (item.data.type === 'eventChat') {
-      router.push(`/event/eventChat/${item.data.eventId}`);
-    } else if (item.data.type === 'match') {
-      router.push('/chat/chatInbox');
-    } else if (item.data.type === 'ping_invitation' || item.data.type === 'ping_event') {
-      router.push(`/ping/${item.data.pingId}`);
+    try {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      
+      if (!item.data || !item.data.type) {
+        console.warn('Invalid notification data for press:', item);
+        return;
+      }
+      
+      if (item.data.type === 'chat' && item.data.chatId) {
+        router.push(`/chat/${item.data.chatId}`);
+      } else if (item.data.type === 'eventChat' && item.data.eventId) {
+        router.push(`/event/eventChat/${item.data.eventId}`);
+      } else if (item.data.type === 'match') {
+        router.push('/chat/chatInbox');
+      } else if ((item.data.type === 'ping_invitation' || item.data.type === 'ping_event') && item.data.pingId) {
+        router.push(`/ping/${item.data.pingId}`);
+      } else {
+        console.warn('Unknown notification type or missing required data for press:', item.data);
+      }
+    } catch (error) {
+      console.error('Error handling notification press:', error);
     }
   };
 
   const handleAcceptInvitation = async (item: Notification) => {
-    if (!auth.currentUser || !item.data.pingId) return;
+    if (!auth.currentUser) return;
     
     try {
+      // Validate notification data before proceeding
+      if (!item.data || !item.data.pingId || !item.data.pingTitle) {
+        console.warn('Invalid invitation data:', item);
+        Alert.alert('Error', 'Invalid invitation data. Please try again.');
+        return;
+      }
+      
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       }
@@ -583,40 +713,17 @@ export default function Notifications() {
       
       // For ping_invitation notifications, send notification to inviter
       if (item.data.type === 'ping_invitation' && item.data.inviterId) {
-        const inviterRef = doc(db, 'users', item.data.inviterId);
-        const inviterDoc = await getDoc(inviterRef);
-        if (inviterDoc.exists()) {
-          const inviterData = inviterDoc.data();
-          const currentUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-          const currentUserData = currentUserDoc.data();
-          const acceptanceNotification = {
-            id: Date.now().toString(),
-            title: 'Invitation Accepted! 🎉',
-            body: `${currentUserData?.name || 'Someone'} accepted your invitation to "${item.data.pingTitle}"`,
-            data: {
-              type: 'ping_acceptance',
-              pingId: item.data.pingId,
-              pingTitle: item.data.pingTitle,
-              acceptedUserId: auth.currentUser.uid,
-              acceptedUserName: currentUserData?.name || 'Someone'
-            },
-            timestamp: new Date(),
-            read: false
-          };
-          await updateDoc(inviterRef, {
-            notifications: arrayUnion(acceptanceNotification)
-          });
-          
-          // Send push notification to inviter
-          if (inviterData?.expoPushToken && 
-              inviterData?.notificationPreferences?.notificationsEnabled && 
-              inviterData?.notificationPreferences?.events) {
-            const pushPayload = {
-              to: inviterData.expoPushToken,
+        try {
+          const inviterRef = doc(db, 'users', item.data.inviterId);
+          const inviterDoc = await getDoc(inviterRef);
+          if (inviterDoc.exists()) {
+            const inviterData = inviterDoc.data();
+            const currentUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            const currentUserData = currentUserDoc.data();
+            const acceptanceNotification = {
+              id: Date.now().toString(),
               title: 'Invitation Accepted! 🎉',
               body: `${currentUserData?.name || 'Someone'} accepted your invitation to "${item.data.pingTitle}"`,
-              sound: 'default',
-              priority: 'high',
               data: {
                 type: 'ping_acceptance',
                 pingId: item.data.pingId,
@@ -624,56 +731,61 @@ export default function Notifications() {
                 acceptedUserId: auth.currentUser.uid,
                 acceptedUserName: currentUserData?.name || 'Someone'
               },
+              timestamp: new Date(),
+              read: false
             };
-            await fetch('https://exp.host/--/api/v2/push/send', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Accept-encoding': 'gzip, deflate',
-              },
-              body: JSON.stringify(pushPayload),
+            await updateDoc(inviterRef, {
+              notifications: arrayUnion(acceptanceNotification)
             });
+            
+            // Send push notification to inviter
+            if (inviterData?.expoPushToken && 
+                inviterData?.notificationPreferences?.notificationsEnabled && 
+                inviterData?.notificationPreferences?.events) {
+              const pushPayload = {
+                to: inviterData.expoPushToken,
+                title: 'Invitation Accepted! 🎉',
+                body: `${currentUserData?.name || 'Someone'} accepted your invitation to "${item.data.pingTitle}"`,
+                sound: 'default',
+                priority: 'high',
+                data: {
+                  type: 'ping_acceptance',
+                  pingId: item.data.pingId,
+                  pingTitle: item.data.pingTitle,
+                  acceptedUserId: auth.currentUser.uid,
+                  acceptedUserName: currentUserData?.name || 'Someone'
+                },
+              };
+              await fetch('https://exp.host/--/api/v2/push/send', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Accept-encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify(pushPayload),
+              });
+            }
           }
+        } catch (error) {
+          console.warn('Error sending acceptance notification:', error);
+          // Don't fail the whole operation for notification errors
         }
       }
       
       // For ping_event notifications, send notification to creator
       if (item.data.type === 'ping_event' && pingData.creatorId) {
-        const creatorRef = doc(db, 'users', pingData.creatorId);
-        const creatorDoc = await getDoc(creatorRef);
-        if (creatorDoc.exists()) {
-          const creatorData = creatorDoc.data();
-          const currentUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-          const currentUserData = currentUserDoc.data();
-          const joinNotification = {
-            id: Date.now().toString(),
-            title: 'Someone Joined Your Activity! 🎉',
-            body: `${currentUserData?.name || 'Someone'} joined your activity "${item.data.pingTitle}"`,
-            data: {
-              type: 'ping_join',
-              pingId: item.data.pingId,
-              pingTitle: item.data.pingTitle,
-              joinedUserId: auth.currentUser.uid,
-              joinedUserName: currentUserData?.name || 'Someone'
-            },
-            timestamp: new Date(),
-            read: false
-          };
-          await updateDoc(creatorRef, {
-            notifications: arrayUnion(joinNotification)
-          });
-          
-          // Send push notification to creator
-          if (creatorData?.expoPushToken && 
-              creatorData?.notificationPreferences?.notificationsEnabled && 
-              creatorData?.notificationPreferences?.events) {
-            const pushPayload = {
-              to: creatorData.expoPushToken,
+        try {
+          const creatorRef = doc(db, 'users', pingData.creatorId);
+          const creatorDoc = await getDoc(creatorRef);
+          if (creatorDoc.exists()) {
+            const creatorData = creatorDoc.data();
+            const currentUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            const currentUserData = currentUserDoc.data();
+            const joinNotification = {
+              id: Date.now().toString(),
               title: 'Someone Joined Your Activity! 🎉',
               body: `${currentUserData?.name || 'Someone'} joined your activity "${item.data.pingTitle}"`,
-              sound: 'default',
-              priority: 'high',
               data: {
                 type: 'ping_join',
                 pingId: item.data.pingId,
@@ -681,17 +793,45 @@ export default function Notifications() {
                 joinedUserId: auth.currentUser.uid,
                 joinedUserName: currentUserData?.name || 'Someone'
               },
+              timestamp: new Date(),
+              read: false
             };
-            await fetch('https://exp.host/--/api/v2/push/send', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Accept-encoding': 'gzip, deflate',
-              },
-              body: JSON.stringify(pushPayload),
+            await updateDoc(creatorRef, {
+              notifications: arrayUnion(joinNotification)
             });
+            
+            // Send push notification to creator
+            if (creatorData?.expoPushToken && 
+                creatorData?.notificationPreferences?.notificationsEnabled && 
+                creatorData?.notificationPreferences?.events) {
+              const pushPayload = {
+                to: creatorData.expoPushToken,
+                title: 'Someone Joined Your Activity! 🎉',
+                body: `${currentUserData?.name || 'Someone'} joined your activity "${item.data.pingTitle}"`,
+                sound: 'default',
+                priority: 'high',
+                data: {
+                  type: 'ping_join',
+                  pingId: item.data.pingId,
+                  pingTitle: item.data.pingTitle,
+                  joinedUserId: auth.currentUser.uid,
+                  joinedUserName: currentUserData?.name || 'Someone'
+                },
+              };
+              await fetch('https://exp.host/--/api/v2/push/send', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Accept-encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify(pushPayload),
+              });
+            }
           }
+        } catch (error) {
+          console.warn('Error sending join notification:', error);
+          // Don't fail the whole operation for notification errors
         }
       }
       
@@ -710,9 +850,16 @@ export default function Notifications() {
   };
 
   const handleDeclineInvitation = async (item: Notification) => {
-    if (!auth.currentUser || !item.data.pingId) return;
+    if (!auth.currentUser) return;
     
     try {
+      // Validate notification data before proceeding
+      if (!item.data || !item.data.pingId || !item.data.pingTitle) {
+        console.warn('Invalid invitation data for decline:', item);
+        Alert.alert('Error', 'Invalid invitation data. Please try again.');
+        return;
+      }
+      
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
@@ -722,40 +869,17 @@ export default function Notifications() {
       
       // For ping_invitation notifications, send notification to inviter
       if (item.data.type === 'ping_invitation' && item.data.inviterId) {
-        const inviterRef = doc(db, 'users', item.data.inviterId);
-        const inviterDoc = await getDoc(inviterRef);
-        if (inviterDoc.exists()) {
-          const inviterData = inviterDoc.data();
-          const currentUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-          const currentUserData = currentUserDoc.data();
-          const declineNotification = {
-            id: Date.now().toString(),
-            title: 'Invitation Declined',
-            body: `${currentUserData?.name || 'Someone'} declined your invitation to "${item.data.pingTitle}"`,
-            data: {
-              type: 'ping_decline',
-              pingId: item.data.pingId,
-              pingTitle: item.data.pingTitle,
-              declinedUserId: auth.currentUser.uid,
-              declinedUserName: currentUserData?.name || 'Someone'
-            },
-            timestamp: new Date(),
-            read: false
-          };
-          await updateDoc(inviterRef, {
-            notifications: arrayUnion(declineNotification)
-          });
-          
-          // Send push notification to inviter
-          if (inviterData?.expoPushToken && 
-              inviterData?.notificationPreferences?.notificationsEnabled && 
-              inviterData?.notificationPreferences?.events) {
-            const pushPayload = {
-              to: inviterData.expoPushToken,
+        try {
+          const inviterRef = doc(db, 'users', item.data.inviterId);
+          const inviterDoc = await getDoc(inviterRef);
+          if (inviterDoc.exists()) {
+            const inviterData = inviterDoc.data();
+            const currentUserDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            const currentUserData = currentUserDoc.data();
+            const declineNotification = {
+              id: Date.now().toString(),
               title: 'Invitation Declined',
               body: `${currentUserData?.name || 'Someone'} declined your invitation to "${item.data.pingTitle}"`,
-              sound: 'default',
-              priority: 'high',
               data: {
                 type: 'ping_decline',
                 pingId: item.data.pingId,
@@ -763,17 +887,45 @@ export default function Notifications() {
                 declinedUserId: auth.currentUser.uid,
                 declinedUserName: currentUserData?.name || 'Someone'
               },
+              timestamp: new Date(),
+              read: false
             };
-            await fetch('https://exp.host/--/api/v2/push/send', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Accept-encoding': 'gzip, deflate',
-              },
-              body: JSON.stringify(pushPayload),
+            await updateDoc(inviterRef, {
+              notifications: arrayUnion(declineNotification)
             });
+            
+            // Send push notification to inviter
+            if (inviterData?.expoPushToken && 
+                inviterData?.notificationPreferences?.notificationsEnabled && 
+                inviterData?.notificationPreferences?.events) {
+              const pushPayload = {
+                to: inviterData.expoPushToken,
+                title: 'Invitation Declined',
+                body: `${currentUserData?.name || 'Someone'} declined your invitation to "${item.data.pingTitle}"`,
+                sound: 'default',
+                priority: 'high',
+                data: {
+                  type: 'ping_decline',
+                  pingId: item.data.pingId,
+                  pingTitle: item.data.pingTitle,
+                  declinedUserId: auth.currentUser.uid,
+                  declinedUserName: currentUserData?.name || 'Someone'
+                },
+              };
+              await fetch('https://exp.host/--/api/v2/push/send', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Accept-encoding': 'gzip, deflate',
+                },
+                body: JSON.stringify(pushPayload),
+              });
+            }
           }
+        } catch (error) {
+          console.warn('Error sending decline notification:', error);
+          // Don't fail the whole operation for notification errors
         }
       }
       
@@ -811,6 +963,37 @@ export default function Notifications() {
     />
   );
 
+  useEffect(() => {
+    setupNotificationListeners();
+    const unsubscribe = setupNotificationsListener();
+
+    // Start smooth entrance animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    return () => {
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+      }
+      if (responseListener.current) {
+        responseListener.current.remove();
+      }
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [fadeAnim, slideAnim, setupNotificationsListener, setupNotificationListeners]);
+
   const renderSkeletonList = () => {
     const skeletonItems = Array.from({ length: 5 }, (_, index) => (
       <NotificationSkeleton key={index} theme={currentTheme} />
@@ -823,85 +1006,117 @@ export default function Notifications() {
     );
   };
 
-  return (
-    <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar onProfilePress={() => router.push("profile/" + userId)} notificationCount={notificationCount} />
-      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <Animated.View 
-          style={{ 
-            flex: 1,
-            
-           
-          }}
-        >
-          <ScrollView 
-            contentContainerStyle={styles.notificationsContainer}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={currentTheme === "light" ? "#37a4c8" : "#37a4c8"}
-                colors={["#37a4c8"]}
-              />
-            }
+  try {
+    return (
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+        <TopBar onProfilePress={() => router.push("profile/" + userId)} notificationCount={notificationCount} />
+        <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+          <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+          <Animated.View 
+            style={{ 
+              flex: 1,
+              
+             
+            }}
           >
-            <View style={styles.header}>
-              <Text style={[styles.headerTitle, { color: currentTheme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                Notifications
-              </Text>
-              {notifications.length > 0 && (
-                <TouchableOpacity
-                  style={styles.clearAllButton}
-                  onPress={clearAllNotifications}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.clearAllText, { color: currentTheme === "light" ? "#37a4c8" : "#37a4c8" }]}>
-                    Clear All
-                  </Text>
-                </TouchableOpacity>
+            <ScrollView 
+              contentContainerStyle={styles.notificationsContainer}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={currentTheme === "light" ? "#37a4c8" : "#37a4c8"}
+                  colors={["#37a4c8"]}
+                />
+              }
+            >
+              <View style={styles.header}>
+                <Text style={[styles.headerTitle, { color: currentTheme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                  Notifications
+                </Text>
+                {notifications.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.clearAllButton}
+                    onPress={clearAllNotifications}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.clearAllText, { color: currentTheme === "light" ? "#37a4c8" : "#37a4c8" }]}>
+                      Clear All
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              
+              {loading ? (
+                renderSkeletonList()
+              ) : notifications.length === 0 ? (
+                <View style={styles.emptyStateContainer}>
+                  <Animated.View style={[styles.emptyState, { opacity: fadeAnim }]}>
+                    <View style={[styles.emptyStateIcon, {
+                      backgroundColor: currentTheme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
+                    }]}>
+                      <Ionicons name="notifications-off" size={48} color="#37a4c8" />
+                    </View>
+                    <Text style={[styles.emptyStateTitle, { color: currentTheme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      No notifications yet
+                    </Text>
+                    <Text style={[styles.emptyStateSubtitle, { color: currentTheme === "light" ? "#666666" : "#a0a0a0" }]}>
+                      We'll notify you when something important happens
+                    </Text>
+                  </Animated.View>
+                </View>
+              ) : (
+                <View style={styles.notificationList}>
+                  {notifications.map((item, index) => {
+                    try {
+                      // Validate item before rendering
+                      if (!isValidNotification(item)) {
+                        console.warn('Skipping invalid notification:', item);
+                        return null;
+                      }
+                      
+                      return (
+                        <AnimatedNotificationItem
+                          key={item.id}
+                          item={item}
+                          index={index}
+                          theme={currentTheme}
+                          onPress={() => handleNotificationPress(item)}
+                          onClear={() => clearNotification(item.id)}
+                          onAccept={item.data.type === 'ping_invitation' || item.data.type === 'ping_event' ? () => handleAcceptInvitation(item) : undefined}
+                          onDecline={item.data.type === 'ping_invitation' || item.data.type === 'ping_event' ? () => handleDeclineInvitation(item) : undefined}
+                        />
+                      );
+                    } catch (error) {
+                      console.error('Error rendering notification item:', error, item);
+                      return null;
+                    }
+                  })}
+                </View>
               )}
-            </View>
-            
-            {loading ? (
-              renderSkeletonList()
-            ) : notifications.length === 0 ? (
-              <View style={styles.emptyStateContainer}>
-                <Animated.View style={[styles.emptyState, { opacity: fadeAnim }]}>
-                  <View style={[styles.emptyStateIcon, {
-                    backgroundColor: currentTheme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
-                  }]}>
-                    <Ionicons name="notifications-off" size={48} color="#37a4c8" />
-                  </View>
-                  <Text style={[styles.emptyStateTitle, { color: currentTheme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                    No notifications yet
-                  </Text>
-                  <Text style={[styles.emptyStateSubtitle, { color: currentTheme === "light" ? "#666666" : "#a0a0a0" }]}>
-                    We'll notify you when something important happens
-                  </Text>
-                </Animated.View>
-              </View>
-            ) : (
-              <View style={styles.notificationList}>
-                {notifications.map((item, index) => (
-                  <AnimatedNotificationItem
-                    key={item.id}
-                    item={item}
-                    index={index}
-                    theme={currentTheme}
-                    onPress={() => handleNotificationPress(item)}
-                    onClear={() => clearNotification(item.id)}
-                    onAccept={item.data.type === 'ping_invitation' || item.data.type === 'ping_event' ? () => handleAcceptInvitation(item) : undefined}
-                    onDecline={item.data.type === 'ping_invitation' || item.data.type === 'ping_event' ? () => handleDeclineInvitation(item) : undefined}
-                  />
-                ))}
-              </View>
-            )}
-          </ScrollView>
-        </Animated.View>
-      </SafeAreaView>
-    </LinearGradient>
-  );
+            </ScrollView>
+          </Animated.View>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  } catch (error) {
+    console.error('Critical error in Notifications component:', error);
+    // Fallback UI in case of critical errors
+    return (
+      <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+          <View style={styles.emptyStateContainer}>
+            <Text style={[styles.emptyStateTitle, { color: currentTheme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+              Something went wrong
+            </Text>
+            <Text style={[styles.emptyStateSubtitle, { color: currentTheme === "light" ? "#666666" : "#a0a0a0" }]}>
+              Please try refreshing the app
+            </Text>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 }
 
 const styles = StyleSheet.create({

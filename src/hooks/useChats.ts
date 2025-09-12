@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   collection,
   getDocs,
@@ -18,7 +18,7 @@ const useChats = () => {
   const [error, setError] = useState(null);
 
   // Get all chats
-  const getChats = async () => {
+  const getChats = useCallback(async () => {
     setLoading(true);
     try {
       console.log("Fetching all chats from Firestore...");
@@ -35,7 +35,7 @@ const useChats = () => {
       console.log("Setting loading to false in getChats");
       setLoading(false);
     }
-  };
+  }, []);
 
   // Get a specific chat by ID
   const getChat = async (chatId) => {

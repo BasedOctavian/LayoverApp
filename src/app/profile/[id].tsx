@@ -2517,7 +2517,7 @@ const Profile = () => {
       default:
         return null;
     }
-  }, [userData, activeTab, tabFadeAnim, tabScaleAnim, theme, connections, loadingConnections, router, galleryImages, uploadingGalleryImage, loadingGalleryImages, handleGalleryImageUpload, handleDeleteGalleryImage, handlePhotoPress, authUser, id, expandedSections, toggleSection, isSectionExpanded, shouldShowExpandButton, getVisibleItems, getHiddenItems, getSharedConnectionIntents, getSharedPersonalTags, getSharedEventPreferences, isSharedItem]);
+  }, [userData, activeTab, theme, connections, loadingConnections, galleryImages, uploadingGalleryImage, loadingGalleryImages, authUser, id, expandedSections]);
 
   // Effects
   useFocusEffect(

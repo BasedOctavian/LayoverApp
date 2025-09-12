@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -43,7 +43,7 @@ const useAuth = () => {
     return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -65,9 +65,9 @@ const useAuth = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const signup = async (email: string, password: string, userData: any) => {
+  const signup = useCallback(async (email: string, password: string, userData: any) => {
     try {
       setLoading(true);
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -92,9 +92,9 @@ const useAuth = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -112,10 +112,10 @@ const useAuth = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // New function to update the user's password
-  const changePassword = async (newPassword: string) => {
+  const changePassword = useCallback(async (newPassword: string) => {
     if (!auth.currentUser) {
       const errMsg = "No user is currently logged in";
       setError(errMsg);
@@ -131,7 +131,7 @@ const useAuth = () => {
       // you'll need to reauthenticate the user before calling updatePassword.
       throw authError;
     }
-  };
+  }, []);
 
   return {
     user,
