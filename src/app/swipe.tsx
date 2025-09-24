@@ -31,7 +31,6 @@ import Animated, {
   withSpring,
   interpolate,
   Extrapolate,
-  runOnJS,
   useAnimatedReaction,
   withTiming,
   FadeIn,
