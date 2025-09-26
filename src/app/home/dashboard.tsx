@@ -46,39 +46,13 @@ import PingEventModal from "../../components/PingEventModal";
 import { isProfileComplete } from "../../utils/profileCompletionCheck";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-type FeatureButton = {
-  icon: React.ReactNode;
-  title: string;
-  screen: string;
-  description: string;
-};
+// Dashboard Components
+import UserAvailabilitySection, { NearbyUser } from "../../components/dashboard/UserAvailabilitySection";
+import FloatingActionButton from "../../components/dashboard/FloatingActionButton";
+import FeatureGrid, { FeatureButton } from "../../components/dashboard/FeatureGrid";
+import MoodStatusBar from "../../components/dashboard/MoodStatusBar";
 
-type NearbyUser = {
-  id: string;
-  name: string;
-  status: string;
-  isInviteCard?: boolean;
-  isViewMoreCard?: boolean;
-  profilePicture?: string;
-  age?: string;
-  bio?: string;
-  languages?: string[];
-  interests?: string[];
-  goals?: string[];
-  pronouns?: string;
-  lastLogin?: any;
-  availabilitySchedule?: {
-    [key: string]: {
-      start: string;
-      end: string;
-    };
-  };
-  linkRatingScore?: {
-    average: number;
-    count: number;
-  };
-  currentCity?: string;
-};
+// Types are now imported from components
 
 interface UserData {
   id: string;
@@ -251,11 +225,7 @@ const getRemainingTime = (availabilitySchedule: any): string | null => {
   }
 };
 
-// Helper function to format rating display
-const formatRating = (ratingScore: any): string => {
-  if (!ratingScore || !ratingScore.average) return 'No ratings';
-  return `${ratingScore.average.toFixed(1)} (${ratingScore.count})`;
-};
+// formatRating helper moved to UserAvailabilitySection component
 
 // Helper function to get next available time
 const getNextAvailableTime = (availabilitySchedule: any): string | null => {
@@ -465,78 +435,7 @@ const CountdownTimer = ({ startTime }: { startTime: Date }) => {
   );
 };
 
-// Real-time updating component for user availability time
-const UserAvailabilityTimer = ({ availabilitySchedule, theme }: { availabilitySchedule: any; theme: string }) => {
-  const [timeLeft, setTimeLeft] = useState<string>('');
-
-  useEffect(() => {
-    const calculateTimeLeft = () => {
-      if (!availabilitySchedule) {
-        setTimeLeft('');
-        return;
-      }
-      
-      const now = new Date();
-      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const currentDay = days[now.getDay()];
-      const todaySchedule = availabilitySchedule[currentDay];
-      
-      if (!todaySchedule) {
-        setTimeLeft('');
-        return;
-      }
-      
-      const { end } = todaySchedule;
-      
-      // Check for invalid or zero times
-      if (!end || end === '0:00' || end === '00:00') {
-        setTimeLeft('');
-        return;
-      }
-      
-      const [endHour, endMinute] = end.split(':').map(Number);
-      const endTime = new Date();
-      endTime.setHours(endHour, endMinute, 0, 0);
-      
-      const diffMs = endTime.getTime() - now.getTime();
-      if (diffMs <= 0) {
-        setTimeLeft('');
-        return;
-      }
-      
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffMinutes = Math.ceil((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      
-      if (diffHours > 0) {
-        setTimeLeft(`${diffHours}h ${diffMinutes}m left`);
-      } else {
-        setTimeLeft(`${diffMinutes}m left`);
-      }
-    };
-
-    calculateTimeLeft();
-    const timer = setInterval(calculateTimeLeft, 60000); // Update every minute
-
-    return () => clearInterval(timer);
-  }, [availabilitySchedule]);
-
-  if (!timeLeft) return null;
-
-  return (
-    <View style={[styles.metaItem, { 
-      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
-    }]}>
-      <Feather name="clock" size={9} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-      <Text 
-        style={[styles.metaText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        {timeLeft}
-      </Text>
-    </View>
-  );
-};
+// UserAvailabilityTimer component moved to separate file
 
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
@@ -620,13 +519,8 @@ export default function Dashboard() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const displayTextRef = useRef<string>("");
 
-  // FAB expansion state and animations
+  // FAB expansion state
   const [fabExpanded, setFabExpanded] = useState(false);
-  const fabRotateAnim = useRef(new Animated.Value(0)).current;
-  const eventButtonAnim = useRef(new Animated.Value(0)).current;
-  const pingButtonAnim = useRef(new Animated.Value(0)).current;
-  const eventButtonOpacity = useRef(new Animated.Value(0)).current;
-  const pingButtonOpacity = useRef(new Animated.Value(0)).current;
 
   // Random messages for alternating display
   const randomMessages = useMemo(() => [
@@ -645,67 +539,8 @@ export default function Dashboard() {
 
   // Function to handle FAB expansion
   const toggleFabExpansion = useCallback(() => {
-    if (fabExpanded) {
-      // Collapse FAB
-      Animated.parallel([
-        Animated.timing(fabRotateAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(eventButtonAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pingButtonAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(eventButtonOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pingButtonOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Expand FAB
-      Animated.parallel([
-        Animated.timing(fabRotateAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(eventButtonAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pingButtonAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(eventButtonOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pingButtonOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
     setFabExpanded(!fabExpanded);
-  }, [fabExpanded, fabRotateAnim, eventButtonAnim, pingButtonAnim, eventButtonOpacity, pingButtonOpacity]);
+  }, [fabExpanded]);
 
   // Function to handle text transition with fade
   const transitionText = useCallback((newText: string) => {
@@ -1481,30 +1316,18 @@ export default function Dashboard() {
 
                 </Animated.View>
               ) : (
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={handleMoodPress}
-                  style={styles.defaultSearchContainer}
+                <View
                   onLayout={(event) => {
                     const { height } = event.nativeEvent.layout;
                     setDefaultSearchHeight(height);
                   }}
                 >
-                  <View style={[styles.searchContainer, { 
-                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                  }]}>
-                    <Animated.Text style={[styles.searchPlaceholder, { 
-                      color: theme === "light" ? "#37a4c8" : "#38a5c9",
-                      opacity: textFadeAnim
-                    }]}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {displayText}
-                    </Animated.Text>
+                  <MoodStatusBar 
+                    displayText={displayText}
+                    onPress={handleMoodPress}
+                    textFadeAnim={textFadeAnim}
+                  />
                   </View>
-                </TouchableOpacity>
               )}
             </Animated.View>
             <AnimatedFlatList
@@ -1567,214 +1390,11 @@ export default function Dashboard() {
                   } else if (dashboardItem.type === "section") {
                     if (dashboardItem.id === "users") {
                       return (
-                        <View style={styles.section}>
-                          <View style={styles.headerRow}>
-                            <View style={styles.headerLeft}>
-                            <Feather name="clock" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
-                            <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>Available Now</Text>
-                            </View>
-                            <TouchableOpacity 
-                              style={[styles.filterButton, { 
-                                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                                borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                                marginTop: 2,
-                              }]}
-                              onPress={() => router.push('/explore')}
-                              activeOpacity={0.7}
-                            >
-                              <Feather name="filter" size={14} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                              <Text style={[styles.filterButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                Filter
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                          {loading ? (
-                            <View style={styles.loadingContainer}>
-                              <ActivityIndicator size="small" color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                              <Text style={[styles.loadingText, { color: theme === "light" ? "#000000" : "#64748B" }]}>
-                                Finding available travelers...
-                              </Text>
-                            </View>
-                          ) : dashboardItem.data.length > 0 ? (
-                            <FlatList
-                              horizontal
-                              data={dashboardItem.data}
-                              keyExtractor={(user: NearbyUser) => user.id}
-                              renderItem={({ item: user }: { item: NearbyUser }) => {
-                                const handlePress = () => {
-                                  if (user.isInviteCard) {
-                                    const appStoreLink = 'https://apps.apple.com/us/app/wingman-connect-on-layovers/id6743148488';
-                                    const message = `Join me on Wingman! Connect with travelers during layovers: ${appStoreLink}`;
-                                    Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
-                                  } else if (user.isViewMoreCard) {
-                                    router.push('/explore');
-                                  } else {
-                                    router.push(`profile/${user.id}`);
-                                  }
-                                };
-
-                                const renderUserCard = () => (
-                                  <View style={styles.userInfo}>
-                                    {/* Avatar and Basic Info Section */}
-                                    <View style={styles.userSection}>
-                                      <View style={[styles.avatar, { 
-                                        backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
-                                        borderColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                                        marginBottom: 12,
-                                      }]}>
-                                        {user.profilePicture ? (
-                                          <Image 
-                                            source={{ uri: user.profilePicture }} 
-                                            style={styles.avatarImage}
-                                          />
-                                        ) : (
-                                          <FontAwesome5 name="user" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                        )}
-                                      </View>
-                                      
-                                      {/* Name and Age Row */}
-                                      <View style={styles.nameAgeContainer}>
-                                        <Text 
-                                          style={[styles.userName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
-                                          numberOfLines={1}
-                                          ellipsizeMode="tail"
-                                        >
-                                          {user.name}
-                                        </Text>
-                                        {user.age && (
-                                          <Text style={[styles.userAge, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                            {user.age}
-                                          </Text>
-                                        )}
-                                      </View>
-                                      
-                                      {/* Available Tag */}
-                                      <View style={[styles.availableTag, { 
-                                        backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                      }]}>
-                                        <Feather name="check-circle" size={8} color="#FFFFFF" />
-                                        <Text style={styles.availableText}>Available</Text>
-                                      </View>
-                                    </View>
-
-                                    {/* Meta Information Section */}
-                                    <View style={styles.userMetaContainer}>
-                                      {/* Time Left */}
-                                      <UserAvailabilityTimer 
-                                        availabilitySchedule={user.availabilitySchedule} 
-                                        theme={theme || "light"} 
-                                      />
-
-                                      {/* Rating */}
-                                      <View style={[styles.metaItem, { 
-                                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
-                                      }]}>
-                                        <Feather name="star" size={9} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                        <Text 
-                                          style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
-                                          numberOfLines={1}
-                                          ellipsizeMode="tail"
-                                        >
-                                          {formatRating(user.linkRatingScore)}
-                                        </Text>
-                                      </View>
-
-                                      {/* Current City */}
-                                      {user.currentCity && (
-                                        <View style={[styles.metaItem, { 
-                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
-                                        }]}>
-                                          <Feather name="map-pin" size={9} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                          <Text 
-                                            style={[styles.metaText, { color: theme === "light" ? "#37a4c9" : "#38a5c9" }]}
-                                            numberOfLines={1}
-                                            ellipsizeMode="tail"
-                                          >
-                                            {user.currentCity}
-                                          </Text>
-                                        </View>
-                                      )}
-                                    </View>
-                                  </View>
-                                );
-
-                                const renderInviteCard = () => (
-                                  <View style={[styles.inviteCardGradient, { 
-                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
-                                  }]}>
-                                    <View style={[styles.inviteAvatar, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                    }]}>
-                                      <FontAwesome5 name="user-plus" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                    </View>
-                                    <Text style={[styles.inviteTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                      Invite Friends
-                                    </Text>
-                                    <Text style={[styles.inviteSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                      Share Wingman
-                                    </Text>
-                                    <View style={[styles.inviteButton, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
-                                    }]}>
-                                      <Feather name="share-2" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                      <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                        Share
-                                      </Text>
-                                    </View>
-                                  </View>
-                                );
-
-                                const renderViewMoreCard = () => (
-                                  <View style={[styles.viewMoreCard, { 
-                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a"
-                                  }]}>
-                                    <View style={[styles.viewMoreIconContainer, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)",
-                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                    }]}>
-                                      <Feather name="users" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                    </View>
-                                    <Text style={[styles.viewMoreTitle, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                      View More
-                                    </Text>
-                                    <Text style={[styles.viewMoreSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                      See all travelers
-                                    </Text>
-                                    <View style={[styles.inviteButton, { 
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
-                                    }]}>
-                                      <Feather name="chevron-right" size={12} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                                      <Text style={[styles.inviteButtonText, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                        Explore
-                                      </Text>
-                                    </View>
-                                  </View>
-                                );
-
-                                return (
-                                  <TouchableOpacity
-                                    style={[styles.userCard, { 
-                                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                    }]}
-                                    activeOpacity={0.7}
-                                    onPress={handlePress}
-                                  >
-                                    <View style={styles.userCardGradient}>
-                                      {user.isInviteCard ? renderInviteCard() : 
-                                       user.isViewMoreCard ? renderViewMoreCard() : 
-                                       renderUserCard()}
-                                    </View>
-                                  </TouchableOpacity>
-                                );
-                              }}
-                              showsHorizontalScrollIndicator={false}
-                            />
-                          ) : (
-                            <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No travelers available now.</Text>
-                          )}
-                        </View>
+                        <UserAvailabilitySection 
+                          users={dashboardItem.data}
+                          loading={loading}
+                          onFilterPress={() => router.push('/explore')}
+                        />
                       );
                     } else if (dashboardItem.id === "events") {
                       return (
@@ -1943,56 +1563,7 @@ export default function Dashboard() {
                     }
                   } else if (dashboardItem.type === "feature") {
                     return (
-                      <View style={styles.featureSection}>
-                        <View style={styles.featureGridContainer}>
-                          {features.map((feature, index) => (
-                        <TouchableOpacity
-                              key={index}
-                              style={[styles.featureGridItem, { 
-                            backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "#38a5c9"
-                          }]}
-                              activeOpacity={0.7}
-                              onPress={() => router.push(feature.screen)}
-                        >
-                              <View style={[styles.featureIconContainer, {
-                                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                              }]}>
-                                {feature.icon}
-                              </View>
-                              <Text style={[styles.featureGridTitle, { 
-                                color: theme === "light" ? "#000000" : "#e4fbfe" 
-                              }]}>
-                                {feature.title}
-                              </Text>
-                              <Text style={[styles.featureGridDescription, { 
-                                color: theme === "light" ? "#64748B" : "#64748B" 
-                              }]} numberOfLines={2}>
-                                {feature.description}
-                              </Text>
-                        </TouchableOpacity>
-                          ))}
-                        </View>
-                        <View style={[styles.footer, { 
-                          position: 'relative',
-                          marginBottom: 100 // Add space at the bottom to prevent scrolling past
-                        }]}>
-                          <Image
-                            source={theme === "light" 
-                              ? require('../../../assets/images/splash-icon.png')
-                              : require('../../../assets/images/splash-icon-dark.png')
-                            }
-                            style={[
-                              styles.footerLogo
-                              
-                            ]}
-                            resizeMode="contain"
-                          />
-                          <Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                            © 2025 Wingman. All rights reserved.
-                          </Text>
-                        </View>
-                      </View>
+                      <FeatureGrid features={features} />
                     );
                   } else if (dashboardItem.type === "spacer") {
                     return <View style={styles.spacer} />;
@@ -2006,145 +1577,13 @@ export default function Dashboard() {
             />
             {/* Floating Action Button */}
             {!showSearch && (
-              <View style={styles.fabContainer}>
-                {/* Event Button */}
-                <Animated.View
-                  style={[
-                    styles.fabOption,
-                    styles.eventFabOption,
-                    {
-                      opacity: eventButtonOpacity,
-                      transform: [
-                        {
-                          translateX: eventButtonAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, -100 * Math.cos(Math.PI / 8)],
-                          }),
-                        },
-                        {
-                          translateY: eventButtonAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, -100 * Math.sin(Math.PI / 8)],
-                          }),
-                        },
-                        {
-                          scale: eventButtonAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.8, 1],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <TouchableOpacity
-                    style={[styles.fabOptionButton, { 
-                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                    }]}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      router.push('eventCreation');
-                      toggleFabExpansion(); // Close the FAB
-                    }}
-                  >
-                    <MaterialIcons 
-                      name="event" 
-                      size={20} 
-                      color="#FFFFFF" 
-                    />
-                  </TouchableOpacity>
-                </Animated.View>
-
-                {/* Ping Button */}
-                <Animated.View
-                  style={[
-                    styles.fabOption,
-                    styles.pingFabOption,
-                    {
-                      opacity: pingButtonOpacity,
-                      transform: [
-                        {
-                          translateX: pingButtonAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, -100 * Math.cos(Math.PI / 2.2)],
-                          }),
-                        },
-                        {
-                          translateY: pingButtonAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, -100 * Math.sin(Math.PI / 2.2)],
-                          }),
-                        },
-                        {
-                          scale: pingButtonAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.8, 1],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <TouchableOpacity
-                    style={[styles.fabOptionButton, { 
-                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9",
-                      borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                    }]}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      handleOpenPingModal();
-                      toggleFabExpansion(); // Close the FAB
-                    }}
-                  >
-                    <MaterialIcons 
-                      name="send" 
-                      size={20} 
-                      color="#FFFFFF" 
-                    />
-                  </TouchableOpacity>
-                </Animated.View>
-
-                {/* Main FAB */}
-                <Animated.View
-                  style={[
-                    styles.fab,
-                    {
-                      opacity: sheetAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [1, 1],
-                      }),
-                      transform: [
-                        {
-                          scale: sheetAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1, 1],
-                          }),
-                        },
-                        {
-                          rotate: fabRotateAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0deg', '45deg'],
-                          }),
-                        },
-                      ],
-                      backgroundColor: theme === "light" ? "#37a4c8" : "#000000",
-                      borderWidth: 0,
-                    },
-                  ]}
-                >
-                  <TouchableOpacity 
-                    onPress={toggleFabExpansion}
-                    activeOpacity={0.8}
-                  >
-                    <MaterialIcons 
-                      name="add" 
-                      size={28} 
-                      color={theme === "light" ? "#FFFFFF" : "#38a5c9"} 
-                    />
-                  </TouchableOpacity>
-                </Animated.View>
-              </View>
+              <FloatingActionButton
+                expanded={fabExpanded}
+                onToggle={toggleFabExpansion}
+                onEventPress={toggleFabExpansion}
+                onPingPress={handleOpenPingModal}
+                sheetAnim={sheetAnim}
+              />
             )}
             {/* Status Sheet Component */}
             {showStatusSheet && (
@@ -2213,42 +1652,7 @@ const styles = StyleSheet.create({
     color: "#e4fbfe",
     letterSpacing: 0.3,
   },
-  userCard: {
-    width: 140,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 16,
-    marginRight: 10,
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  userCardGradient: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#000000",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: "#38a5c9",
-    overflow: 'hidden',
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
+  // User card styles moved to UserAvailabilitySection component
   userInfo: {
     padding: 0,
     alignItems: 'center',
@@ -2654,21 +2058,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingHorizontal: 4,
   },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    gap: 4,
-    borderWidth: 1,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  // Filter button styles moved to UserAvailabilitySection component
   filterButtonInner: {
     flexDirection: "row",
     alignItems: "center",
@@ -2686,36 +2076,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.2,
   },
-  filterButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  defaultSearchContainer: {
-    marginHorizontal: 16,
-    marginTop: 16,
-  },
-  searchContainer: {
-    borderRadius: 24,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    borderWidth: 1,
-  },
-  searchPlaceholder: {
-    fontSize: 16,
-    color: "#64748B",
-    letterSpacing: 0.3,
-    textAlign: "center",
-    flex: 1,
-  },
+  // Filter button text styles moved to UserAvailabilitySection component
+  // Search styles moved to MoodStatusBar component
   searchIcon: {
     marginLeft: 10,
   },
@@ -2949,86 +2311,15 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     letterSpacing: 0.2,
   },
-  featureSection: {
-    marginBottom: 16,
-  },
-  featureGridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 0,
-    gap: 16,
-    marginBottom: 40,
-  },
-  featureGridItem: {
-    width: '47%',
-    aspectRatio: 1,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    elevation: 6,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-  },
-  featureIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  featureGridTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    marginBottom: 6,
-    letterSpacing: -0.3,
-    lineHeight: 22,
-  },
-  featureGridDescription: {
-    fontSize: 14,
-    letterSpacing: 0.2,
-    lineHeight: 20,
-    fontWeight: '400',
-  },
+  // Feature grid styles moved to FeatureGrid component
   featureGridText: {
     fontSize: 14,
     color: "#64748B",
     fontWeight: "600",
     letterSpacing: 0.3,
   },
-  footer: {
-    alignItems: 'center',
-    marginTop: 16, // Reduced from 40 to 16
-    marginBottom: 20,
-  },
-  footerLogo: {
-    width: 95,
-    height: 95,
-    marginBottom: 12,
-  },
-  copyrightText: {
-    fontSize: 14,
-    opacity: 0.7,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: "#64748B",
-    fontWeight: "600",
-    letterSpacing: 0.2,
-  },
+  // Footer styles moved to FeatureGrid component
+  // Loading styles moved to UserAvailabilitySection component
   loadingDot: {
     width: 24,
     height: 24,
@@ -3102,55 +2393,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: -0.2,
   },
-  availableTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-    marginTop: 6,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  availableText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  fabContainer: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 0 : 0,
-    right: 0,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-
-  },
-  fabOption: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fabOptionButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 8,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
+  // Available tag styles moved to UserAvailabilitySection component
+  // FAB styles moved to FloatingActionButton component
   fabOptionLabel: {
     position: 'absolute',
     left: 60,

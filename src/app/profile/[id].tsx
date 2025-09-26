@@ -9,17 +9,15 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
-  TextInput,
   Alert,
-  Linking,
-  Modal,
   Easing,
   RefreshControl,
   Platform,
   Share,
+  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { MaterialIcons, FontAwesome, Ionicons } from "@expo/vector-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import { 
   doc, 
   getDoc, 
@@ -44,15 +42,23 @@ import ImageViewing from "react-native-image-viewing";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import TopBar from "../../components/TopBar";
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import LoadingScreen from "../../components/LoadingScreen";
 import useChats from "../../hooks/useChats";
 import { DocumentData } from "firebase/firestore";
 import { ThemeContext } from "../../context/ThemeContext";
 import useNotificationCount from "../../hooks/useNotificationCount";
-import StatusSheet, { presetStatuses, PresetStatus } from "../../components/StatusSheet";
-import UserAvatar from "../../components/UserAvatar";
-import * as Haptics from 'expo-haptics';
+import StatusSheet from "../../components/StatusSheet";
 import { generateProfileShareUrl, generateWebProfileShareUrl } from "../../utils/externalRoutes";
+
+// Profile Components
+import ProfileHeader from "../../components/profile/ProfileHeader";
+import ProfileTabs from "../../components/profile/ProfileTabs";
+import ConnectionsModal from "../../components/profile/ConnectionsModal";
+import AboutTab from "../../components/profile/tabs/AboutTab";
+import InterestsTab from "../../components/profile/tabs/InterestsTab";
+import SocialTab from "../../components/profile/tabs/SocialTab";
+import GalleryTab from "../../components/profile/tabs/GalleryTab";
 
 // Constants
 const ADMIN_IDS = ['hDn74gYZCdZu0efr3jMGTIWGrRQ2', 'WhNhj8WPUpbomevJQ7j69rnLbDp2'];
@@ -490,7 +496,8 @@ const Profile = () => {
   const router = useExpoRouter();
   const insets = useSafeAreaInsets();
   const { addChat, addMessage, getExistingChat } = useChats();
-  const { theme } = React.useContext(ThemeContext);
+  const { theme: rawTheme } = React.useContext(ThemeContext);
+  const theme = rawTheme || "dark"; // Default to dark theme if undefined
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
   const textAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
   const notificationCount = useNotificationCount(userId);
@@ -1520,1004 +1527,66 @@ const Profile = () => {
     switch (activeTab) {
       case 'about':
         return (
-          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
-            <View style={[styles.card, styles.aboutCard, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-              shadowOpacity: theme === "light" ? 0.2 : 0.1,
-            }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>About</Text>
-              <Text style={[styles.cardContent, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                {userData.bio || "No bio provided"}
-              </Text>
-            </View>
-            
-            {/* Current City */}
-            {userData.currentCity && (
-              <View style={[styles.card, styles.locationCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <View style={styles.locationHeader}>
-                  <MaterialIcons name="location-on" size={24} color="#37a4c8" style={styles.headerIcon} />
-                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Location</Text>
-                </View>
-                <Text style={[styles.locationText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                  {userData.currentCity}
-                </Text>
-                {userData.preferredMeetupRadius && (
-                  <View style={styles.meetupRadiusContainer}>
-                    <MaterialIcons name="radar" size={16} color={theme === "light" ? "#666666" : "#999999"} style={styles.headerIcon} />
-                    <Text style={[styles.meetupRadiusText, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                      Prefers meetups within {userData.preferredMeetupRadius} miles
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-
-            {/* Availability Status */}
-            <View style={[styles.card, styles.availabilityCard, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-              shadowOpacity: theme === "light" ? 0.2 : 0.1,
-            }]}>
-              <View style={styles.availabilityHeader}>
-                <MaterialIcons name="schedule" size={24} color="#37a4c8" style={styles.headerIcon} />
-                <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Availability</Text>
-              </View>
-              <View style={styles.availabilityContainer}>
-                <View style={[styles.availabilityIndicator, { 
-                  backgroundColor: isUserCurrentlyAvailable(userData.availabilitySchedule)
-                    ? (theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)")
-                    : (theme === "light" ? "rgba(244, 67, 54, 0.1)" : "rgba(244, 67, 54, 0.2)"),
-                  borderColor: isUserCurrentlyAvailable(userData.availabilitySchedule) ? "#4CAF50" : "#F44336",
-                }]}>
-                  <View style={[styles.availabilityDot, { 
-                    backgroundColor: isUserCurrentlyAvailable(userData.availabilitySchedule) ? "#4CAF50" : "#F44336" 
-                  }]} />
-                  <Text style={[styles.availabilityText, { 
-                    color: isUserCurrentlyAvailable(userData.availabilitySchedule) ? "#4CAF50" : "#F44336" 
-                  }]}>
-                    {isUserCurrentlyAvailable(userData.availabilitySchedule) ? "Available Now" : "Not Available"}
-                  </Text>
-                </View>
-              </View>
-              {userData.availabilitySchedule && (
-                <View style={styles.scheduleContainer}>
-                  <Text style={[styles.scheduleTitle, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    Weekly Schedule
-                  </Text>
-                  <View style={styles.scheduleGrid}>
-                    {Object.entries(userData.availabilitySchedule).map(([day, schedule]) => (
-                      <View key={day} style={[styles.scheduleItem, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
-                      }]}>
-                        <Text style={[styles.scheduleDay, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                          {day.charAt(0).toUpperCase() + day.slice(1, 3)}
-                        </Text>
-                        <Text style={[styles.scheduleTime, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                          {schedule.start === "00:00" && schedule.end === "00:00" ? "Unavailable" : 
-                           (schedule.start === "00:00" && schedule.end === "23:59") ? "All day" :
-                           `${formatTimeToAMPM(schedule.start)} - ${formatTimeToAMPM(schedule.end)}`}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-            </View>
-
-            <View style={[styles.card, styles.languagesCard, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-              shadowOpacity: theme === "light" ? 0.2 : 0.1,
-            }]}>
-              <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Languages</Text>
-              <View style={styles.tagsContainer}>
-                {userData.languages.map((language, index) => (
-                  <View key={index} style={[styles.tag, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                    shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                    shadowOpacity: theme === "light" ? 0.1 : 0,
-                  }]}>
-                    <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{language}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </Animated.View>
+          <AboutTab
+            userData={userData}
+            theme={theme}
+            tabFadeAnim={tabFadeAnim}
+            tabScaleAnim={tabScaleAnim}
+            isUserCurrentlyAvailable={isUserCurrentlyAvailable}
+            formatTimeToAMPM={formatTimeToAMPM}
+          />
         );
       case 'interests':
         return (
-          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
-            {/* Connection Intents */}
-            {userData.connectionIntents && userData.connectionIntents.length > 0 && (
-              <View style={[styles.card, styles.connectionIntentsCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <View style={styles.intentHeader}>
-                  <MaterialIcons name="people" size={24} color="#37a4c8" style={styles.headerIcon} />
-                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Looking to Connect</Text>
-                  <Text style={[styles.itemCount, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    {userData.connectionIntents.length}
-                  </Text>
-                </View>
-                <Text style={[styles.cardSubtitle, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                  Interested in networking around these topics
-                </Text>
-                
-                {/* Show shared connection intents count if any */}
-                {!isOwnProfile && getSharedConnectionIntents().length > 0 && (
-                  <View style={[styles.sharedItemsIndicator, { 
-                    backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
-                    borderColor: "#4CAF50",
-                  }]}>
-                    <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
-                    <Text style={[styles.sharedItemsText, { color: "#4CAF50" }]}>
-                      {getSharedConnectionIntents().length} shared interest{getSharedConnectionIntents().length !== 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                )}
-                
-                <View style={styles.tagsContainer}>
-                  {getVisibleItems(userData.connectionIntents, 6).map((intent, index) => {
-                    const isShared = isSharedItem(intent, 'connectionIntents');
-                    return (
-                      <View key={index} style={[styles.tag, styles.intentTag, { 
-                        backgroundColor: isShared 
-                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                          : (theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)"),
-                        borderColor: isShared 
-                          ? "#4CAF50" 
-                          : (theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8"),
-                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.15 : 0,
-                      }]}>
-                        <MaterialIcons 
-                          name={isShared ? "check-circle" : "handshake"} 
-                          size={16} 
-                          color={isShared ? "#4CAF50" : "#37a4c8"} 
-                          style={styles.tagIcon} 
-                        />
-                        <Text style={[styles.tagText, { 
-                          color: theme === "light" ? "#0F172A" : "#ffffff",
-                          fontWeight: isShared ? '700' : '600'
-                        }]}>{intent}</Text>
-                        {isShared && (
-                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                        )}
-                      </View>
-                    );
-                  })}
-                  
-                  {/* Hidden items when expanded */}
-                  {isSectionExpanded('connectionIntents') && getHiddenItems(userData.connectionIntents, 6).map((intent, index) => {
-                    const isShared = isSharedItem(intent, 'connectionIntents');
-                    return (
-                      <View key={`hidden-${index}`} style={[styles.tag, styles.intentTag, { 
-                        backgroundColor: isShared 
-                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                          : (theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)"),
-                        borderColor: isShared 
-                          ? "#4CAF50" 
-                          : (theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8"),
-                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.15 : 0,
-                      }]}>
-                        <MaterialIcons 
-                          name={isShared ? "check-circle" : "handshake"} 
-                          size={16} 
-                          color={isShared ? "#4CAF50" : "#37a4c8"} 
-                          style={styles.tagIcon} 
-                        />
-                        <Text style={[styles.tagText, { 
-                          color: theme === "light" ? "#0F172A" : "#ffffff",
-                          fontWeight: isShared ? '700' : '600'
-                        }]}>{intent}</Text>
-                        {isShared && (
-                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-                
-                {/* Expand/Collapse Button */}
-                {shouldShowExpandButton(userData.connectionIntents, 6) && (
-                  <TouchableOpacity
-                    style={[styles.expandButton, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.15)",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                    }]}
-                    onPress={() => toggleSection('connectionIntents')}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons 
-                      name={isSectionExpanded('connectionIntents') ? "expand-less" : "expand-more"} 
-                      size={20} 
-                      color="#37a4c8" 
-                    />
-                    <Text style={[styles.expandButtonText, { color: "#37a4c8" }]}>
-                      {isSectionExpanded('connectionIntents') 
-                        ? `Show Less` 
-                        : `Show ${getHiddenItems(userData.connectionIntents, 6).length} More`}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {/* Personal Tags */}
-            {userData.personalTags && userData.personalTags.length > 0 && (
-              <View style={[styles.card, styles.personalTagsCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <View style={styles.traitHeader}>
-                  <MaterialIcons name="person" size={24} color="#FFC107" style={styles.headerIcon} />
-                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Personal Traits</Text>
-                  <Text style={[styles.itemCount, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    {userData.personalTags.length}
-                  </Text>
-                </View>
-                
-                {/* Show shared personal tags count if any */}
-                {!isOwnProfile && getSharedPersonalTags().length > 0 && (
-                  <View style={[styles.sharedItemsIndicator, { 
-                    backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
-                    borderColor: "#4CAF50",
-                  }]}>
-                    <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
-                    <Text style={[styles.sharedItemsText, { color: "#4CAF50" }]}>
-                      {getSharedPersonalTags().length} shared trait{getSharedPersonalTags().length !== 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                )}
-                
-                <View style={styles.verticalTagsContainer}>
-                  {getVisibleItems(userData.personalTags, 6).map((tag, index) => {
-                    const isShared = isSharedItem(tag, 'personalTags');
-                    return (
-                      <View key={index} style={[styles.verticalTag, styles.traitTag, { 
-                        backgroundColor: isShared 
-                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                          : (theme === "light" ? "rgba(255, 193, 7, 0.1)" : "rgba(255, 193, 7, 0.2)"),
-                        borderColor: isShared 
-                          ? "#4CAF50" 
-                          : (theme === "light" ? "rgba(255, 193, 7, 0.4)" : "#FFC107"),
-                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.15 : 0,
-                      }]}>
-                        <MaterialIcons 
-                          name={isShared ? "check-circle" : "star"} 
-                          size={16} 
-                          color={isShared ? "#4CAF50" : "#FFC107"} 
-                          style={styles.tagIcon} 
-                        />
-                        <Text style={[styles.verticalTagText, { 
-                          color: theme === "light" ? "#0F172A" : "#ffffff",
-                          fontWeight: isShared ? '700' : '600'
-                        }]}>{tag}</Text>
-                        {isShared && (
-                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                        )}
-                      </View>
-                    );
-                  })}
-                  
-                  {/* Hidden items when expanded */}
-                  {isSectionExpanded('personalTags') && getHiddenItems(userData.personalTags, 6).map((tag, index) => {
-                    const isShared = isSharedItem(tag, 'personalTags');
-                    return (
-                      <View key={`hidden-${index}`} style={[styles.verticalTag, styles.traitTag, { 
-                        backgroundColor: isShared 
-                          ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                          : (theme === "light" ? "rgba(255, 193, 7, 0.1)" : "rgba(255, 193, 7, 0.2)"),
-                        borderColor: isShared 
-                          ? "#4CAF50" 
-                          : (theme === "light" ? "rgba(255, 193, 7, 0.4)" : "#FFC107"),
-                        shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                        shadowOpacity: theme === "light" ? 0.15 : 0,
-                      }]}>
-                        <MaterialIcons 
-                          name={isShared ? "check-circle" : "star"} 
-                          size={16} 
-                          color={isShared ? "#4CAF50" : "#FFC107"} 
-                          style={styles.tagIcon} 
-                        />
-                        <Text style={[styles.verticalTagText, { 
-                          color: theme === "light" ? "#0F172A" : "#ffffff",
-                          fontWeight: isShared ? '700' : '600'
-                        }]}>{tag}</Text>
-                        {isShared && (
-                          <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-                
-                {/* Expand/Collapse Button */}
-                {shouldShowExpandButton(userData.personalTags, 6) && (
-                  <TouchableOpacity
-                    style={[styles.expandButton, { 
-                      backgroundColor: theme === "light" ? "rgba(255, 193, 7, 0.08)" : "rgba(255, 193, 7, 0.15)",
-                      borderColor: theme === "light" ? "rgba(255, 193, 7, 0.3)" : "#FFC107",
-                    }]}
-                    onPress={() => toggleSection('personalTags')}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons 
-                      name={isSectionExpanded('personalTags') ? "expand-less" : "expand-more"} 
-                      size={20} 
-                      color="#FFC107" 
-                    />
-                    <Text style={[styles.expandButtonText, { color: "#FFC107" }]}>
-                      {isSectionExpanded('personalTags') 
-                        ? `Show Less` 
-                        : `Show ${getHiddenItems(userData.personalTags, 6).length} More`}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {/* Event Preferences */}
-            {userData.eventPreferences && (
-              <View style={[styles.card, styles.eventPreferencesCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <View style={styles.preferencesHeader}>
-                  <MaterialIcons name="event" size={24} color="#37a4c8" style={styles.headerIcon} />
-                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Event Preferences</Text>
-                </View>
-                
-                {/* Show shared event preferences count if any */}
-                {!isOwnProfile && getSharedEventPreferences().length > 0 && (
-                  <View style={[styles.sharedItemsIndicator, { 
-                    backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
-                    borderColor: "#4CAF50",
-                  }]}>
-                    <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
-                    <Text style={[styles.sharedItemsText, { color: "#4CAF50" }]}>
-                      {getSharedEventPreferences().length} shared preference{getSharedEventPreferences().length !== 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                )}
-                
-                <View style={styles.preferencesContainer}>
-                  {userData.eventPreferences.likesBars && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Enjoys bar meetups', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Enjoys bar meetups', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Enjoys bar meetups', 'eventPreferences') ? "check-circle" : "local-bar"} 
-                        size={20} 
-                        color={isSharedItem('Enjoys bar meetups', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Enjoys bar meetups', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Enjoys bar meetups
-                      </Text>
-                      {isSharedItem('Enjoys bar meetups', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersSmallGroups && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers small groups', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers small groups', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers small groups', 'eventPreferences') ? "check-circle" : "group"} 
-                        size={20} 
-                        color={isSharedItem('Prefers small groups', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers small groups', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers small groups
-                      </Text>
-                      {isSharedItem('Prefers small groups', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersWeekendEvents && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers weekend events', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers weekend events', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers weekend events', 'eventPreferences') ? "check-circle" : "weekend"} 
-                        size={20} 
-                        color={isSharedItem('Prefers weekend events', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers weekend events', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers weekend events
-                      </Text>
-                      {isSharedItem('Prefers weekend events', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersEveningEvents && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers evening events', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers evening events', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers evening events', 'eventPreferences') ? "check-circle" : "nights-stay"} 
-                        size={20} 
-                        color={isSharedItem('Prefers evening events', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers evening events', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers evening events
-                      </Text>
-                      {isSharedItem('Prefers evening events', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersIndoorVenues && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers indoor venues', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers indoor venues', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers indoor venues', 'eventPreferences') ? "check-circle" : "home"} 
-                        size={20} 
-                        color={isSharedItem('Prefers indoor venues', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers indoor venues', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers indoor venues
-                      </Text>
-                      {isSharedItem('Prefers indoor venues', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersStructuredActivities && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers structured activities', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers structured activities', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers structured activities', 'eventPreferences') ? "check-circle" : "list-alt"} 
-                        size={20} 
-                        color={isSharedItem('Prefers structured activities', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers structured activities', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers structured activities
-                      </Text>
-                      {isSharedItem('Prefers structured activities', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersSpontaneousPlans && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers spontaneous plans', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers spontaneous plans', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers spontaneous plans', 'eventPreferences') ? "check-circle" : "flash-on"} 
-                        size={20} 
-                        color={isSharedItem('Prefers spontaneous plans', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers spontaneous plans', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers spontaneous plans
-                      </Text>
-                      {isSharedItem('Prefers spontaneous plans', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersLocalMeetups && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers local meetups', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers local meetups', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers local meetups', 'eventPreferences') ? "check-circle" : "location-on"} 
-                        size={20} 
-                        color={isSharedItem('Prefers local meetups', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers local meetups', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers local meetups
-                      </Text>
-                      {isSharedItem('Prefers local meetups', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersTravelEvents && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers travel events', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers travel events', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers travel events', 'eventPreferences') ? "check-circle" : "flight"} 
-                        size={20} 
-                        color={isSharedItem('Prefers travel events', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers travel events', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers travel events
-                      </Text>
-                      {isSharedItem('Prefers travel events', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersQuietEnvironments && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers quiet environments', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers quiet environments', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers quiet environments', 'eventPreferences') ? "check-circle" : "volume-off"} 
-                        size={20} 
-                        color={isSharedItem('Prefers quiet environments', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers quiet environments', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers quiet environments
-                      </Text>
-                      {isSharedItem('Prefers quiet environments', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersActiveLifestyles && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers active lifestyles', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers active lifestyles', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers active lifestyles', 'eventPreferences') ? "check-circle" : "fitness-center"} 
-                        size={20} 
-                        color={isSharedItem('Prefers active lifestyles', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers active lifestyles', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers active lifestyles
-                      </Text>
-                      {isSharedItem('Prefers active lifestyles', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                  {userData.eventPreferences.prefersIntellectualDiscussions && (
-                    <View style={[styles.preferenceItem, { 
-                      backgroundColor: isSharedItem('Prefers intellectual discussions', 'eventPreferences')
-                        ? (theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)"),
-                      borderColor: isSharedItem('Prefers intellectual discussions', 'eventPreferences')
-                        ? "#4CAF50"
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8"),
-                    }]}>
-                      <MaterialIcons 
-                        name={isSharedItem('Prefers intellectual discussions', 'eventPreferences') ? "check-circle" : "school"} 
-                        size={20} 
-                        color={isSharedItem('Prefers intellectual discussions', 'eventPreferences') ? "#4CAF50" : "#37a4c8"} 
-                      />
-                      <Text style={[styles.preferenceText, { 
-                        color: theme === "light" ? "#0F172A" : "#ffffff",
-                        fontWeight: isSharedItem('Prefers intellectual discussions', 'eventPreferences') ? '700' : '600'
-                      }]}>
-                        Prefers intellectual discussions
-                      </Text>
-                      {isSharedItem('Prefers intellectual discussions', 'eventPreferences') && (
-                        <MaterialIcons name="star" size={12} color="#4CAF50" style={styles.sharedStar} />
-                      )}
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
-          </Animated.View>
+          <InterestsTab
+            userData={userData}
+            theme={theme}
+            tabFadeAnim={tabFadeAnim}
+            tabScaleAnim={tabScaleAnim}
+            isOwnProfile={isOwnProfile}
+            expandedSections={expandedSections}
+            getSharedConnectionIntents={getSharedConnectionIntents}
+            getSharedPersonalTags={getSharedPersonalTags}
+            getSharedEventPreferences={getSharedEventPreferences}
+            isSharedItem={isSharedItem}
+            shouldShowExpandButton={shouldShowExpandButton}
+            getVisibleItems={getVisibleItems}
+            getHiddenItems={getHiddenItems}
+            isSectionExpanded={isSectionExpanded}
+            toggleSection={toggleSection}
+          />
         );
       case 'social':
         return (
-          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
-            {/* Group Affiliations */}
-            {userData.groupAffiliations && userData.groupAffiliations.length > 0 && (
-              <View style={[styles.card, styles.groupsCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <View style={styles.groupsHeader}>
-                  <MaterialIcons name="groups" size={24} color="#9C27B0" style={styles.headerIcon} />
-                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Groups & Affiliations</Text>
-                </View>
-                <View style={styles.tagsContainer}>
-                  {userData.groupAffiliations.map((group, index) => (
-                    <View key={index} style={[styles.tag, styles.groupTag, { 
-                      backgroundColor: theme === "light" ? "rgba(156, 39, 176, 0.1)" : "rgba(156, 39, 176, 0.2)",
-                      borderColor: theme === "light" ? "rgba(156, 39, 176, 0.4)" : "#9C27B0",
-                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                      shadowOpacity: theme === "light" ? 0.15 : 0,
-                    }]}>
-                      <MaterialIcons name="verified" size={16} color="#9C27B0" style={styles.tagIcon} />
-                      <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{group}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Reputation Tags */}
-            {userData.reputationTags && userData.reputationTags.length > 0 && (
-              <View style={[styles.card, styles.reputationCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <View style={styles.reputationHeader}>
-                  <MaterialIcons name="emoji-events" size={24} color="#4CAF50" style={styles.headerIcon} />
-                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Community Recognition</Text>
-                </View>
-                <View style={styles.tagsContainer}>
-                  {userData.reputationTags.map((tag, index) => (
-                    <View key={index} style={[styles.tag, styles.reputationTag, { 
-                      backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
-                      borderColor: theme === "light" ? "rgba(76, 175, 80, 0.4)" : "#4CAF50",
-                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                      shadowOpacity: theme === "light" ? 0.15 : 0,
-                    }]}>
-                      <MaterialIcons name="star" size={16} color="#4CAF50" style={styles.tagIcon} />
-                      <Text style={[styles.tagText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{tag}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            
-
-              <View style={[styles.card, styles.socialMediaCard, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                shadowOpacity: theme === "light" ? 0.2 : 0.1,
-              }]}>
-                <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Social Media</Text>
-              {userData.socialMedia && Object.keys(userData.socialMedia).length > 0 && (
-                (userData.socialMedia.instagram || userData.socialMedia.linkedin || userData.socialMedia.twitter) ? (
-                  <View style={styles.socialMediaLinks}>
-                    {userData.socialMedia?.instagram && (
-                      <TouchableOpacity 
-                        style={[styles.socialLink, { 
-                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.1)",
-                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                          shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                          shadowOpacity: theme === "light" ? 0.1 : 0,
-                        }]}
-                        onPress={() => {
-                          const username = extractUsername(userData.socialMedia?.instagram || '', 'instagram');
-                          Linking.openURL(`https://instagram.com/${username}`);
-                        }}
-                      >
-                        <MaterialIcons name="photo-camera" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
-                        <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                          @{extractUsername(userData.socialMedia?.instagram || '', 'instagram')}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                    {userData.socialMedia?.linkedin && (
-                      <TouchableOpacity 
-                        style={[styles.socialLink, { 
-                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
-                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
-                          shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                          shadowOpacity: theme === "light" ? 0.15 : 0,
-                        }]}
-                        onPress={() => userData.socialMedia?.linkedin && Linking.openURL(userData.socialMedia.linkedin)}
-                        activeOpacity={0.8}
-                      >
-                        <MaterialIcons name="work" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
-                        <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>LinkedIn Profile</Text>
-                      </TouchableOpacity>
-                    )}
-                    {userData.socialMedia?.twitter && (
-                      <TouchableOpacity 
-                        style={[styles.socialLink, { 
-                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.15)",
-                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.4)" : "#37a4c8",
-                          shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "transparent",
-                          shadowOpacity: theme === "light" ? 0.15 : 0,
-                        }]}
-                        onPress={() => {
-                          const username = extractUsername(userData.socialMedia?.twitter || '', 'twitter');
-                          Linking.openURL(`https://x.com/${username}`);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <MaterialIcons name="chat" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
-                        <Text style={[styles.socialLinkText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                          @{extractUsername(userData.socialMedia?.twitter || '', 'twitter')}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-              </View>
-                ) : (
-                  <View style={{alignItems: 'center', justifyContent: 'center', paddingVertical: 32}}>
-                    <MaterialIcons name="link-off" size={48} color={theme === "light" ? "#94A3B8" : "#666666"} style={{marginBottom: 12}} />
-                    <Text style={[styles.noContentText, { color: theme === "light" ? "#666666" : "#999999", fontSize: 16, fontWeight: '600' }]}>No social media accounts linked</Text>
-                    <Text style={[styles.noContentText, { color: theme === "light" ? "#94A3B8" : "#666666", fontSize: 13, marginTop: 4 }]}>This user hasn't added any social media links yet.</Text>
-                  </View>
-                )
-              )}
-            </View>
-          </Animated.View>
+          <SocialTab
+            userData={userData}
+            theme={theme}
+            tabFadeAnim={tabFadeAnim}
+            tabScaleAnim={tabScaleAnim}
+            extractUsername={extractUsername}
+          />
         );
       case 'gallery':
         return (
-          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
-            <View style={[styles.card, styles.galleryCard, { 
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-              shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-              shadowOpacity: theme === "light" ? 0.2 : 0.1,
-            }]}>
-              <View style={styles.galleryHeader}>
-                <View style={styles.galleryTitleContainer}>
-                  <MaterialIcons name="photo-library" size={24} color="#37a4c8" style={styles.headerIcon} />
-                  <Text style={[styles.cardTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>Photo Gallery</Text>
-                  <Text style={[styles.galleryCount, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    {galleryImages.length} photo{galleryImages.length !== 1 ? 's' : ''}
-                  </Text>
-                </View>
-                {id === authUser?.uid && (
-                  <TouchableOpacity
-                    style={[styles.addPhotoButton, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
-                      borderColor: "#37a4c8",
-                    }]}
-                    onPress={handleGalleryImageUpload}
-                    disabled={uploadingGalleryImage}
-                    activeOpacity={0.7}
-                  >
-                    {uploadingGalleryImage ? (
-                      <ActivityIndicator size="small" color="#37a4c8" />
-                    ) : (
-                      <MaterialIcons name="add-photo-alternate" size={18} color="#37a4c8" />
-                    )}
-                    <Text style={[styles.addPhotoText, { color: "#37a4c8" }]}>
-                      {uploadingGalleryImage ? "Uploading..." : "Add"}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              
-              {galleryImages.length > 0 ? (
-                <View style={styles.galleryGrid}>
-                  {galleryImages.map((image, index) => (
-                    <View
-                      key={index}
-                      style={[styles.galleryImageContainer, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
-                      }]}
-                    >
-                      <TouchableOpacity
-                        style={styles.galleryImageTouchable}
-                        onPress={() => handlePhotoPress(galleryImages, index)}
-                        activeOpacity={0.8}
-                      >
-                        <Image 
-                          source={{ uri: image }} 
-                          style={styles.galleryImage}
-                          resizeMode="cover"
-                          onLoadStart={() => {
-                            setLoadingGalleryImages(prev => new Set(prev).add(index));
-                          }}
-                          onLoad={() => {
-                            setLoadingGalleryImages(prev => {
-                              const newSet = new Set(prev);
-                              newSet.delete(index);
-                              return newSet;
-                            });
-                          }}
-                          onError={() => {
-                            setLoadingGalleryImages(prev => {
-                              const newSet = new Set(prev);
-                              newSet.delete(index);
-                              return newSet;
-                            });
-                          }}
-                        />
-                        {loadingGalleryImages.has(index) && (
-                          <View style={styles.imageLoadingOverlay}>
-                            <ActivityIndicator size="small" color="#37a4c8" />
-                          </View>
-                        )}
-                        <View style={styles.imageOverlay}>
-                          <MaterialIcons name="zoom-in" size={20} color="#ffffff" />
-                        </View>
-                      </TouchableOpacity>
-                      
-                      {id === authUser?.uid && (
-                        <TouchableOpacity
-                          style={[styles.deleteImageButton, { 
-                            backgroundColor: theme === "light" ? "rgba(255, 68, 68, 0.9)" : "rgba(255, 102, 102, 0.9)",
-                          }]}
-                          onPress={() => handleDeleteGalleryImage(index)}
-                          activeOpacity={0.8}
-                        >
-                          <MaterialIcons name="delete" size={16} color="#ffffff" />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <View style={[styles.emptyGalleryContainer, { 
-                  backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
-                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
-                }]}>
-                  <MaterialIcons name="photo-library" size={48} color={theme === "light" ? "#94A3B8" : "#666666"} />
-                  <Text style={[styles.emptyGalleryText, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                    {id === authUser?.uid ? "No photos in gallery yet" : "No photos in gallery"}
-                  </Text>
-                  <Text style={[styles.emptyGallerySubtext, { color: theme === "light" ? "#94A3B8" : "#666666" }]}>
-                    {id === authUser?.uid ? "Add some photos to showcase yourself!" : "This user hasn't added any photos yet."}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </Animated.View>
-        );
-      case 'connections':
-        return (
-          <Animated.View style={[styles.tabContent, { opacity: tabFadeAnim, transform: [{ scale: tabScaleAnim }] }]}>
-            {loadingConnections ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#37a4c8" />
-              </View>
-            ) : connections.length > 0 ? (
-              <View style={styles.connectionsContainer}>
-                {connections.map((connection) => (
-                  <TouchableOpacity
-                    key={connection.id}
-                    style={[styles.connectionCard, { 
-                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                      shadowOpacity: theme === "light" ? 0.2 : 0.1,
-                    }]}
-                    onPress={() => router.push(`/chat/${connection.id}`)}
-                  >
-                    <UserAvatar
-                      user={connection.otherUser}
-                      size={50}
-                      style={styles.connectionAvatar}
-                    />
-                    <View style={styles.connectionInfo}>
-                      <Text style={[styles.connectionName, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
-                        {connection.otherUser.name}
-                      </Text>
-                      <Text style={[styles.connectionType, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                        {connection.otherUser.airportCode || "Unknown Airport"}
-                      </Text>
-                      <Text style={[styles.connectionDate, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                        Connected {connection.createdAt?.toDate().toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={24} color={theme === "light" ? "#666666" : "#999999"} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : (
-              <View style={[styles.noConnectionsContainer, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-              }]}>
-                <MaterialIcons name="people" size={48} color={theme === "light" ? "#666666" : "#999999"} />
-                <Text style={[styles.noConnectionsText, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                  No active connections yet
-                </Text>
-              </View>
-            )}
-          </Animated.View>
+          <GalleryTab
+            galleryImages={galleryImages}
+            authUser={authUser}
+            id={id}
+            theme={theme}
+            tabFadeAnim={tabFadeAnim}
+            tabScaleAnim={tabScaleAnim}
+            uploadingGalleryImage={uploadingGalleryImage}
+            loadingGalleryImages={loadingGalleryImages}
+            onGalleryImageUpload={handleGalleryImageUpload}
+            onPhotoPress={handlePhotoPress}
+            onDeleteGalleryImage={handleDeleteGalleryImage}
+            setLoadingGalleryImages={setLoadingGalleryImages}
+          />
         );
       default:
         return null;
     }
-  }, [userData, activeTab, theme, connections, loadingConnections, galleryImages, uploadingGalleryImage, loadingGalleryImages, authUser, id, expandedSections]);
+  }, [userData, activeTab, theme, galleryImages, uploadingGalleryImage, loadingGalleryImages, authUser, id, expandedSections]);
 
   // Effects
   useFocusEffect(
@@ -2657,351 +1726,38 @@ const Profile = () => {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           >
             {/* Profile Header */}
-            <Animated.View 
-              style={[
-                styles.profileHeader, 
-                { 
-                  opacity: headerFadeAnim,
-                  transform: [{ scale: scaleAnim }]
-                }
-              ]}
-            >
-              <TouchableOpacity 
-                style={styles.avatarContainer}
-                onPress={id === authUser?.uid ? handleProfilePictureUpload : undefined}
-                disabled={uploadingImage}
-                activeOpacity={0.8}
-              >
-                {uploadingImage ? (
-                  <View style={[styles.profileImage, styles.uploadingContainer]}>
-                    <ActivityIndicator size="large" color={theme === "light" ? "#000000" : "#ffffff"} />
-                  </View>
-                ) : (
-                  <UserAvatar
-                    user={userData || { name: 'User', profilePicture: null }}
-                    size={128}
-                    style={styles.profileImage}
-                  />
-                )}
-                {id === authUser?.uid && (
-                  <Animated.View 
-                    style={[
-                      styles.editImageOverlay,
-                      {
-                        opacity: headerFadeAnim,
-                        transform: [{ scale: scaleAnim }],
-                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                        borderColor: "#37a4c8",
-                      }
-                    ]}
-                  >
-                    <MaterialIcons name="camera-alt" size={24} color="#ffffff" />
-                  </Animated.View>
-                )}
-                <View style={[styles.statusIndicator, { 
-                  borderColor: "transparent",
-                  opacity: (() => {
-                    // Never show for own profile
-                    if (id === authUser?.uid) return 0;
-                    
-                    // Check if user is currently available based on schedule
-                    const isAvailableBySchedule = isUserCurrentlyAvailable(userData.availabilitySchedule);
-                    
-                    // Check if user was active within last 30 minutes
-                    const isRecentlyActive = (() => {
-                      if (!userData.lastLogin) return false;
-                      const lastLogin = userData.lastLogin.toDate ? userData.lastLogin.toDate() : new Date(userData.lastLogin);
-                      const now = new Date();
-                      const diffInMinutes = (now.getTime() - lastLogin.getTime()) / (1000 * 60);
-                      return diffInMinutes <= 30;
-                    })();
-                    
-                    return (isAvailableBySchedule || isRecentlyActive) ? 1 : 0;
-                  })(),
-                  backgroundColor: (() => {
-                    // Check if user is currently available based on schedule
-                    const isAvailableBySchedule = isUserCurrentlyAvailable(userData.availabilitySchedule);
-                    
-                    // Check if user was active within last 30 minutes
-                    const isRecentlyActive = (() => {
-                      if (!userData.lastLogin) return false;
-                      const lastLogin = userData.lastLogin.toDate ? userData.lastLogin.toDate() : new Date(userData.lastLogin);
-                      const now = new Date();
-                      const diffInMinutes = (now.getTime() - lastLogin.getTime()) / (1000 * 60);
-                      return diffInMinutes <= 30;
-                    })();
-                    
-                    return (isAvailableBySchedule || isRecentlyActive) ? "#37a4c8" : "transparent";
-                  })(),
-                  borderWidth: 0,
-                }]} />
-              </TouchableOpacity>
-
-              <Animated.View 
-                style={[
-                  styles.nameContainer,
-                  {
-                    opacity: headerFadeAnim,
-                    transform: [{ scale: scaleAnim }]
-                  }
-                ]}
-              >
-                <View style={styles.nameRow}>
-                  <Animated.Text style={[styles.nameText, { color: textColor }]}>
-                    {userData?.name}
-                    <Animated.Text style={[styles.pronounsText, { color: secondaryTextColor }]}>
-                      {userData?.pronouns && ` (${userData.pronouns})`}
-                    </Animated.Text>
-                  </Animated.Text>
-                </View>
-                
-                {/* Age moved here */}
-                <Animated.Text style={[styles.ageTextUnderName, { 
-                  color: secondaryTextColor,
-                  marginTop: 8,
-                }]}>
-                  {userData?.age} years old
-                </Animated.Text>
-                
-                {/* Mood Status moved here */}
-                {id === authUser?.uid ? (
-                  <TouchableOpacity
-                    style={[styles.moodContainer, styles.moodContainerUnderName, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
-                      borderColor: "#37a4c8",
-                      marginTop: 20,
-                      alignSelf: 'center',
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      minWidth: 200,
-                      maxWidth: '120%',
-                      marginHorizontal: -20,
-                    }]}
-                    onPress={toggleStatusSheet}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons name="mood" size={16} color="#37a4c8" />
-                    <Animated.Text style={[styles.moodText, styles.moodTextUnderName, { color: "#37a4c8" }]}>
-                      {userData?.moodStatus || "No status set"}
-                    </Animated.Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={[styles.moodContainer, styles.moodContainerUnderName, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.1)",
-                    borderColor: "#37a4c8",
-                    marginTop: 20,
-                    alignSelf: 'center',
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    minWidth: 200,
-                    maxWidth: '120%',
-                    marginHorizontal: -20,
-                  }]}>
-                    <MaterialIcons name="mood" size={16} color="#37a4c8" />
-                    <Animated.Text style={[styles.moodText, styles.moodTextUnderName, { color: "#37a4c8" }]}>
-                      {userData?.moodStatus || "No status set"}
-                    </Animated.Text>
-                  </View>
-                )}
-                
-                <Animated.View 
-                  style={[
-                    styles.nameSeparator, 
-                    { 
-                      marginBottom: 24,
-                      marginTop: 20,
-                      opacity: headerFadeAnim,
-                      transform: [{ scale: scaleAnim }]
-                    }
-                  ]} 
-                >
-                  <LinearGradient
-                    colors={theme === "light" 
-                      ? ["rgba(55, 164, 200, 0.1)", "rgba(55, 164, 200, 0.3)", "rgba(55, 164, 200, 0.1)"]
-                      : ["rgba(55, 164, 200, 0.2)", "rgba(55, 164, 200, 0.4)", "rgba(55, 164, 200, 0.2)"]
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.separatorGradient}
-                  />
-                </Animated.View>
-                
-                <View style={styles.badgeContainer}>
-                  <TouchableOpacity 
-                    style={[styles.statusButton, styles.connectionCountButton, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)",
-                      borderColor: "#37a4c8",
-                      shadowColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                      shadowOpacity: theme === "light" ? 0.2 : 0.3,
-                    }]}
-                    onPress={() => handleModalVisibility(true)}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons name="people" size={20} color="#37a4c8" />
-                    <Text style={[styles.statusButtonText, styles.connectionCountText, { 
-                      color: "#37a4c8",
-                      fontSize: 18,
-                      fontWeight: '800',
-                      marginLeft: 8,
-                    }]}>
-                      {connections.length}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.statusButton, styles.shareButton, { 
-                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(55, 164, 200, 0.2)",
-                      borderColor: "#37a4c8",
-                      shadowColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                      shadowOpacity: theme === "light" ? 0.2 : 0.3,
-                    }]}
-                    onPress={handleShareProfile}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons name="share" size={20} color="#37a4c8" />
-                    <Text style={[styles.statusButtonText, styles.shareButtonText, { 
-                      color: "#37a4c8",
-                      fontSize: 16,
-                      fontWeight: '700',
-                      marginLeft: 8,
-                    }]}>
-                      Share
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {id !== authUser?.uid && (
-                    <Animated.View style={{
-                      transform: [{ scale: buttonScaleAnim }],
-                      opacity: buttonOpacityAnim,
-                    }}>
-                      <TouchableOpacity 
-                        onPress={isConnected === "not_connected" ? handleConnect : handleRemoveConnection}
-                        disabled={isProcessing}
-                        style={[
-                          styles.statusButton,
-                          styles.connectButton,
-                          {
-                            backgroundColor: isConnected === "connected" 
-                              ? (theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(55, 164, 200, 0.25)")
-                              : isConnected === "pending"
-                              ? (theme === "light" ? "rgba(255, 149, 0, 0.15)" : "rgba(255, 149, 0, 0.25)")
-                              : (theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(55, 164, 200, 0.25)"),
-                            borderColor: isConnected === "connected" 
-                              ? "#37a4c8" 
-                              : isConnected === "pending"
-                              ? "#FF9500"
-                              : "#37a4c8",
-                            shadowColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                            shadowOpacity: theme === "light" ? 0.2 : 0.3,
-                          }
-                        ]}
-                        activeOpacity={0.7}
-                      >
-                        {isProcessing ? (
-                          <Animated.View style={{
-                            transform: [{
-                              rotate: loadingRotationAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: ['0deg', '360deg']
-                              })
-                            }]
-                          }}>
-                            <MaterialIcons 
-                              name="sync" 
-                              size={20} 
-                              color={isConnected === "connected" 
-                                ? "#37a4c8" 
-                                : isConnected === "pending"
-                                ? "#FF9500"
-                                : "#37a4c8"} 
-                            />
-                          </Animated.View>
-                        ) : (
-                          <MaterialIcons 
-                            name={isConnected === "connected" 
-                              ? "people" 
-                              : isConnected === "pending"
-                              ? "hourglass-empty"
-                              : "person-add"} 
-                            size={20} 
-                            color={isConnected === "connected" 
-                              ? "#37a4c8" 
-                              : isConnected === "pending"
-                              ? "#FF9500"
-                              : "#37a4c8"} 
-                          />
-                        )}
-                        <Text style={[styles.statusButtonText, styles.connectButtonText, { 
-                          color: isConnected === "connected" 
-                            ? "#37a4c8" 
-                            : isConnected === "pending"
-                            ? "#FF9500"
-                            : "#37a4c8",
-                          fontSize: 16,
-                          fontWeight: '700',
-                          marginLeft: 8,
-                        }]}>
-                          {isProcessing 
-                            ? "Connecting..." 
-                            : isConnected === "connected" 
-                              ? "Connected" 
-                              : isConnected === "pending"
-                              ? "Pending"
-                              : "Connect"}
-                        </Text>
-                      </TouchableOpacity>
-                    </Animated.View>
-                  )}
-                </View>
-                
-                <View style={styles.infoContainer}>
-                  {/* Age moved above - container removed */}
-                </View>
-              </Animated.View>
-            </Animated.View>
+            <ProfileHeader
+              userData={userData}
+              authUser={authUser}
+              id={id}
+              isOwnProfile={isOwnProfile}
+              connections={connections}
+              isConnected={isConnected}
+              isProcessing={isProcessing}
+              uploadingImage={uploadingImage}
+              theme={theme}
+              headerFadeAnim={headerFadeAnim}
+              scaleAnim={scaleAnim}
+              buttonScaleAnim={buttonScaleAnim}
+              buttonOpacityAnim={buttonOpacityAnim}
+              loadingRotationAnim={loadingRotationAnim}
+              onProfilePictureUpload={handleProfilePictureUpload}
+              onMoodStatusPress={toggleStatusSheet}
+              onConnectionsPress={() => handleModalVisibility(true)}
+              onShareProfile={handleShareProfile}
+              onConnect={handleConnect}
+              onRemoveConnection={handleRemoveConnection}
+              isUserCurrentlyAvailable={isUserCurrentlyAvailable}
+            />
 
             {/* Navigation Tabs */}
-            <Animated.View 
-              style={[
-                styles.tabContainer,
-                {
-                  opacity: sectionsFadeAnim,
-                  transform: [{ scale: cardScaleAnim }]
-                }
-              ]}
-            >
-              {['about', 'interests', 'social', 'gallery'].map((tab) => (
-                <TouchableOpacity
-                  key={tab}
-                  style={[
-                    styles.tab,
-                    activeTab === tab && styles.activeTab,
-                    { 
-                      backgroundColor: activeTab === tab 
-                        ? (theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)")
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.15)"),
-                      borderColor: activeTab === tab 
-                        ? "#37a4c8" 
-                        : (theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"),
-                      shadowColor: theme === "light" ? "rgba(0, 0, 0, 0.1)" : "#37a4c8",
-                    }
-                  ]}
-                  onPress={() => handleTabChange(tab)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[
-                    styles.tabText,
-                    { 
-                      color: activeTab === tab 
-                        ? "#37a4c8" 
-                        : (theme === "light" ? "#666666" : "#999999")
-                    }
-                  ]}>
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </Animated.View>
+            <ProfileTabs
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              theme={theme}
+              sectionsFadeAnim={sectionsFadeAnim}
+              cardScaleAnim={cardScaleAnim}
+            />
 
             {/* Tab Content */}
             {renderTabContent()}
@@ -3109,101 +1865,14 @@ const Profile = () => {
           doubleTapToZoomEnabled={true}
         />
 
-        <Modal
+        <ConnectionsModal
           visible={showConnectionsModal}
-          transparent
-          animationType="none"
-          onRequestClose={() => handleModalVisibility(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => handleModalVisibility(false)}
-          >
-            <Animated.View 
-              style={[
-                styles.modalContent,
-                {
-                  opacity: modalOpacityAnim,
-                  transform: [{ scale: modalScaleAnim }],
-                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "#37a4c8",
-                }
-              ]}
-            >
-              <View style={styles.modalHeader}>
-                <View style={styles.modalTitleContainer}>
-                  <MaterialIcons name="people" size={24} color={theme === "light" ? "#37a4c8" : "#37a4c8"} />
-                  <Text style={[styles.modalTitle, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
-                    Connections
-                  </Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => handleModalVisibility(false)}
-                  style={[styles.closeButton, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
-                  }]}
-                >
-                  <MaterialIcons name="close" size={20} color={theme === "light" ? "#666666" : "#999999"} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView 
-                style={styles.connectionsList}
-                showsVerticalScrollIndicator={false}
-              >
-                {connections.length > 0 ? (
-                  connections.map((connection) => (
-                    <TouchableOpacity
-                      key={connection.id}
-                      style={[styles.connectionItem, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
-                        borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
-                      }]}
-                      onPress={() => {
-                        handleModalVisibility(false);
-                        router.push(`/profile/${connection.otherUser.id}`);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <UserAvatar
-                        user={connection.otherUser}
-                        size={50}
-                        style={styles.connectionAvatar}
-                      />
-                      <View style={styles.connectionInfo}>
-                        <Text style={[styles.connectionItemName, { color: theme === "light" ? "#000000" : "#ffffff" }]}>
-                          {connection.otherUser.name}
-                        </Text>
-                        <Text style={[styles.connectionItemType, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                          {connection.otherUser.airportCode || "Unknown Airport"}
-                        </Text>
-                      </View>
-                      <View style={[styles.profileButton, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(55, 164, 200, 0.2)",
-                      }]}>
-                        <MaterialIcons 
-                          name="person" 
-                          size={20} 
-                          color={theme === "light" ? "#37a4c8" : "#37a4c8"} 
-                        />
-                      </View>
-                    </TouchableOpacity>
-                  ))
-                ) : (
-                  <View style={[styles.noConnectionsContainer, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
-                  }]}>
-                    <MaterialIcons name="people" size={48} color={theme === "light" ? "#666666" : "#999999"} />
-                    <Text style={[styles.noConnectionsText, { color: theme === "light" ? "#666666" : "#999999" }]}>
-                      No active connections yet
-                    </Text>
-                  </View>
-                )}
-              </ScrollView>
-            </Animated.View>
-          </TouchableOpacity>
-        </Modal>
+          connections={connections}
+          theme={theme}
+          modalOpacityAnim={modalOpacityAnim}
+          modalScaleAnim={modalScaleAnim}
+          onClose={() => handleModalVisibility(false)}
+        />
 
         {/* Status Sheet */}
         {showStatusSheet && (
