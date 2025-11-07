@@ -31,6 +31,14 @@ interface Event {
   attendees: string[];
 }
 
+interface Ping {
+  id: string;
+  name: string;
+  latitude: string;
+  longitude: string;
+  participants: string[];
+}
+
 interface User {
   id: string;
   lastKnownCoordinates?: {
@@ -42,13 +50,17 @@ interface User {
 
 interface ExploreMapProps {
   events: Event[];
+  pings?: Ping[];
   onEventPress: (event: Event) => void;
+  onPingPress?: (ping: Ping) => void;
   currentUserId?: string; // Add current user ID prop
 }
 
 export default function ExploreMap({
   events,
+  pings = [],
   onEventPress,
+  onPingPress,
   currentUserId,
 }: ExploreMapProps) {
   const { theme } = React.useContext(ThemeContext);
@@ -142,6 +154,12 @@ export default function ExploreMap({
     onEventPress(event);
   };
 
+  const handlePingMarkerPress = (ping: Ping) => {
+    if (onPingPress) {
+      onPingPress(ping);
+    }
+  };
+
   const centerOnCurrentLocation = () => {
     if (currentLocation) {
       const newRegion = {
@@ -213,6 +231,29 @@ export default function ExploreMap({
               </View>
             </Marker>
           ))}
+
+          {/* Ping markers */}
+          {pings.map((ping) => (
+            <Marker
+              key={`ping-${ping.id}`}
+              coordinate={{
+                latitude: parseFloat(ping.latitude),
+                longitude: parseFloat(ping.longitude),
+              }}
+              title={ping.name}
+              description={`${ping.participants?.length || 0} joined`}
+              onPress={() => handlePingMarkerPress(ping)}
+            >
+              <View style={styles.pingMarker}>
+                <Ionicons name="flash" size={18} color="#FFFFFF" />
+                <View style={styles.pingMarkerBadge}>
+                  <Text style={styles.pingMarkerText}>
+                    {ping.participants?.length || 0}
+                  </Text>
+                </View>
+              </View>
+            </Marker>
+          ))}
         </MapView>
 
         {/* Map controls */}
@@ -243,7 +284,16 @@ export default function ExploreMap({
             <Text style={[styles.mapInfoText, { 
               color: theme === "light" ? "#0F172A" : "#e4fbfe" 
             }]}>
-              {events.length} {events.length === 1 ? 'event found' : 'events found'}
+              {events.length} {events.length === 1 ? 'event' : 'events'}
+            </Text>
+            <Text style={[styles.mapInfoSeparator, { 
+              color: theme === "light" ? "#94A3B8" : "#64748B" 
+            }]}>•</Text>
+            <Ionicons name="flash" size={16} color="#F59E0B" />
+            <Text style={[styles.mapInfoText, { 
+              color: theme === "light" ? "#0F172A" : "#e4fbfe" 
+            }]}>
+              {pings.length} {pings.length === 1 ? 'ping' : 'pings'}
             </Text>
           </View>
         </View>
@@ -319,6 +369,39 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  pingMarker: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  pingMarkerBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  pingMarkerText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
   mapControls: {
     position: 'absolute',
     top: 16,
@@ -360,6 +443,11 @@ const styles = StyleSheet.create({
   mapInfoText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  mapInfoSeparator: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginHorizontal: 4,
   },
   airportLocation: {
     fontSize: 12,

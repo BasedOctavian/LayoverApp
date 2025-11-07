@@ -4,15 +4,12 @@ import {
   Text,
   ActivityIndicator,
   StyleSheet,
-  Image,
-  Dimensions,
-  TouchableOpacity,
   Alert,
-  StatusBar,
   ScrollView,
   TextInput,
   Modal,
   Pressable,
+  Dimensions,
 } from "react-native";
 import { MaterialIcons, Ionicons, FontAwesome5, Feather } from "@expo/vector-icons";
 import useUsers from "./../hooks/useUsers";
@@ -23,25 +20,15 @@ import { router } from "expo-router";
 import { db } from "../../config/firebaseConfig";
 import { collection, addDoc, query, where, getDocs, limit, startAfter } from "firebase/firestore";
 import useChats from "../hooks/useChats";
-import LoadingScreen from "../components/LoadingScreen";
 import SafeAreaWrapper from "../components/SafeAreaWrapper";
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  interpolate,
-  Extrapolate,
-  useAnimatedReaction,
-  withTiming,
   FadeIn,
   FadeOut,
-  Easing,
-  withRepeat,
 } from "react-native-reanimated";
 import { ThemeContext } from "../context/ThemeContext";
 import TopBar from "../components/TopBar";
 import useNotificationCount from "../hooks/useNotificationCount";
-import UserAvatar from "../components/UserAvatar";
+import { UserCard, EmptyState, StatsSection } from "../components/swipe";
 
 interface TravelHistory {
   id: string;
@@ -118,10 +105,6 @@ interface Connection {
   user2: string;
 }
 
-const { width, height } = Dimensions.get("window");
-const CARD_WIDTH = width * 0.85;
-const CARD_HEIGHT = height * 0.55;
-const IMAGE_HEIGHT = CARD_HEIGHT * 0.54;
 
 
 
@@ -138,6 +121,37 @@ const IMAGE_HEIGHT = CARD_HEIGHT * 0.54;
 
 // SwipeCard component body completely removed
 
+// Responsive scaling utilities
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const BASE_WIDTH = 393; // iPhone 15 width as base reference
+const BASE_HEIGHT = 852; // iPhone 15 height as base reference
+
+// Scale function for width-based dimensions
+const scaleWidth = (size: number): number => {
+  return (SCREEN_WIDTH / BASE_WIDTH) * size;
+};
+
+// Scale function for height-based dimensions
+const scaleHeight = (size: number): number => {
+  return (SCREEN_HEIGHT / BASE_HEIGHT) * size;
+};
+
+// Scale function for font sizes (using width for better consistency)
+const scaleFont = (size: number): number => {
+  const scale = SCREEN_WIDTH / BASE_WIDTH;
+  const newSize = size * scale;
+  // Ensure minimum font size for readability
+  return Math.max(newSize, size * 0.85);
+};
+
+// Scale function for general dimensions (uses average of width/height scaling)
+const scale = (size: number): number => {
+  const widthScale = SCREEN_WIDTH / BASE_WIDTH;
+  const heightScale = SCREEN_HEIGHT / BASE_HEIGHT;
+  const scale = (widthScale + heightScale) / 2;
+  return size * scale;
+};
+
 const Swipe = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -148,38 +162,28 @@ const Swipe = () => {
   const { addMessage, getExistingChat, addChat } = useChats();
   const currentUserUID = user?.uid || "some-uid";
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showSwiper, setShowSwiper] = useState(false);
   const [showQuickMessage, setShowQuickMessage] = useState(false);
   const [matchedUser, setMatchedUser] = useState<User | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   // Removed unused buttonScale
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  // Removed unused loading states
-  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  // Track if we've made the initial fetch attempt
+  const [hasInitiallyFetched, setHasInitiallyFetched] = useState(false);
   const { theme: colorScheme } = React.useContext(ThemeContext);
   const theme = colorScheme || "light"; // Provide default value
   const [showMessageOptions, setShowMessageOptions] = useState(false);
+  
+  // Animation state for dismissing cards
+  const [dismissingUserId, setDismissingUserId] = useState<string | null>(null);
+  const [dismissDirection, setDismissDirection] = useState<'left' | 'right' | null>(null);
+  
+  // ScrollView ref for scrolling to top
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // Get notification count
   const notificationCount = useNotificationCount(user?.uid || null);
 
-  // Animation values for fade in
-  const fadeAnim = useSharedValue(0);
-  const scaleAnim = useSharedValue(0.95);
-
-  // Handle fade in animation when content is ready
-  useEffect(() => {
-    if (!isLoadingUsers) {
-      fadeAnim.value = withTiming(1, {
-        duration: 800,
-        easing: Easing.out(Easing.cubic),
-      });
-      scaleAnim.value = withTiming(1, {
-        duration: 800,
-        easing: Easing.out(Easing.cubic),
-      });
-    }
-  }, [isLoadingUsers]);
+  // Removed animation values - content loads immediately
 
   // Remove gesture-based swiping - replaced with button-based actions
 
@@ -220,8 +224,8 @@ const Swipe = () => {
       
       Alert.alert("Message sent!", "Check your chats to continue the conversation.");
       setShowMessageOptions(false);
-    } catch (error) {
-      console.error("Error sending message:", error);
+    } catch (error: any) {
+      console.error("❌ Message send error:", error.message);
       Alert.alert("Error", "Failed to send message. Please try again.");
     }
   };
@@ -282,39 +286,26 @@ const Swipe = () => {
 
   const sendMatchNotification = async (matchedUserId: string, matchedUserName: string) => {
     try {
-      console.log('=== Starting Match Notification Process ===');
-      console.log('Target User:', {
-        id: matchedUserId,
-        name: matchedUserName
-      });
+      console.log('\n🔔 ===== SENDING MATCH NOTIFICATION =====');
+      console.log('  Target:', matchedUserName);
       
       // Get matched user's data
       const matchedUserDoc = await getDoc(doc(db, 'users', matchedUserId));
       if (!matchedUserDoc.exists()) {
-        console.log('❌ Matched user document not found:', matchedUserId);
+        console.log('❌ User not found');
         return;
       }
 
       const matchedUserData = matchedUserDoc.data();
-      console.log('📄 Matched user data retrieved:', {
-        hasPushToken: !!matchedUserData?.expoPushToken,
-        pushToken: matchedUserData?.expoPushToken, // Log the actual token
-        notificationPreferences: matchedUserData?.notificationPreferences,
-        currentNotificationsCount: matchedUserData?.notifications?.length || 0
-      });
 
       // Get current user's name
       const currentUserDoc = await getDoc(doc(db, 'users', currentUserUID));
       if (!currentUserDoc.exists()) {
-        console.log('❌ Current user document not found:', currentUserUID);
+        console.log('❌ Current user not found');
         return;
       }
       
       const currentUserName = currentUserDoc.data()?.name || 'Someone';
-      console.log('👤 Current user info:', {
-        id: currentUserUID,
-        name: currentUserName
-      });
 
       // Create notification for the swiped user
       const notification = {
@@ -330,44 +321,21 @@ const Swipe = () => {
         read: false
       };
 
-      console.log('📝 Created notification object:', notification);
-
       // Update swiped user's notifications
       const swipedUserNotifications = matchedUserData?.notifications || [];
-      console.log('📊 Current notifications count:', swipedUserNotifications.length);
-      
       await updateDoc(doc(db, "users", matchedUserId), {
         notifications: [...swipedUserNotifications, notification]
       });
-      console.log('✅ In-app notification added to user document');
-
-      // Debug notification preferences
-      console.log('🔍 Checking notification preferences:', {
-        hasToken: !!matchedUserData?.expoPushToken,
-        token: matchedUserData?.expoPushToken,
-        notificationsEnabled: matchedUserData?.notificationPreferences?.notificationsEnabled,
-        connectionsEnabled: matchedUserData?.notificationPreferences?.connections,
-        fullPreferences: matchedUserData?.notificationPreferences
-      });
+      console.log('✅ In-app notification added');
 
       // Send push notification if user has token and notifications enabled
       if (matchedUserData?.expoPushToken && 
           matchedUserData?.notificationPreferences?.notificationsEnabled && 
           matchedUserData?.notificationPreferences?.connections) {
         
-        console.log('📱 Push notification conditions met:', {
-          hasToken: true,
-          token: matchedUserData.expoPushToken,
-          notificationsEnabled: true,
-          connectionsEnabled: true
-        });
+        console.log('📱 Sending push notification...');
 
         try {
-          console.log('🚀 Attempting to send push notification to:', {
-            token: matchedUserData.expoPushToken,
-            name: currentUserName
-          });
-
           const pushPayload = {
             to: matchedUserData.expoPushToken,
             title: "New Connection Request",
@@ -380,8 +348,6 @@ const Swipe = () => {
               matchedUserName: currentUserName
             },
           };
-
-          console.log('📦 Push notification payload:', pushPayload);
 
           const response = await fetch('https://exp.host/--/api/v2/push/send', {
             method: 'POST',
@@ -396,52 +362,21 @@ const Swipe = () => {
           const responseData = await response.json();
           
           if (!response.ok) {
-            console.error('❌ Push notification failed:', {
-              status: response.status,
-              statusText: response.statusText,
-              data: responseData,
-              requestPayload: pushPayload
-            });
+            console.error('❌ Push failed:', response.status, responseData);
           } else {
-            console.log('✅ Push notification sent successfully:', {
-              responseData,
-              receiverId: matchedUserId,
-              senderName: currentUserName
-            });
+            console.log('✅ Push notification sent');
           }
         } catch (error: any) {
-          console.error('❌ Error sending push notification:', {
-            error,
-            errorMessage: error.message,
-            errorStack: error.stack,
-            receiverId: matchedUserId,
-            token: matchedUserData.expoPushToken,
-            senderName: currentUserName
-          });
+          console.error('❌ Push error:', error.message);
         }
       } else {
-        console.log('ℹ️ Push notification not sent. Reason:', {
-          hasToken: !!matchedUserData?.expoPushToken,
-          token: matchedUserData?.expoPushToken,
-          notificationsEnabled: matchedUserData?.notificationPreferences?.notificationsEnabled,
-          connectionsEnabled: matchedUserData?.notificationPreferences?.connections,
-          receiverId: matchedUserId,
-          receiverName: matchedUserName,
-          fullPreferences: matchedUserData?.notificationPreferences
-        });
+        console.log('⏭️  Skipped push (user settings or no token)');
       }
 
-      console.log('=== Match Notification Process Completed ===');
+      console.log('✅ ===== NOTIFICATION COMPLETE =====\n');
 
     } catch (error: any) {
-      console.error('❌ Error in match notification process:', {
-        error,
-        errorMessage: error.message,
-        errorStack: error.stack,
-        matchedUserId,
-        currentUserUID
-      });
-      // Don't throw the error, just log it to prevent app crash
+      console.error('❌ Notification error:', error.message);
     }
   };
 
@@ -453,10 +388,10 @@ const Swipe = () => {
         const userData = doc.data() as Omit<User, 'id'>;
         setCurrentUserData({ id: doc.id, ...userData });
       } else {
-        console.error("User document not found.");
+        console.error("❌ User document not found");
       }
     }, (err) => {
-      console.error("Error listening to user data:", err);
+      console.error("❌ Listener error:", err.message);
     });
 
     return () => unsubscribe();
@@ -474,8 +409,8 @@ const Swipe = () => {
         const authUserData = authUserDoc.data() as User;
         setAuthUserData(authUserData);
       }
-    } catch (error) {
-      console.error("Error fetching auth user data:", error);
+    } catch (error: any) {
+      console.error("❌ Auth user fetch error:", error.message);
     }
   }, [currentUserUID]);
 
@@ -494,8 +429,7 @@ const Swipe = () => {
   /** Fetch users and filter based on recent activity and availability */
   const fetchUsers = async () => {
     try {
-      setIsLoadingUsers(true);
-      console.log('Starting to fetch users...');
+      console.log('\n🔍 ===== FETCHING USERS =====');
 
       // Get current user's blocked users
       const currentUserDoc = await doc(db, "users", currentUserUID);
@@ -506,15 +440,16 @@ const Swipe = () => {
       const dislikedUsers = currentUserData?.dislikedUsers || [];
       const likedUsers = currentUserData?.likedUsers || [];
       
-      console.log('Current user blocked users:', blockedUsers);
-      console.log('Users who blocked current user:', hasMeBlocked);
-      console.log('Disliked users:', dislikedUsers);
-      console.log('Liked users:', likedUsers);
+      console.log('📋 User Filter Lists:');
+      console.log('  • Blocked by me:', blockedUsers.length, 'users');
+      console.log('  • Blocked me:', hasMeBlocked.length, 'users');
+      console.log('  • Disliked:', dislikedUsers.length, 'users');
+      console.log('  • Already liked:', likedUsers.length, 'users');
 
       // Calculate timestamp for 1 month ago
       const oneMonthAgo = new Date();
       oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-      console.log('Filtering users active since:', oneMonthAgo.toISOString());
+      console.log('📅 Activity Filter: Users active since', oneMonthAgo.toLocaleDateString());
 
       // Get current time for availability check
       const now = new Date();
@@ -525,7 +460,7 @@ const Swipe = () => {
         hour: '2-digit', 
         minute: '2-digit' 
       });
-      console.log('Current day:', currentDay, 'Current time:', currentTime);
+      console.log('⏰ Availability Check:', currentDay, 'at', currentTime);
 
       // Get all pending connections for current user
       const connectionsRef = collection(db, "connections");
@@ -544,12 +479,12 @@ const Swipe = () => {
         }
       });
 
-      console.log('Found connections with users:', Array.from(connectedUserIds));
+      console.log('🤝 Existing Connections:', connectedUserIds.size, 'users');
 
-      // Get all users (removed airport filter)
+      // Get all users in the area
       const usersRef = collection(db, "users");
       const querySnapshot = await getDocs(usersRef);
-      console.log('Total users:', querySnapshot.docs.length);
+      console.log('👥 Total Users in Database:', querySnapshot.docs.length);
 
       // Get all users' documents to check their blocked lists
       const userDocs = await Promise.all(
@@ -562,15 +497,6 @@ const Swipe = () => {
           const userDoc = userDocs[index];
           const userData = userDoc.data();
           
-          console.log('User data:', {
-            id: doc.id,
-            name: data.name,
-            airportCode: data.airportCode,
-            lastLogin: data.lastLogin?.toDate?.() || 'No login time',
-            blockedUsers: userData?.blockedUsers || [],
-            hasMeBlocked: userData?.hasMeBlocked || []
-          });
-          
           return {
             id: doc.id,
             ...data,
@@ -581,7 +507,6 @@ const Swipe = () => {
         .filter(user => {
           // First check if this is the current user
           if (user.id === currentUserUID) {
-            console.log('Filtering out current user:', user.id);
             return false;
           }
 
@@ -591,28 +516,16 @@ const Swipe = () => {
 
           // Check if user is available at current time
           const isAvailable = (() => {
-            if (!user.availabilitySchedule) {
-              console.log('User has no availability schedule:', user.id);
-              return false;
-            }
+            if (!user.availabilitySchedule) return false;
 
             const daySchedule = user.availabilitySchedule[currentDay];
-            if (!daySchedule) {
-              console.log('User has no schedule for current day:', user.id, currentDay);
-              return false;
-            }
+            if (!daySchedule) return false;
 
             const { start, end } = daySchedule;
-            if (!start || !end) {
-              console.log('User has incomplete schedule for current day:', user.id, currentDay);
-              return false;
-            }
+            if (!start || !end) return false;
 
             // Convert times to comparable format (HH:MM)
-            const isCurrentlyAvailable = currentTime >= start && currentTime <= end;
-            console.log(`User ${user.id} availability check: ${currentTime} between ${start}-${end} = ${isCurrentlyAvailable}`);
-            
-            return isCurrentlyAvailable;
+            return currentTime >= start && currentTime <= end;
           })();
 
           const isNotConnected = !connectedUserIds.has(user.id);
@@ -627,30 +540,16 @@ const Swipe = () => {
                  isNotBlocked && hasNotBlockedMe && 
                  hasNotBlockedCurrentUser && currentUserHasNotBlockedThem &&
                  isNotDisliked && isNotLiked;
-
-          if (!shouldShow) {
-            console.log(`Filtering out user ${user.id}:`, {
-              isRecent,
-              isAvailable,
-              isNotConnected,
-              isNotBlocked,
-              hasNotBlockedMe,
-              hasNotBlockedCurrentUser,
-              currentUserHasNotBlockedThem,
-              isNotDisliked,
-              isNotLiked
-            });
-          }
           
           return shouldShow;
         });
       
-      console.log('Final filtered users count:', fetchedUsers.length);
-      console.log('Filtered users:', fetchedUsers.map(u => ({
-        id: u.id,
-        name: u.name,
-        lastLogin: u.lastLogin?.toDate?.() || 'No login time'
-      })));
+      console.log('\n✅ Filtering Complete:');
+      console.log('  • Total database users:', querySnapshot.docs.length);
+      console.log('  • After filters:', fetchedUsers.length, 'eligible users');
+      if (fetchedUsers.length > 0) {
+        console.log('  • Eligible users:', fetchedUsers.map(u => u.name).join(', '));
+      }
       
       // Sort users by shared interests and proximity
       // Calculate shared interests score for each user
@@ -704,26 +603,26 @@ const Swipe = () => {
         return bCombinedScore - aCombinedScore;
       });
       
-      console.log('Sorted users by compatibility:', sortedUsers.map(u => {
-        const sharedScore = getSharedInterestsScore(u);
-        const proximityScore = getProximityScore(u);
-        const combinedScore = (sharedScore * 0.7) + (proximityScore * 0.3);
-        return {
-          id: u.id,
-          name: u.name,
-          sharedInterests: sharedScore,
-          proximityScore: proximityScore,
-          combinedScore: combinedScore
-        };
-      }));
+      console.log('\n📊 Sorting by Compatibility:');
+      if (sortedUsers.length > 0) {
+        sortedUsers.slice(0, 3).forEach((u, i) => {
+          const sharedScore = getSharedInterestsScore(u);
+          const proximityScore = getProximityScore(u);
+          const combinedScore = ((sharedScore * 0.7) + (proximityScore * 0.3)).toFixed(1);
+          console.log(`  ${i + 1}. ${u.name} (Score: ${combinedScore} - ${sharedScore} shared, ${proximityScore.toFixed(0)}km proximity)`);
+        });
+        if (sortedUsers.length > 3) {
+          console.log(`  ... and ${sortedUsers.length - 3} more users`);
+        }
+      }
       
       setUsers(sortedUsers);
-      setShowSwiper(fetchedUsers.length > 0);
+      setHasInitiallyFetched(true);
+      console.log('✅ ===== FETCH COMPLETE =====\n');
     } catch (err) {
-      console.error("Error fetching users:", err);
+      console.error('❌ Error fetching users:', err);
       Alert.alert("Error", "Failed to fetch users. Please try again later.");
-    } finally {
-      setIsLoadingUsers(false);
+      setHasInitiallyFetched(true);
     }
   };
 
@@ -735,7 +634,15 @@ const Swipe = () => {
     try {
       const swipedUser = users[index];
       const swipedUserUID = swipedUser.id;
-      console.log('Processing right swipe for user:', swipedUserUID);
+      
+      // Trigger dismissal animation
+      setDismissingUserId(swipedUserUID);
+      setDismissDirection('right');
+      
+      console.log(`\n👍 ===== RIGHT SWIPE: ${swipedUser.name} =====`);
+
+      // Wait for animation to start
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Get current user data first
       const currentUserDoc = await getDoc(doc(db, "users", currentUserUID));
@@ -750,6 +657,8 @@ const Swipe = () => {
       const swipedUserDoc = await getDoc(doc(db, "users", swipedUserUID));
       const swipedUserData = swipedUserDoc.data();
       const hasMatched = swipedUserData?.likedUsers?.includes(currentUserUID);
+      
+      console.log(hasMatched ? '🎉 MATCH!' : '📤 Creating connection request');
 
       // Create a pending connection
       const connectionData = {
@@ -761,7 +670,6 @@ const Swipe = () => {
       };
       
       try {
-        console.log('Creating pending connection');
         const connectionsCollection = collection(db, "connections");
         await addDoc(connectionsCollection, connectionData);
 
@@ -788,17 +696,11 @@ const Swipe = () => {
         });
 
         // Send push notification for both matches and connection requests
-        console.log('Sending push notification for:', hasMatched ? 'match' : 'connection request');
         if (swipedUserData?.expoPushToken && 
             swipedUserData?.notificationPreferences?.notificationsEnabled && 
             swipedUserData?.notificationPreferences?.connections) {
           
-          console.log('📱 Push notification conditions met:', {
-            hasToken: true,
-            token: swipedUserData.expoPushToken,
-            notificationsEnabled: true,
-            connectionsEnabled: true
-          });
+          console.log('📱 Sending push notification...');
 
           try {
             const pushPayload = {
@@ -816,8 +718,6 @@ const Swipe = () => {
               },
             };
 
-            console.log('📦 Push notification payload:', pushPayload);
-
             const response = await fetch('https://exp.host/--/api/v2/push/send', {
               method: 'POST',
               headers: {
@@ -831,39 +731,15 @@ const Swipe = () => {
             const responseData = await response.json();
             
             if (!response.ok) {
-              console.error('❌ Push notification failed:', {
-                status: response.status,
-                statusText: response.statusText,
-                data: responseData,
-                requestPayload: pushPayload
-              });
+              console.error('❌ Push notification failed:', response.status, responseData);
             } else {
-              console.log('✅ Push notification sent successfully:', {
-                responseData,
-                receiverId: swipedUserUID,
-                senderName: currentUserData?.name
-              });
+              console.log('✅ Push notification sent successfully');
             }
           } catch (error: any) {
-            console.error('❌ Error sending push notification:', {
-              error,
-              errorMessage: error.message,
-              errorStack: error.stack,
-              receiverId: swipedUserUID,
-              token: swipedUserData.expoPushToken,
-              senderName: currentUserData?.name
-            });
+            console.error('❌ Push notification error:', error.message);
           }
         } else {
-          console.log('ℹ️ Push notification not sent. Reason:', {
-            hasToken: !!swipedUserData?.expoPushToken,
-            token: swipedUserData?.expoPushToken,
-            notificationsEnabled: swipedUserData?.notificationPreferences?.notificationsEnabled,
-            connectionsEnabled: swipedUserData?.notificationPreferences?.connections,
-            receiverId: swipedUserUID,
-            receiverName: swipedUser.name,
-            fullPreferences: swipedUserData?.notificationPreferences
-          });
+          console.log('⏭️  Skipped push notification (user settings or no token)');
         }
 
         // If it's a match, create notification for current user
@@ -886,10 +762,25 @@ const Swipe = () => {
         }
         
       } catch (error) {
-        console.error("Error creating pending connection:", error);
+        console.error("❌ Connection creation error:", error);
       }
+      
+      // Wait for animation to complete before removing from list
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Remove user from list
+      setUsers(prevUsers => prevUsers.filter(u => u.id !== swipedUserUID));
+      
+      // Reset dismissal state
+      setDismissingUserId(null);
+      setDismissDirection(null);
+      
+      console.log('✅ ===== RIGHT SWIPE COMPLETE =====\n');
     } catch (err) {
-      console.error("Error processing right swipe:", err);
+      console.error("❌ Right swipe error:", err);
+      // Reset dismissal state on error
+      setDismissingUserId(null);
+      setDismissDirection(null);
     } finally {
       setIsProcessing(false);
     }
@@ -903,12 +794,36 @@ const Swipe = () => {
     try {
       const swipedUser = users[index];
       const swipedUserUID = swipedUser.id;
+      
+      // Trigger dismissal animation
+      setDismissingUserId(swipedUserUID);
+      setDismissDirection('left');
+      
+      console.log(`\n👎 LEFT SWIPE: ${swipedUser.name}`);
+
+      // Wait for animation to start
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       await updateUser(currentUserUID, {
         dislikedUsers: arrayUnion(swipedUserUID),
       });
+      
+      // Wait for animation to complete before removing from list
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Remove user from list
+      setUsers(prevUsers => prevUsers.filter(u => u.id !== swipedUserUID));
+      
+      // Reset dismissal state
+      setDismissingUserId(null);
+      setDismissDirection(null);
+      
+      console.log('✅ User added to disliked list\n');
     } catch (err) {
-      console.error("Error processing left swipe:", err);
+      console.error("❌ Left swipe error:", err);
+      // Reset dismissal state on error
+      setDismissingUserId(null);
+      setDismissDirection(null);
     } finally {
       setIsProcessing(false);
     }
@@ -928,50 +843,45 @@ const Swipe = () => {
     try {
       // Show confirmation dialog
       Alert.alert(
-        "Clear Disliked History",
-        "This will clear your disliked users history, allowing you to see them again. Your connections and liked users will remain unchanged.",
+        "Reset Swipe History",
+        "This will clear users you've disliked or liked (but haven't matched with yet), allowing you to see them again. Your existing connections remain unchanged.\n\nTo view pending connection requests, go to the Chat tab.",
         [
           {
             text: "Cancel",
             style: "cancel"
           },
           {
-            text: "Clear History",
+            text: "Reset History",
             style: "destructive",
             onPress: async () => {
               try {
-                // Update user document to clear only disliked users array
+                // Update user document to clear both disliked and liked users arrays
                 await updateUser(currentUserUID, {
-                  dislikedUsers: []
+                  dislikedUsers: [],
+                  likedUsers: []
                 });
                 
                 // Refresh the users list
                 await fetchUsers();
                 
-                Alert.alert("Success", "Your disliked history has been cleared!");
-              } catch (error) {
-                console.error("Error clearing history:", error);
-                Alert.alert("Error", "Failed to clear history. Please try again.");
+                // Scroll to top of screen
+                scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+              } catch (error: any) {
+                console.error("❌ Reset history error:", error.message);
+                Alert.alert("Error", "Failed to reset history. Please try again.");
               }
             }
           }
         ]
       );
-    } catch (error) {
-      console.error("Error in reset confirmation:", error);
+    } catch (error: any) {
+      console.error("❌ Reset confirmation error:", error.message);
     }
   };
 
-  // Simplified animated styles for fade in
-  const containerStyle = useAnimatedStyle(() => ({
-    opacity: fadeAnim.value,
-    transform: [{ scale: scaleAnim.value }]
-  }));
+  // Removed animated styles - content shows immediately
 
-  /** Loading state */
-  if (loading || isLoadingUsers) {
-    return <LoadingScreen />;
-  }
+  // Removed loading state - show content immediately
 
   /** Error state */
   if (error) {
@@ -1000,364 +910,54 @@ const Swipe = () => {
         <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
           {users.length > 0 ? (
             <ScrollView 
+              ref={scrollViewRef}
               style={styles.scrollContainer}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
               bounces={true}
               decelerationRate="fast"
             >
-              {/* Header Section */}
-              <Animated.View 
-                entering={FadeIn.duration(600).easing(Easing.out(Easing.cubic))}
-                style={styles.headerSection}
-              >
-                <Text style={[styles.headerTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                  Connect with Others
-                </Text>
-                <Text style={[styles.headerSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                  {users.length} {users.length === 1 ? 'person' : 'people'} available now
-                </Text>
-              </Animated.View>
 
-              {users.map((user, index) => (
-                <Animated.View 
-                  key={user.id}
-                  entering={FadeIn.duration(400).delay(index * 100).easing(Easing.out(Easing.cubic))}
-                  style={styles.verticalCard}
-                >
-                  <View style={[styles.cardContainer, { 
-                    backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
-                  }]}>
-                    {/* Profile Image Section */}
-                    <View style={styles.profileImageSection}>
-                      <View style={styles.profileImageContainer}>
-                        <UserAvatar
-                          user={user}
-                          size={120}
-                          style={styles.profileImage}
-                        />
-                        {/* Status indicator ring */}
-                        <View style={[styles.statusRing, { 
-                          borderColor: user.availableNow ? "#37a4c8" : "rgba(55, 164, 200, 0.3)"
-                        }]} />
-                      </View>
-                    </View>
-
-                    {/* Content Section */}
-                    <View style={styles.contentSection}>
-                      {/* Header with Name and Age */}
-                      <View style={styles.userHeader}>
-                        <Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                          {user.name}
-                        </Text>
-                        <Text style={[styles.userAge, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                          {user.age}
-                        </Text>
-                      </View>
-
-                      {/* Location and Status Row */}
-                      <View style={styles.statusRow}>
-                        {/* Location */}
-                        {(user.currentCity || user.airportCode) && (
-                          <View style={[styles.locationBadge, { 
-                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.15)",
-                            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
-                          }]}>
-                            <MaterialIcons name="location-on" size={14} color="#37a4c8" />
-                            <Text style={[styles.locationText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                              {user.currentCity || user.airportCode}
-                            </Text>
-                          </View>
-                        )}
-                        
-                        {/* Availability Status */}
-                        {user.availableNow && (
-                          <View style={[styles.availabilityBadge, { 
-                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(55, 164, 200, 0.15)",
-                            borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
-                          }]}>
-                            <View style={[styles.availabilityDot, { backgroundColor: "#37a4c8" }]} />
-                            <Text style={[styles.availabilityText, { color: "#37a4c8" }]}>Now</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Today's Schedule */}
-                      {user.availabilitySchedule && (() => {
-                        const now = new Date();
-                        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                        const currentDay = days[now.getDay()];
-                        const todaySchedule = user.availabilitySchedule[currentDay];
-                        
-                        if (todaySchedule && todaySchedule.start && todaySchedule.end) {
-                          const formatTimeToAMPM = (militaryTime: string): string => {
-                            if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
-                            
-                            const [hours, minutes] = militaryTime.split(':').map(Number);
-                            const period = hours >= 12 ? 'PM' : 'AM';
-                            const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-                            
-                            return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-                          };
-
-                          const startTime = formatTimeToAMPM(todaySchedule.start);
-                          const endTime = formatTimeToAMPM(todaySchedule.end);
-                          
-                          return (
-                            <View style={[styles.scheduleSection, { 
-                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.08)",
-                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(55, 164, 200, 0.2)"
-                            }]}>
-                              <View style={styles.scheduleHeader}>
-                                <MaterialIcons name="schedule" size={16} color="#37a4c8" />
-                                <Text style={[styles.scheduleTitle, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                                  Available Today
-                                </Text>
-                              </View>
-                              <Text style={[styles.scheduleTime, { color: "#37a4c8" }]}>
-                                {startTime} - {endTime}
-                              </Text>
-                            </View>
-                          );
-                        }
-                        return null;
-                      })()}
-
-                      {/* Shared Items Section */}
-                      {authUserData && (() => {
-                        const sharedConnectionIntents = getSharedConnectionIntents(user);
-                        const sharedPersonalTags = getSharedPersonalTags(user);
-                        const sharedEventPreferences = getSharedEventPreferences(user);
-                        const totalSharedItems = sharedConnectionIntents.length + sharedPersonalTags.length + sharedEventPreferences.length;
-                        
-                        if (totalSharedItems === 0) return null;
-                        
-                        return (
-                          <View style={[styles.sharedItemsSection, { 
-                            backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.05)" : "rgba(76, 175, 80, 0.1)",
-                            borderColor: theme === "light" ? "rgba(76, 175, 80, 0.2)" : "rgba(76, 175, 80, 0.3)"
-                          }]}>
-                            <View style={styles.sharedItemsHeader}>
-                              <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
-                              <Text style={[styles.sharedItemsTitle, { color: "#4CAF50" }]}>
-                                {totalSharedItems} shared interest{totalSharedItems !== 1 ? 's' : ''}
-                              </Text>
-                            </View>
-                            
-                            <View style={styles.sharedItemsContainer}>
-                              {/* Connection Intents */}
-                              {sharedConnectionIntents.slice(0, 3).map((intent, index) => (
-                                <View key={`intent-${index}`} style={[styles.sharedItemTag, { 
-                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)",
-                                  borderColor: "#4CAF50"
-                                }]}>
-                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
-                                    {intent}
-                                  </Text>
-                                </View>
-                              ))}
-                              
-                              {/* Personal Tags */}
-                              {sharedPersonalTags.slice(0, 3).map((tag, index) => (
-                                <View key={`tag-${index}`} style={[styles.sharedItemTag, { 
-                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)",
-                                  borderColor: "#4CAF50"
-                                }]}>
-                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
-                                    {tag}
-                                  </Text>
-                                </View>
-                              ))}
-                              
-                              {/* Event Preferences */}
-                              {sharedEventPreferences.slice(0, 2).map((pref, index) => (
-                                <View key={`pref-${index}`} style={[styles.sharedItemTag, { 
-                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.15)" : "rgba(76, 175, 80, 0.25)",
-                                  borderColor: "#4CAF50"
-                                }]}>
-                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
-                                    {pref}
-                                  </Text>
-                                </View>
-                              ))}
-                              
-                              {/* Show more indicator if there are more items */}
-                              {(sharedConnectionIntents.length + sharedPersonalTags.length + sharedEventPreferences.length) > 8 && (
-                                <View style={[styles.sharedItemTag, { 
-                                  backgroundColor: theme === "light" ? "rgba(76, 175, 80, 0.1)" : "rgba(76, 175, 80, 0.2)",
-                                  borderColor: "#4CAF50"
-                                }]}>
-                                  <Text style={[styles.sharedItemText, { color: "#4CAF50" }]}>
-                                    +{(sharedConnectionIntents.length + sharedPersonalTags.length + sharedEventPreferences.length) - 8} more
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-                        );
-                      })()}
-
-                      {/* Bio Section */}
-                      {user.bio && (
-                        <View style={styles.bioSection}>
-                          <Text 
-                            style={[styles.bioText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}
-                            numberOfLines={2}
-                            ellipsizeMode="tail"
-                          >
-                            {user.bio}
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* Action Buttons */}
-                      <View style={styles.actionButtons}>
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.dislikeButton, { 
-                            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                            borderColor: theme === "light" ? "#64748B" : "#94A3B8"
-                          }]}
-                          onPress={() => onSwipedLeft(index)}
-                          disabled={isProcessing}
-                        >
-                          <MaterialIcons name="close" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} />
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.likeButton, { 
-                            backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                            borderColor: "#37a4c8"
-                          }]}
-                          onPress={() => onSwipedRight(index)}
-                          disabled={isProcessing}
-                        >
-                          <MaterialIcons name="favorite" size={20} color="#37a4c8" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                </Animated.View>
-              ))}
+              {users.map((user, index) => {
+                const sharedConnectionIntents = authUserData ? getSharedConnectionIntents(user) : [];
+                const sharedPersonalTags = authUserData ? getSharedPersonalTags(user) : [];
+                const sharedEventPreferences = authUserData ? getSharedEventPreferences(user) : [];
+                const isDismissing = dismissingUserId === user.id;
+                
+                return (
+                  <UserCard
+                    key={user.id}
+                    user={user}
+                    index={index}
+                    theme={theme}
+                    isProcessing={isProcessing}
+                    isDismissing={isDismissing}
+                    dismissDirection={isDismissing ? dismissDirection : null}
+                    sharedConnectionIntents={sharedConnectionIntents}
+                    sharedPersonalTags={sharedPersonalTags}
+                    sharedEventPreferences={sharedEventPreferences}
+                    onLike={onSwipedRight}
+                    onDislike={onSwipedLeft}
+                  />
+                );
+              })}
               
               {/* Bottom Section with Stats and Reset */}
-              <Animated.View 
-                entering={FadeIn.duration(800).delay(users.length * 100).easing(Easing.out(Easing.cubic))}
-                style={styles.bottomSection}
-              >
-                {/* Stats Cards */}
-                <View style={styles.statsContainer}>
-                  <View style={[styles.statCard, { 
-                    backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(55, 164, 200, 0.1)",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
-                  }]}>
-                    <MaterialIcons name="people" size={20} color="#37a4c8" />
-                    <Text style={[styles.statNumber, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                      {users.length}
-                    </Text>
-                    <Text style={[styles.statLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      Available
-                    </Text>
-                  </View>
-                  
-                  <View style={[styles.statCard, { 
-                    backgroundColor: theme === "light" ? "rgba(76, 217, 100, 0.05)" : "rgba(76, 217, 100, 0.1)",
-                    borderColor: theme === "light" ? "rgba(76, 217, 100, 0.2)" : "rgba(76, 217, 100, 0.3)"
-                  }]}>
-                    <MaterialIcons name="schedule" size={20} color="#4CD964" />
-                    <Text style={[styles.statNumber, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                      Now
-                    </Text>
-                    <Text style={[styles.statLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      Active
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Reset History Button */}
-                <TouchableOpacity
-                  style={[
-                    styles.verticalResetButton,
-                    { 
-                      backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                      borderColor: "#37a4c8"
-                    }
-                  ]}
-                  onPress={resetSwipeHistory}
-                >
-                  <MaterialIcons name="history" size={20} color="#37a4c8" />
-                  <Text style={[styles.verticalResetButtonText, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                    Reset History
-                  </Text>
-                </TouchableOpacity>
-              </Animated.View>
+              <StatsSection 
+                userCount={users.length}
+                theme={theme}
+                delay={users.length * 100}
+                onResetHistory={resetSwipeHistory}
+              />
             </ScrollView>
+          ) : hasInitiallyFetched ? (
+            <View style={styles.emptyStateWrapper}>
+              <EmptyState theme={theme} onResetHistory={resetSwipeHistory} />
+            </View>
           ) : (
-            <Animated.View 
-              entering={FadeIn.duration(400).easing(Easing.out(Easing.cubic))}
-              style={[styles.emptyStateContainer]}
-            >
-              <LinearGradient
-                colors={theme === "light" ? ["#FFFFFF", "#FFFFFF"] : ["#1a1a1a", "#1a1a1a"]}
-                style={styles.cardContent}
-              >
-                {/* Image Container - Empty State */}
-                <View style={styles.imageContainer}>
-                  <View style={[styles.profileImageContainer, { 
-                    backgroundColor: theme === "light" ? "#f3f4f6" : "#2a2a2a",
-                    justifyContent: 'center',
-                    alignItems: 'center'
-                  }]}>
-                    <Image
-                      source={require('../../assets/icon.png')}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        resizeMode: 'cover'
-                      }}
-                    />
-                  </View>
-                  <View style={styles.imageOverlay}>
-                    <View style={styles.profileHeader}>
-                      <Text style={styles.nameText}>
-                        No Nearby Users
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Content Container - Empty State */}
-                <View style={[styles.contentContainer]}>
-                  <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                      <MaterialIcons name="info" size={18} color="#37a4c8" />
-                      <Text style={[styles.sectionContent, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                        We couldn't find any more travelers at this airport right now.
-                      </Text>
-                    </View>
-                    <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-                  </View>
-                  <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                      <MaterialIcons name="schedule" size={18} color="#37a4c8" />
-                      <Text style={[styles.sectionContent, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>
-                        Check back later or try resetting your history to see users again.
-                      </Text>
-                    </View>
-                    <View style={[styles.divider, { backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.2)" : "rgba(56, 165, 201, 0.2)" }]} />
-                  </View>
-                  <View style={[styles.moodContainer, { 
-                    backgroundColor: theme === "light" ? "rgba(56, 165, 201, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                    alignSelf: 'center',
-                    marginTop: 'auto',
-                    marginBottom: 8
-                  }]}>
-                    <MaterialIcons name="refresh" size={16} color="#37a4c8" />
-                    <Text style={styles.moodText}>Ready for new connections!</Text>
-                  </View>
-                </View>
-              </LinearGradient>
-            </Animated.View>
+            <View style={styles.loadingContainer}>
+              {/* Show nothing while fetching initially */}
+            </View>
           )}
         </LinearGradient>
       </SafeAreaWrapper>
@@ -1368,37 +968,9 @@ const Swipe = () => {
 /** Styles */
 const styles = StyleSheet.create({
   logo: {
-    fontSize: 18,
+    fontSize: scaleFont(18),
     fontWeight: "bold",
     color: "#38a5c9",
-  },
-  cardTouchable: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-  },
-  cardShadow: {
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  cardFace: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backfaceVisibility: 'hidden',
-  },
-  cardBack: {
-    transform: [{ rotateY: '180deg' }],
-  },
-  cardContent: {
-    flex: 1,
-  },
-  imageContainer: {
-    width: '100%',
-    height: IMAGE_HEIGHT,
-    position: 'relative',
   },
   imageOverlay: {
     position: 'absolute',
@@ -1406,7 +978,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '40%',
-    padding: 16,
+    padding: scaleWidth(16),
     justifyContent: 'flex-end',
   },
   profileHeader: {
@@ -1414,69 +986,69 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   nameText: {
-    fontSize: 24,
+    fontSize: scaleFont(24),
     fontWeight: "700",
     color: "#FFFFFF",
     textShadowColor: 'rgba(0, 0, 0, 0.9)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 4,
+    textShadowOffset: { width: scale(1), height: scale(1) },
+    textShadowRadius: scale(4),
   },
   locationOverlayContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(56, 165, 201, 0.2)",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    marginTop: 4,
+    paddingVertical: scaleHeight(4),
+    paddingHorizontal: scaleWidth(8),
+    borderRadius: scale(12),
+    marginTop: scaleHeight(4),
   },
   availabilityContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(76, 217, 100, 0.2)",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    marginTop: 4,
+    paddingVertical: scaleHeight(4),
+    paddingHorizontal: scaleWidth(8),
+    borderRadius: scale(12),
+    marginTop: scaleHeight(4),
   },
   contentContainer: {
     flex: 1,
-    padding: 12,
+    padding: scale(12),
   },
   section: {
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   sectionContent: {
-    fontSize: 14,
-    marginLeft: 8,
+    fontSize: scaleFont(14),
+    marginLeft: scaleWidth(8),
     flex: 1,
-    lineHeight: 18,
+    lineHeight: scaleFont(18),
   },
   divider: {
-    height: 1,
+    height: scaleHeight(1),
     backgroundColor: "#38a5c9",
-    marginVertical: 6,
+    marginVertical: scaleHeight(6),
     opacity: 0.2,
   },
   moodContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(56, 165, 201, 0.1)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginTop: 4,
+    paddingVertical: scaleHeight(6),
+    paddingHorizontal: scaleWidth(12),
+    borderRadius: scale(16),
+    marginTop: scaleHeight(4),
     alignSelf: 'center',
   },
   moodText: {
-    fontSize: 13,
+    fontSize: scaleFont(13),
     color: "#38a5c9",
-    marginLeft: 6,
+    marginLeft: scaleWidth(6),
     fontWeight: "500",
   },
   stateContainer: {
@@ -1486,27 +1058,27 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: "#FF3B30",
-    fontSize: 16,
+    fontSize: scaleFont(16),
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   emptyStateText: {
-    fontSize: 18,
+    fontSize: scaleFont(18),
     color: "#38a5c9",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   retryButton: {
     backgroundColor: "#38a5c9",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scale(8),
+    borderWidth: scale(1),
     borderColor: "#38a5c9",
   },
   retryButtonText: {
     color: "#FFF",
-    fontSize: 16,
+    fontSize: scaleFont(16),
     fontWeight: "600",
   },
   loadingFallback: {
@@ -1516,16 +1088,16 @@ const styles = StyleSheet.create({
   },
   backHeader: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   backTitle: {
-    fontSize: 24,
+    fontSize: scaleFont(24),
     fontWeight: '700',
     color: '#38a5c9',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   backSubtitle: {
-    fontSize: 16,
+    fontSize: scaleFont(16),
     color: '#e4fbfe',
   },
   messageOptionsContainer: {
@@ -1543,87 +1115,87 @@ const styles = StyleSheet.create({
     width: '85%',
     maxHeight: '75%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: scale(16),
     overflow: 'hidden',
     shadowColor: '#38a5c9',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scale(2) },
     shadowOpacity: 0.25,
-    shadowRadius: 4,
+    shadowRadius: scale(4),
     elevation: 5,
-    borderWidth: 1,
+    borderWidth: scale(1),
     borderColor: '#38a5c9',
   },
   messageOptionsHeader: {
-    padding: 16,
-    borderBottomWidth: 1,
+    padding: scale(16),
+    borderBottomWidth: scale(1),
     borderBottomColor: '#38a5c9',
     position: 'relative',
     backgroundColor: '#FFFFFF',
   },
   messageOptionsTitle: {
-    fontSize: 20,
+    fontSize: scaleFont(20),
     fontWeight: '700',
     color: '#38a5c9',
     textAlign: 'center',
   },
   messageOptionsSubtitle: {
-    fontSize: 14,
+    fontSize: scaleFont(14),
     color: '#e4fbfe',
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: scaleHeight(6),
   },
   closeButton: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    top: scaleHeight(16),
+    right: scaleWidth(16),
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: scale(1),
     borderColor: '#38a5c9',
   },
   messagesContainer: {
-    padding: 16,
+    padding: scale(16),
   },
   presetMessageButton: {
     backgroundColor: '#FFFFFF',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    borderWidth: 1,
+    padding: scale(12),
+    borderRadius: scale(10),
+    marginBottom: scaleHeight(8),
+    borderWidth: scale(1),
     borderColor: '#38a5c9',
     shadowColor: '#38a5c9',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: scale(1) },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: scale(2),
     elevation: 1,
   },
   presetMessageText: {
-    fontSize: 14,
+    fontSize: scaleFont(14),
     color: '#e4fbfe',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: scaleFont(20),
   },
   chatButton: {
     backgroundColor: '#38a5c9',
-    marginTop: 8,
+    marginTop: scaleHeight(8),
     borderColor: '#38a5c9',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    gap: scaleWidth(8),
   },
   messageSection: {
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   messageSectionTitle: {
-    fontSize: 18,
+    fontSize: scaleFont(18),
     fontWeight: '700',
     color: '#38a5c9',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   cardsContainer: {
     flex: 1,
@@ -1632,68 +1204,68 @@ const styles = StyleSheet.create({
   },
   overlayLabel: {
     position: 'absolute',
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 3,
+    padding: scale(10),
+    borderRadius: scale(10),
+    borderWidth: scale(3),
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scale(2) },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: scale(3.84),
     elevation: 5,
   },
   labelContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
+    padding: scale(8),
   },
   likeLabel: {
-    right: 40,
+    right: scaleWidth(40),
     borderColor: '#4CD964',
   },
   nopeLabel: {
-    left: 40,
+    left: scaleWidth(40),
     borderColor: '#FF3B30',
   },
   likeText: {
     color: '#4CD964',
-    fontSize: 28,
+    fontSize: scaleFont(28),
     fontWeight: '800',
     textTransform: 'uppercase',
-    marginTop: 4,
+    marginTop: scaleHeight(4),
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    textShadowOffset: { width: scale(1), height: scale(1) },
+    textShadowRadius: scale(2),
   },
   nopeText: {
     color: '#FF3B30',
-    fontSize: 28,
+    fontSize: scaleFont(28),
     fontWeight: '800',
     textTransform: 'uppercase',
-    marginTop: 4,
+    marginTop: scaleHeight(4),
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    textShadowOffset: { width: scale(1), height: scale(1) },
+    textShadowRadius: scale(2),
   },
   buttonContainer: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
+    gap: scaleWidth(12),
+    marginTop: scaleHeight(8),
   },
   resetButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#37a4c8',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scale(8),
+    borderWidth: scale(1),
     borderColor: '#37a4c8',
   },
   resetButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: scaleFont(16),
     fontWeight: '600',
   },
   loadingContainer: {
@@ -1702,32 +1274,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingDot: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
     backgroundColor: '#37a4c8',
     shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scale(2) },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowRadius: scale(4),
     elevation: 5,
-  },
-  emptyStateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-    borderRadius: 20,
-    marginHorizontal: 'auto',
-    marginBottom: 40,
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
-    overflow: 'hidden',
   },
   emptyStateGradient: {
     flex: 1,
@@ -1735,111 +1290,116 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    padding: scale(32),
+  },
+  emptyStateWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   navigationButtons: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 16,
-    marginTop: 16,
-    marginBottom: 32,
+    gap: scaleWidth(16),
+    marginTop: scaleHeight(16),
+    marginBottom: scaleHeight(32),
   },
   navButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scale(12),
+    borderWidth: scale(1),
     borderColor: '#37a4c8',
-    gap: 8,
-    minWidth: 120,
+    gap: scaleWidth(8),
+    minWidth: scaleWidth(120),
     shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scale(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: scale(4),
     elevation: 2,
   },
   navButtonText: {
-    fontSize: 16,
+    fontSize: scaleFont(16),
     fontWeight: '600',
   },
   dataToggleContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
-    marginTop: 16,
-    marginBottom: 8,
-    paddingHorizontal: 16,
+    gap: scaleWidth(12),
+    marginTop: scaleHeight(16),
+    marginBottom: scaleHeight(8),
+    paddingHorizontal: scaleWidth(16),
   },
   dataToggleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
+    paddingVertical: scaleHeight(8),
+    paddingHorizontal: scaleWidth(16),
+    borderRadius: scale(20),
+    borderWidth: scale(1),
     borderColor: '#37a4c8',
-    gap: 6,
-    minWidth: 120,
+    gap: scaleWidth(6),
+    minWidth: scaleWidth(120),
     backgroundColor: '#FFFFFF',
   },
   dataToggleButtonActive: {
     backgroundColor: 'rgba(55, 164, 200, 0.1)',
   },
   dataToggleText: {
-    fontSize: 14,
+    fontSize: scaleFont(14),
     fontWeight: '600',
   },
   clearHistoryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scale(12),
+    borderWidth: scale(1),
     borderColor: '#37a4c8',
-    gap: 8,
+    gap: scaleWidth(8),
     shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scale(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: scale(4),
     elevation: 2,
     backgroundColor: '#FFFFFF',
   },
   clearHistoryButtonText: {
-    fontSize: 16,
+    fontSize: scaleFont(16),
     fontWeight: '600',
   },
   dataModeToggleContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
-    marginTop: 16,
-    marginBottom: 8,
-    paddingHorizontal: 16,
+    gap: scaleWidth(12),
+    marginTop: scaleHeight(16),
+    marginBottom: scaleHeight(8),
+    paddingHorizontal: scaleWidth(16),
   },
   dataModeToggleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
+    paddingVertical: scaleHeight(8),
+    paddingHorizontal: scaleWidth(16),
+    borderRadius: scale(20),
+    borderWidth: scale(1),
     borderColor: '#37a4c8',
-    gap: 6,
-    minWidth: 80,
+    gap: scaleWidth(6),
+    minWidth: scaleWidth(80),
     backgroundColor: '#FFFFFF',
   },
   dataModeToggleButtonActive: {
     backgroundColor: 'rgba(55, 164, 200, 0.1)',
   },
   dataModeToggleText: {
-    fontSize: 14,
+    fontSize: scaleFont(14),
     fontWeight: '600',
   },
   // Vertical scroll styles
@@ -1847,295 +1407,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    paddingBottom: 40,
+    paddingHorizontal: scaleWidth(20),
+    paddingTop: scaleHeight(24),
+    paddingBottom: scaleHeight(40),
     alignItems: 'center',
-  },
-  verticalCard: {
-    width: '100%',
-    maxWidth: 400,
-    marginBottom: 20,
-  },
-  cardContainer: {
-    borderRadius: 20,
-    borderWidth: 1,
-    shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 4,
-    overflow: 'hidden',
-  },
-  profileImageSection: {
-    alignItems: 'center',
-    paddingTop: 24,
-    paddingBottom: 16,
-    backgroundColor: 'transparent',
-  },
-  profileImageContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileImage: {
-    width: 120,
-    height: 120,
-    resizeMode: 'cover',
-    borderRadius: 60,
-  },
-  statusRing: {
-    position: 'absolute',
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 3,
-    top: -5,
-    left: -5,
-  },
-  contentSection: {
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-  },
-  userHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  userAge: {
-    fontSize: 18,
-    fontWeight: '500',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    flexWrap: 'wrap',
-  },
-  locationBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  locationText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginLeft: 4,
-    letterSpacing: 0.2,
-  },
-  availabilityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  availabilityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 4,
-  },
-  availabilityText: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  scheduleSection: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  scheduleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 6,
-  },
-  scheduleTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  scheduleTime: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  bioSection: {
-    marginBottom: 20,
-  },
-  bioText: {
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '400',
-    textAlign: 'center',
-    letterSpacing: 0.1,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  actionButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  dislikeButton: {
-    // Additional styles if needed
-  },
-  likeButton: {
-    // Additional styles if needed
-  },
-  verticalResetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    backgroundColor: '#FFFFFF',
-    marginTop: 16,
-    marginBottom: 32,
-    shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  verticalResetButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-    color: '#37a4c8',
-    letterSpacing: 0.2,
   },
   // New polished design styles
-  headerSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    letterSpacing: 0.2,
-    textAlign: 'center',
-    opacity: 0.8,
-  },
   imageWrapper: {
     position: 'relative',
     width: '100%',
     height: '100%',
-    borderRadius: 16,
+    borderRadius: scale(16),
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bottomSection: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 40,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 16,
-  },
-  statCard: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    shadowColor: 'rgba(0, 0, 0, 0.05)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginTop: 8,
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    opacity: 0.8,
-  },
-  // Shared items styles
-  sharedItemsSection: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  sharedItemsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 6,
-  },
-  sharedItemsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  sharedItemsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  sharedItemTag: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  sharedItemText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
   },
 });
 

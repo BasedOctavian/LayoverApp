@@ -21,6 +21,8 @@ import useAuth from "../../hooks/auth";
 import { useRouter } from "expo-router";
 import LoadingScreen from "../../components/LoadingScreen";
 import { AuthError } from "firebase/auth";
+import { validateEmail, normalizeEmail } from "../../utils/emailValidation";
+import { isPasswordValid } from "../../utils/passwordValidation";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -33,14 +35,18 @@ const Login = () => {
   const scrollViewRef = useRef<ScrollView>(null);
   const [keyboardHeight] = useState(new Animated.Value(0));
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const hasRedirectedRef = useRef(false);
 
+  // Only check auth on initial mount - don't redirect when user changes after login
   useEffect(() => {
     const checkAuth = async () => {
       try {
         await new Promise(resolve => setTimeout(resolve, 1000));
         setIsRefreshing(false);
         
-        if (user) {
+        // Only redirect if user is already logged in on initial mount (not after login)
+        if (user && !hasRedirectedRef.current) {
+          hasRedirectedRef.current = true;
           setEmail("");
           setPassword("");
           setFocusedField(null);
@@ -52,8 +58,11 @@ const Login = () => {
       }
     };
 
-    checkAuth();
-  }, [isAuthLoading, user]);
+    // Only check if auth is done loading (initial state check)
+    if (!isAuthLoading) {
+      checkAuth();
+    }
+  }, [isAuthLoading]); // Removed 'user' dependency to prevent re-triggering after login
 
   useEffect(() => {
     const keyboardWillShow = (event: KeyboardEvent) => {
@@ -99,39 +108,60 @@ const Login = () => {
     setFocusedField(null);
   }, []);
 
-  const getFriendlyErrorMessage = (error: AuthError): string => {
-    switch (error.code) {
-      case 'auth/invalid-credentials':
-        return 'Incorrect email or password';
-      case 'auth/invalid-email':
-        return 'Please enter a valid email address';
-      case 'auth/user-disabled':
-        return 'This account has been disabled';
-      case 'auth/too-many-requests':
-        return 'Too many attempts. Please try again later';
-      case 'auth/network-request-failed':
-        return 'Network error. Please check your connection';
-      default:
-        return 'Unable to sign in. Please try again';
+  // Validation states
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Field validation functions
+  const validateEmailField = (value: string): boolean => {
+    const validation = validateEmail(value);
+    setEmailError(validation.isValid ? null : validation.message);
+    return validation.isValid;
+  };
+
+  const validatePasswordField = (value: string): boolean => {
+    if (!value.trim()) {
+      setPasswordError("Password is required");
+      return false;
     }
+    setPasswordError(null);
+    return true;
   };
 
   const handleLogin = async () => {
+    // Reset all errors
+    setError(null);
+    setEmailError(null);
+    setPasswordError(null);
+
+    // Validate required fields
     if (!email || !password) {
       setError("Please fill in all fields.");
       return;
     }
+
+    // Validate email format
+    if (!validateEmailField(email)) {
+      return;
+    }
+
+    // Validate password format
+    if (!validatePasswordField(password)) {
+      return;
+    }
+
     try {
-      setError(null);
       setIsRefreshing(true);
-      await login(email, password);
+      const normalizedEmail = normalizeEmail(email);
+      await login(normalizedEmail, password);
       setEmail("");
       setPassword("");
       setFocusedField(null);
+      hasRedirectedRef.current = true;
       router.replace("/home/dashboard");
     } catch (error) {
       const authError = error as AuthError;
-      setError(getFriendlyErrorMessage(authError));
+      setError(error instanceof Error ? error.message : 'Unable to sign in. Please try again.');
     } finally {
       setIsRefreshing(false);
     }
@@ -219,10 +249,12 @@ const Login = () => {
                 </View>
               </TouchableOpacity>
 
-              {error && (
+              {(error || emailError || passwordError) && (
                 <View style={styles.errorContainer}>
                   <Feather name="alert-circle" size={16} color="#ff6b6b" />
-                  <Text style={styles.errorText}>{error}</Text>
+                  <Text style={styles.errorText}>
+                    {error || emailError || passwordError}
+                  </Text>
                 </View>
               )}
 

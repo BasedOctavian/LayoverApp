@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, ActivityIndicator, TextInput, Alert, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, ActivityIndicator, TextInput, Alert, Modal, Image, StatusBar, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeContext } from '../../context/ThemeContext';
@@ -9,15 +9,17 @@ import useUsers from '../../hooks/useUsers';
 import useAuth from '../../hooks/auth';
 import { collection, getDocs, doc, updateDoc, query, orderBy, Timestamp, deleteDoc, writeBatch, where, getDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebaseConfig';
-import { useRouter } from 'expo-router';
+import { useRouter, router } from 'expo-router';
 import { PING_CATEGORIES } from '../../constants/pingCategories';
 import { haversineDistance } from '../../utils/haversineDistance';
+import useNotificationCount from '../../hooks/useNotificationCount';
+import * as Haptics from 'expo-haptics';
 
 interface NotificationPreferences {
   announcements: boolean;
   chats: boolean;
   connections: boolean;
-  events: boolean;
+  activities: boolean;
   notificationsEnabled: boolean;
 }
 
@@ -1117,7 +1119,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "10:00", end: "22:00" }
     },
     availableNow: true,
-    moodStatus: "Adventure Mode",
+    moodStatus: "Looking for Company",
     groupAffiliations: ["Travel Enthusiasts"],
     lastKnownCoordinates: {
       latitude: 42.7146805,
@@ -1235,7 +1237,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "10:00", end: "20:00" }
     },
     availableNow: true,
-    moodStatus: "Foodie Mode",
+    moodStatus: "Food & Drinks?",
     groupAffiliations: ["Food Bloggers", "Travel Writers"],
     lastKnownCoordinates: {
       latitude: 42.7676,
@@ -1294,7 +1296,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "05:00", end: "21:00" }
     },
     availableNow: true,
-    moodStatus: "Adventure Ready",
+    moodStatus: "Available",
     groupAffiliations: ["Adventure Photographers", "Surf Club"],
     lastKnownCoordinates: {
       latitude: 42.9634,
@@ -1353,7 +1355,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "08:00", end: "18:00" }
     },
     availableNow: false,
-    moodStatus: "Eco-Friendly",
+    moodStatus: "Away",
     groupAffiliations: ["Environmental Scientists", "Nature Conservation"],
     lastKnownCoordinates: {
       latitude: 42.7678,
@@ -1412,7 +1414,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "11:00", end: "21:00" }
     },
     availableNow: true,
-    moodStatus: "Professional",
+    moodStatus: "Networking",
     groupAffiliations: ["Business Consultants", "Architecture Society"],
     lastKnownCoordinates: {
       latitude: 42.9784,
@@ -1471,7 +1473,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "07:00", end: "19:00" }
     },
     availableNow: true,
-    moodStatus: "Zen Mode",
+    moodStatus: "Coffee Break",
     groupAffiliations: ["Yoga Community", "Wellness Warriors"],
     lastKnownCoordinates: {
       latitude: 42.9653,
@@ -1530,7 +1532,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "18:00", end: "01:00" }
     },
     availableNow: false,
-    moodStatus: "Creative Flow",
+    moodStatus: "Busy",
     groupAffiliations: ["Music Producers", "Art Collective"],
     lastKnownCoordinates: {
       latitude: 43.0387,
@@ -1589,7 +1591,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "10:00", end: "20:00" }
     },
     availableNow: true,
-    moodStatus: "Fashion Forward",
+    moodStatus: "Shopping",
     groupAffiliations: ["Fashion Designers", "Art Community"],
     lastKnownCoordinates: {
       latitude: 42.9006,
@@ -1648,7 +1650,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "07:00", end: "21:00" }
     },
     availableNow: true,
-    moodStatus: "Ready for Action",
+    moodStatus: "Group Activities",
     groupAffiliations: ["Sports Club", "Adventure Group"],
     lastKnownCoordinates: {
       latitude: 42.8501,
@@ -1707,7 +1709,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "10:00", end: "22:00" }
     },
     availableNow: true,
-    moodStatus: "Innovation Mode",
+    moodStatus: "Work Mode",
     groupAffiliations: ["Tech Startups", "Digital Nomads"],
     lastKnownCoordinates: {
       latitude: 42.9034,
@@ -1766,7 +1768,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "12:00", end: "21:00" }
     },
     availableNow: false,
-    moodStatus: "Culinary Artist",
+    moodStatus: "Food Tour",
     groupAffiliations: ["Chef Network", "Wine Society"],
     lastKnownCoordinates: {
       latitude: 43.0203,
@@ -1825,7 +1827,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "09:00", end: "17:00" }
     },
     availableNow: true,
-    moodStatus: "Eco Warrior",
+    moodStatus: "Sightseeing",
     groupAffiliations: ["Environmental Activists", "Zero Waste Community"],
     lastKnownCoordinates: {
       latitude: 43.0334,
@@ -1884,7 +1886,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "06:00", end: "21:00" }
     },
     availableNow: true,
-    moodStatus: "Motivated",
+    moodStatus: "Free to Chat",
     groupAffiliations: ["Professional Athletes", "Leadership Network"],
     lastKnownCoordinates: {
       latitude: 42.9039,
@@ -1943,7 +1945,7 @@ const testUsers: TestUser[] = [
       sunday: { start: "14:00", end: "20:00" }
     },
     availableNow: false,
-    moodStatus: "Harmonious",
+    moodStatus: "Coffee Break",
     groupAffiliations: ["Classical Musicians", "Cultural Exchange"],
     lastKnownCoordinates: {
       latitude: 43.1706,
@@ -2138,7 +2140,7 @@ const TestDataSection: React.FC<{ textColor: string, sectionBgColor: string }> =
             announcements: true,
             chats: true,
             connections: true,
-            events: true,
+            activities: true,
             notificationsEnabled: true
           },
           notifications: recentNotifications,
@@ -2885,8 +2887,20 @@ const TestPingSection: React.FC<{ textColor: string, sectionBgColor: string }> =
 export default function AdminTools() {
   const { theme } = React.useContext(ThemeContext);
   const router = useRouter();
+  const { user } = useAuth();
   const textColor = theme === "light" ? "#0F172A" : "#e4fbfe";
   const sectionBgColor = theme === "light" ? "rgba(255, 255, 255, 0.9)" : "rgba(26, 26, 26, 0.9)";
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
+  // Handle back button press
+  const handleBack = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.back();
+  };
   
   const [expandedSections, setExpandedSections] = useState({
     systemInfo: false,
@@ -2937,8 +2951,17 @@ export default function AdminTools() {
 
   return (
     <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          showBackButton={true}
+          title=""
+          onBackPress={handleBack}
+          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
+        />
         <ScrollView style={styles.container}>
           <Text style={[styles.header, { color: textColor }]}>
             Admin Tools

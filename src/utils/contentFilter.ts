@@ -3,15 +3,34 @@
 
 const FILTERED_WORDS = {
   selfHarm: [
-    'suicide', 'depressed', 'kill myself', 'end it all', 'nobody loves me', 
-    'can\'t go on', 'worthless', 'I want to die', 'no reason to live', 'jump off', 
-    'overdose', 'slit wrists', 'cut myself', 'I hate myself'
+    'suicide', 'suicidal', 'kill myself', 'end it all', 'nobody loves me', 
+    'can\'t go on', 'no reason to live', 'jump off', 
+    'overdose', 'slit wrists', 'cut myself', 'self harm'
   ],
   drugs: [
-    'marijuana', 'pot', 'cocaine', 'coke', 'molly', 'mdma', 'lsd', 'acid', 
-    'shrooms', 'heroin', 'meth', 'crack', 'xanax', 'xan', 'perk', 'perc', 'oxy', 
-    'fentanyl', 'lean', 'drank', 'purple drank', 'ketamine', 'ket', 'high', 'stoned', 
-    'baked', 'zooted', 'lit', 'buzzed', 'crossfaded', 'drunk', 'wasted'
+    'marijuana', 'pot', 'weed', 'cocaine', 'coke', 'molly', 'mdma', 'lsd', 'acid', 
+    'shrooms', 'heroin', 'meth', 'methamphetamine', 'crack', 'xanax', 'xan', 'perk', 'perc', 'oxy', 
+    'fentanyl', 'lean', 'drank', 'purple drank', 'ketamine', 'ket', 'ecstasy',
+    'buy drugs', 'sell drugs', 'drug dealer'
+  ],
+  profanity: [
+    'fuck', 'fucking', 'fucked', 'fucker', 'shit', 'bitch', 'asshole', 'ass', 
+    'damn', 'cunt', 'dick', 'cock', 'pussy', 'whore', 'slut', 'bastard',
+    'motherfucker', 'nigger', 'nigga', 'fag', 'faggot', 'retard', 'retarded'
+  ],
+  explicit: [
+    'sex', 'sexual', 'nude', 'nudes', 'naked', 'porn', 'pornography', 
+    'xxx', 'hookup', 'hook up', 'one night stand', 'boobs', 'tits', 'penis',
+    'vagina', 'blowjob', 'handjob', 'oral sex', 'anal', 'masturbate', 
+    'horny', 'aroused', 'erection', 'orgasm', 'cum', 'semen', 'send nudes'
+  ],
+  harassment: [
+    'kill you', 'hurt you', 'beat you', 'rape', 'assault', 'stalk', 'stalking',
+    'threaten', 'i know where you live', 'find you', 'track you down'
+  ],
+  scams: [
+    'send money', 'wire transfer', 'gift card', 'cash app', 'venmo me',
+    'paypal me', 'bitcoin', 'crypto', 'investment opportunity', 'get rich quick'
   ]
 };
 

@@ -1,361 +1,54 @@
-import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import {
-  Text,
   View,
   FlatList,
-  TextInput,
   StyleSheet,
-  TouchableOpacity,
-  Image,
   StatusBar,
   Animated,
   Easing,
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  RefreshControl,
   Platform,
+  ScrollView,
+  TouchableOpacity,
+  Text,
 } from "react-native";
 import useAuth from "../../hooks/auth";
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import useUsers from "../../hooks/useUsers";
 import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import {
   collection,
   query,
   where,
   getDocs,
-  addDoc,
   doc,
-  updateDoc,
-  deleteDoc,
   getDoc,
-  onSnapshot,
-  Timestamp,
-  writeBatch,
 } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
-import { onAuthStateChanged, User, getAuth } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
-import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../../context/ThemeContext";
-import BottomNavBar from "../../components/BottomNavBar";
-import useChats from "../../hooks/useChats";
 import useNotificationCount from "../../hooks/useNotificationCount";
-import UserAvatar from "../../components/UserAvatar";
 import * as Haptics from 'expo-haptics';
+import { scaleWidth, scaleHeight, moderateScale, scaleFontSize } from "../../utils/responsive";
 
-interface Chat {
-  id: string;
-  participants: string[];
-  createdAt: Date;
-  status: string;
-  connectionType: string | null;
-  connectionId: string | null;
-  lastMessage: string | null;
-}
+// Import our new components
+import {
+  UserCard,
+  SearchBar,
+  EmptyState,
+  ErrorState,
+  FilterSortBar,
+  FilterModal,
+  AppUser,
+  SortOption,
+  FilterOptions
+} from "../../components/chatExplore";
 
-interface AppUser {
-  id: string;
-  name: string;
-  age: number;
-  airportCode: string;
-  bio?: string;
-  interests?: string[];
-  moodStatus?: string;
-  profilePicture?: string;
-}
-
-interface UserCardProps {
-  item: AppUser;
-  onPress: () => void;
-  index: number;
-}
-
-const UserCard = ({ item, onPress, index }: UserCardProps) => {
-  const { user } = useAuth();
-  const { theme } = React.useContext(ThemeContext);
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-  const cardScaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const delay = index * 100;
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.cubic),
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.cubic),
-        })
-      ]).start();
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, [index]);
-
-  const handleCardPress = () => {
-    // Add haptic feedback
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    router.push(`/profile/${item.id}`);
-  };
-
-  const handlePressIn = () => {
-    // Add haptic feedback
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    
-    Animated.parallel([
-      Animated.timing(cardScaleAnim, {
-        toValue: 0.98,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 0.98,
-        duration: 100,
-        useNativeDriver: true,
-      })
-    ]).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.parallel([
-      Animated.timing(cardScaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      })
-    ]).start();
-  };
-
-  return (
-    <Animated.View
-      style={[
-        styles.userCard,
-        {
-          backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
-          opacity: opacityAnim,
-          transform: [{ scale: cardScaleAnim }],
-        }
-      ]}
-    >
-      <TouchableOpacity
-        style={styles.userCardContent}
-        onPress={handleCardPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.7}
-      >
-        <View style={styles.userHeader}>
-          <View style={styles.imageContainer}>
-            {item.profilePicture ? (
-              <UserAvatar
-                user={item}
-                size={56}
-                style={styles.profileImage}
-              />
-            ) : (
-              <View style={[styles.profileImage, styles.placeholderImage]}>
-                <Text style={styles.placeholderText}>
-                  {item.name?.charAt(0)?.toUpperCase() || "?"}
-                </Text>
-              </View>
-            )}
-            <View style={[styles.onlineIndicator, { backgroundColor: '#10B981' }]} />
-          </View>
-          <View style={styles.userMainInfo}>
-            <View style={styles.nameRow}>
-              <Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                {item.name}
-              </Text>
-              <View style={styles.ageBadge}>
-                <Text style={styles.ageBadgeText}>{item.age} years old</Text>
-              </View>
-            </View>
-            <View style={styles.userDetails}>
-              <View style={styles.locationContainer}>
-                <Ionicons name="location" size={14} color="#37a4c8" />
-                <Text style={[styles.userLocation, { color: "#37a4c8" }]}>{item.airportCode}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-        
-        {item.bio && (
-          <View style={styles.userBioContainer}>
-            <Text style={[styles.userBio, { color: theme === "light" ? "#64748B" : "#94A3B8" }]} numberOfLines={2}>
-              {item.bio}
-            </Text>
-          </View>
-        )}
-
-        {item.interests && item.interests.length > 0 && (
-          <View style={styles.userInterestsContainer}>
-            {item.interests?.slice(0, 3).map((interest: string, index: number) => (
-              <Animated.View 
-                key={index} 
-                style={[
-                  styles.interestTag,
-                  {
-                    transform: [{ scale: scaleAnim }],
-                    opacity: opacityAnim
-                  }
-                ]}
-              >
-                <Text style={styles.interestText}>{interest}</Text>
-              </Animated.View>
-            ))}
-            {item.interests.length > 3 && (
-              <View style={styles.moreInterestsBadge}>
-                <Text style={styles.moreInterestsText}>+{item.interests.length - 3}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        <View style={styles.userMoodContainer}>
-          <Animated.View 
-            style={[
-              styles.moodIndicator,
-              {
-                transform: [{ scale: scaleAnim }],
-                opacity: opacityAnim
-              }
-            ]} 
-          />
-          <Text style={[styles.moodText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-            {item.moodStatus || "Available"}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.connectButton, { backgroundColor: '#37a4c8' }]}
-          onPress={handleCardPress}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="person" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-          <Text style={styles.connectButtonText}>View Profile</Text>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-const ModernLoadingIndicator = ({ color }: { color: string }) => {
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    // Start fade in animation
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
-      }),
-      Animated.loop(
-        Animated.sequence([
-          Animated.parallel([
-            Animated.timing(pulseAnim, {
-              toValue: 1,
-              duration: 1500,
-              useNativeDriver: true,
-              easing: Easing.inOut(Easing.ease),
-            }),
-            Animated.timing(scaleAnim, {
-              toValue: 1.2,
-              duration: 1500,
-              useNativeDriver: true,
-              easing: Easing.inOut(Easing.ease),
-            }),
-            Animated.timing(rotateAnim, {
-              toValue: 1,
-              duration: 3000,
-              useNativeDriver: true,
-              easing: Easing.linear,
-            }),
-          ]),
-          Animated.parallel([
-            Animated.timing(pulseAnim, {
-              toValue: 0,
-              duration: 1500,
-              useNativeDriver: true,
-              easing: Easing.inOut(Easing.ease),
-            }),
-            Animated.timing(scaleAnim, {
-              toValue: 1,
-              duration: 1500,
-              useNativeDriver: true,
-              easing: Easing.inOut(Easing.ease),
-            }),
-          ]),
-        ])
-      ),
-    ]).start();
-  }, []);
-
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  return (
-    <Animated.View 
-      style={[
-        styles.loadingIndicatorContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { scale: fadeAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.9, 1]
-            })},
-            { rotate: spin }
-          ]
-        }
-      ]}
-    >
-      <Animated.View
-        style={[
-          styles.loadingCircle,
-          {
-            backgroundColor: color,
-            opacity: pulseAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.3, 0.7],
-            }),
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      />
-    </Animated.View>
-  );
-};
+// Interfaces are now imported from components/chatExplore/types.ts
 
 export default function ChatExplore() {
   const { user } = useAuth();
@@ -368,7 +61,8 @@ export default function ChatExplore() {
   
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [hasAttemptedFetch, setHasAttemptedFetch] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [lastVisible, setLastVisible] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -376,8 +70,11 @@ export default function ChatExplore() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const loadingStartTime = useRef<number | null>(null);
+
+  // Filtering and sorting state
+  const [sortOption, setSortOption] = useState<SortOption>('newest');
+  const [filters, setFilters] = useState<FilterOptions>({});
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   // States to manage chat fetching and creation
   const [chatLoading, setChatLoading] = useState<boolean>(false);
@@ -391,7 +88,7 @@ export default function ChatExplore() {
   // Dynamic styles that depend on safe area insets
   const dynamicStyles = React.useMemo(() => ({
     listContent: {
-      paddingBottom: 80 + insets.bottom,
+      paddingBottom: scaleHeight(80) + insets.bottom,
     },
   }), [insets.bottom]);
 
@@ -425,18 +122,16 @@ export default function ChatExplore() {
     return unsubscribe;
   }, []);
 
-  // Handle fade in animation when content is ready
+  // Set initialLoadComplete when data fetch has completed (regardless of whether we got results)
   useEffect(() => {
-    if (!loading && initialLoadComplete) {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }).start();
+    // Only set initialLoadComplete after we've attempted to fetch users at least once
+    // This ensures we don't show empty state prematurely
+    if (!loading && !usersLoading && !chatLoading && user && hasAttemptedFetch) {
+      setInitialLoadComplete(true);
     }
-  }, [loading, initialLoadComplete]);
+  }, [loading, usersLoading, chatLoading, user, hasAttemptedFetch]);
 
-  // Add effect for bounce animation when loading completes
+  // Trigger bounce animation when loading completes
   useEffect(() => {
     if (!loading && initialLoadComplete) {
       Animated.parallel([
@@ -490,7 +185,6 @@ export default function ChatExplore() {
         try {
           setUsersLoading(true);
           setUsersError(null);
-          loadingStartTime.current = Date.now();
           
           // Get existing connections first
           const connectedUserIds = await fetchExistingConnections(user.uid);
@@ -540,66 +234,128 @@ export default function ChatExplore() {
           });
 
           setUsers(sortedUsers);
+          setHasAttemptedFetch(true);
         } catch (error) {
           console.error("Error fetching users:", error);
           setUsersError("Failed to load users. Please try again.");
+          setHasAttemptedFetch(true);
         } finally {
           setUsersLoading(false);
-          // Ensure minimum loading time of 2 seconds
-          const elapsed = Date.now() - (loadingStartTime.current || 0);
-          const minDuration = 2000; // 2 seconds
-          const remaining = Math.max(0, minDuration - elapsed);
-          
-          if (remaining > 0) {
-            await new Promise(resolve => setTimeout(resolve, remaining));
-          }
-          
-          setInitialLoadComplete(true);
         }
       }
     };
     fetchUsers();
   }, [user]);
 
-  // Filter users list to only show those you haven't chatted with yet
+  // Memoize available interests for filter options
+  const availableInterests = useMemo(() => {
+    const interestsSet = new Set<string>();
+    users.forEach((u) => {
+      u.interests?.forEach((interest) => interestsSet.add(interest));
+    });
+    return Array.from(interestsSet).sort();
+  }, [users]);
+
+  // Apply filters to users
+  const applyFilters = (userList: AppUser[]): AppUser[] => {
+    let filtered = [...userList];
+
+    // Apply age range filter
+    if (filters.ageRange) {
+      const { min, max } = filters.ageRange;
+      filtered = filtered.filter((u) => u.age >= min && u.age <= max);
+    }
+
+    // Apply interests filter (user must have at least one selected interest)
+    if (filters.interests && filters.interests.length > 0) {
+      filtered = filtered.filter((u) => 
+        u.interests?.some((interest) => filters.interests?.includes(interest))
+      );
+    }
+
+    // Apply profile completeness filters
+    if (filters.hasBio) {
+      filtered = filtered.filter((u) => u.bio && u.bio.trim().length > 0);
+    }
+
+    if (filters.hasProfilePicture) {
+      filtered = filtered.filter((u) => u.profilePicture);
+    }
+
+    return filtered;
+  };
+
+  // Apply sorting to users
+  const applySorting = (userList: AppUser[]): AppUser[] => {
+    const sorted = [...userList];
+    
+    switch (sortOption) {
+      case 'name-asc':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      
+      case 'name-desc':
+        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+      
+      case 'age-asc':
+        return sorted.sort((a, b) => a.age - b.age);
+      
+      case 'age-desc':
+        return sorted.sort((a, b) => b.age - a.age);
+      
+      case 'newest':
+        // Maintain the order from Firestore (newest first is the default)
+        return sorted;
+      
+      default:
+        return sorted;
+    }
+  };
+
+  // Calculate active filters count
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.ageRange) count++;
+    if (filters.interests && filters.interests.length > 0) count++;
+    if (filters.hasBio) count++;
+    if (filters.hasProfilePicture) count++;
+    return count;
+  }, [filters]);
+
+  // Filter, sort, and search users
   useEffect(() => {
     let updatedFilteredUsers = users.filter((u) => !chatPartnerIds.includes(u.id));
-    if (searchQuery) {
+    
+    // Apply filters
+    updatedFilteredUsers = applyFilters(updatedFilteredUsers);
+    
+    // Apply search
+    if (searchQuery.trim()) {
       updatedFilteredUsers = updatedFilteredUsers.filter((u) =>
         u.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
+    
+    // Apply sorting
+    updatedFilteredUsers = applySorting(updatedFilteredUsers);
+    
     setFilteredUsers(updatedFilteredUsers);
-  }, [users, chatPartnerIds, searchQuery]);
+  }, [users, chatPartnerIds, searchQuery, sortOption, filters]);
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
-    if (!text.trim()) {
-      setFilteredUsers(users.filter((u) => !chatPartnerIds.includes(u.id)));
-      return;
-    }
-
-    const filtered = users.filter((u) => {
-      const searchLower = text.toLowerCase();
-      return (
-        u.name.toLowerCase().includes(searchLower) &&
-        !chatPartnerIds.includes(u.id)
-      );
-    });
-
-    setFilteredUsers(filtered);
   };
 
   const renderItem = ({ item, index }: { item: any; index: number }) => (
     <UserCard item={item} onPress={() => {}} index={index} />
   );
 
-  if (loading || !initialLoadComplete) {
+  // Show loading screen during initial load - keep showing until we have data or confirmed no data
+  if (loading || !initialLoadComplete || (usersLoading && users.length === 0)) {
     return (
       <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#f8f9fa" : "#000000" }]} edges={["bottom"]}>
         <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
           <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-          <LoadingScreen />
+          <View style={{ flex: 1 }} />
         </LinearGradient>
       </SafeAreaView>
     );
@@ -615,6 +371,8 @@ export default function ChatExplore() {
           onBackPress={handleBack}
           onProfilePress={() => router.push(`/profile/${user?.uid}`)}
           notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
         />
         <Animated.View 
           style={{ 
@@ -625,7 +383,7 @@ export default function ChatExplore() {
               {
                 translateY: contentBounceAnim.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [30, 0]
+                  outputRange: [scaleHeight(30), 0]
                 })
               }
             ]
@@ -633,38 +391,107 @@ export default function ChatExplore() {
         >
           {/* Chat Explore Content */}
           <View style={styles.container}>
-            <View style={styles.searchContainer}>
-              <Ionicons name="search" size={20} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.searchIcon} />
-              <TextInput
-                style={[
-                  styles.searchInput,
-                  {
-                    backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                    color: theme === "light" ? "#0F172A" : "#e4fbfe",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)"
-                  }
-                ]}
-                placeholder="Search by name..."
-                placeholderTextColor={theme === "light" ? "#666666" : "#a0a0a0"}
-                value={searchQuery}
-                onChangeText={handleSearch}
-              />
-            </View>
+            <SearchBar
+              searchQuery={searchQuery}
+              onSearchChange={handleSearch}
+              placeholder="Search by name..."
+            />
+
+            <FilterSortBar
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+              onFilterPress={() => setShowFilterModal(true)}
+              activeFiltersCount={activeFiltersCount}
+              resultCount={filteredUsers.length}
+            />
+
+            {/* Active Filters Chips */}
+            {activeFiltersCount > 0 && (
+              <View style={styles.activeFiltersContainer}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.activeFiltersScroll}
+                >
+                  {filters.ageRange && (
+                    <View style={[styles.activeFilterChip, { backgroundColor: theme === 'light' ? '#e0f2f7' : '#1a3a42' }]}>
+                      <Text style={[styles.activeFilterText, { color: '#37a4c8' }]}>
+                        Age: {filters.ageRange.min}-{filters.ageRange.max}
+                      </Text>
+                      <TouchableOpacity 
+                        onPress={() => setFilters(prev => ({ ...prev, ageRange: undefined }))}
+                        hitSlop={{ top: scaleHeight(10), bottom: scaleHeight(10), left: scaleWidth(10), right: scaleWidth(10) }}
+                      >
+                        <Ionicons name="close-circle" size={moderateScale(16)} color="#37a4c8" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {filters.interests && filters.interests.map((interest) => (
+                    <View key={interest} style={[styles.activeFilterChip, { backgroundColor: theme === 'light' ? '#e0f2f7' : '#1a3a42' }]}>
+                      <Text style={[styles.activeFilterText, { color: '#37a4c8' }]}>
+                        {interest}
+                      </Text>
+                      <TouchableOpacity 
+                        onPress={() => setFilters(prev => ({
+                          ...prev,
+                          interests: prev.interests?.filter(i => i !== interest)
+                        }))}
+                        hitSlop={{ top: scaleHeight(10), bottom: scaleHeight(10), left: scaleWidth(10), right: scaleWidth(10) }}
+                      >
+                        <Ionicons name="close-circle" size={moderateScale(16)} color="#37a4c8" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {filters.hasBio && (
+                    <View style={[styles.activeFilterChip, { backgroundColor: theme === 'light' ? '#e0f2f7' : '#1a3a42' }]}>
+                      <Text style={[styles.activeFilterText, { color: '#37a4c8' }]}>
+                        Has Bio
+                      </Text>
+                      <TouchableOpacity 
+                        onPress={() => setFilters(prev => ({ ...prev, hasBio: undefined }))}
+                        hitSlop={{ top: scaleHeight(10), bottom: scaleHeight(10), left: scaleWidth(10), right: scaleWidth(10) }}
+                      >
+                        <Ionicons name="close-circle" size={moderateScale(16)} color="#37a4c8" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {filters.hasProfilePicture && (
+                    <View style={[styles.activeFilterChip, { backgroundColor: theme === 'light' ? '#e0f2f7' : '#1a3a42' }]}>
+                      <Text style={[styles.activeFilterText, { color: '#37a4c8' }]}>
+                        Has Photo
+                      </Text>
+                      <TouchableOpacity 
+                        onPress={() => setFilters(prev => ({ ...prev, hasProfilePicture: undefined }))}
+                        hitSlop={{ top: scaleHeight(10), bottom: scaleHeight(10), left: scaleWidth(10), right: scaleWidth(10) }}
+                      >
+                        <Ionicons name="close-circle" size={moderateScale(16)} color="#37a4c8" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.clearAllButton, { borderColor: '#ef4444' }]}
+                    onPress={() => setFilters({})}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="trash-outline" size={moderateScale(14)} color="#ef4444" />
+                    <Text style={[styles.clearAllText, { color: '#ef4444' }]}>
+                      Clear All
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            )}
+
+            <FilterModal
+              visible={showFilterModal}
+              onClose={() => setShowFilterModal(false)}
+              filters={filters}
+              onApplyFilters={setFilters}
+              availableInterests={availableInterests}
+            />
             
-            {usersLoading || chatLoading ? (
-              <View style={styles.loadingContainer}>
-                <ModernLoadingIndicator color={theme === "light" ? "#37a4c8" : "#4db8d4"} />
-                <Text style={[styles.loadingText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                  Finding amazing people...
-                </Text>
-              </View>
-            ) : usersError || chatError ? (
-              <View style={styles.stateContainer}>
-                <Ionicons name="alert-circle" size={48} color="#FF3B30" style={styles.errorIcon} />
-                <Text style={[styles.errorText, { color: "#FF3B30" }]}>
-                  {usersError || chatError}
-                </Text>
-              </View>
+            {usersError || chatError ? (
+              <ErrorState message={usersError || chatError || "An error occurred"} />
             ) : (
               <FlatList
                 data={filteredUsers}
@@ -672,25 +499,31 @@ export default function ChatExplore() {
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={dynamicStyles.listContent}
                 showsVerticalScrollIndicator={false}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={() => {
-                      // Add refresh logic here if needed
-                    }}
-                    tintColor={theme === "light" ? "#37a4c8" : "#4db8d4"}
-                  />
-                }
                 ListEmptyComponent={
-                  <View style={styles.stateContainer}>
-                    <Ionicons name="people" size={48} color={theme === "light" ? "#64748B" : "#94A3B8"} style={styles.emptyIcon} />
-                    <Text style={[styles.emptyText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
-                      No users found
-                    </Text>
-                    <Text style={[styles.emptySubtext, { color: theme === "light" ? "#94A3B8" : "#64748B" }]}>
-                      Try adjusting your search or check back later
-                    </Text>
-                  </View>
+                  // Only show empty state if:
+                  // 1. We've attempted to fetch users at least once
+                  // 2. Initial load is complete
+                  // 3. Not currently loading
+                  // 4. We have no filtered users
+                  hasAttemptedFetch &&
+                  initialLoadComplete && 
+                  !usersLoading && 
+                  !chatLoading && 
+                  filteredUsers.length === 0 ? (
+                    searchQuery || activeFiltersCount > 0 ? (
+                      <EmptyState
+                        icon="search"
+                        title="No matches found"
+                        subtitle="Try adjusting your filters or search terms"
+                      />
+                    ) : (
+                      <EmptyState
+                        icon="people"
+                        title="No users available"
+                        subtitle="Check back later for new connections"
+                      />
+                    )
+                  ) : null
                 }
               />
             )}
@@ -704,263 +537,42 @@ export default function ChatExplore() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    marginBottom: -20,
+    marginBottom: scaleHeight(-20),
   },
   container: {
     flex: 1,
-    padding: 16,
+    padding: moderateScale(16),
   },
-  searchContainer: {
-    position: 'relative',
-    marginBottom: 20,
+  activeFiltersContainer: {
+    marginBottom: scaleHeight(12),
   },
-  searchIcon: {
-    position: 'absolute',
-    left: 16,
-    top: 18,
-    zIndex: 1,
+  activeFiltersScroll: {
+    paddingVertical: scaleHeight(4),
   },
-  searchInput: {
-    borderRadius: 16,
-    paddingHorizontal: 48,
-    paddingVertical: 16,
-    fontSize: 16,
-    borderWidth: 1,
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  userCard: {
-    borderRadius: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    position: 'relative',
-    elevation: 6,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-  },
-  userCardContent: {
-    padding: 20,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  userHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  imageContainer: {
-    marginRight: 16,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  profileImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-  },
-  placeholderImage: {
-    backgroundColor: "#37a4c8",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  placeholderText: {
-    color: "#FFF",
-    fontSize: 24,
-    fontWeight: "600",
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  userMainInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  nameRow: {
+  activeFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(8),
+    borderRadius: moderateScale(20),
+    marginRight: scaleWidth(8),
+    gap: moderateScale(6),
   },
-  userName: {
-    fontSize: 20,
-    fontWeight: "700",
-    flex: 1,
-    letterSpacing: -0.3,
-  },
-  ageBadge: {
-    backgroundColor: '#37a4c8',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  ageBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+  activeFilterText: {
+    fontSize: scaleFontSize(13),
     fontWeight: '600',
   },
-  userDetails: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  locationContainer: {
+  clearAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(8),
+    borderRadius: moderateScale(20),
+    borderWidth: moderateScale(1.5),
+    gap: moderateScale(4),
   },
-  userLocation: {
-    fontSize: 14,
-    fontWeight: "500",
-    marginLeft: 4,
-  },
-  userBioContainer: {
-    marginBottom: 16,
-  },
-  userBio: {
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '400',
-  },
-  userInterestsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  interestTag: {
-    backgroundColor: "#37a4c8",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  interestText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  moreInterestsBadge: {
-    backgroundColor: 'rgba(55, 164, 200, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 4,
-  },
-  moreInterestsText: {
-    color: '#37a4c8',
-    fontSize: 11,
+  clearAllText: {
+    fontSize: scaleFontSize(13),
     fontWeight: '600',
-  },
-  userMoodContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  moodIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
-    marginRight: 8,
-  },
-  moodText: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  connectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  connectButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  stateContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 32,
-  },
-  errorIcon: {
-    marginBottom: 16,
-  },
-  emptyIcon: {
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 8,
-    fontWeight: '500',
-  },
-  emptyText: {
-    fontSize: 18,
-    textAlign: "center",
-    marginBottom: 8,
-    fontWeight: '600',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    textAlign: "center",
-    fontWeight: '400',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: '500',
-    opacity: 0.8,
-    marginTop: 16,
-  },
-  bottomNavContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopWidth: 1,
-    borderTopColor: "#37a4c8",
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12
-  },
-  loadingIndicatorContainer: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
   },
 });

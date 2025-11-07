@@ -12,6 +12,7 @@ import {
   Alert,
   Keyboard,
   FlatList,
+  ScrollView,
 } from 'react-native';
 import { MaterialIcons, Feather } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
@@ -21,6 +22,8 @@ import { PingFormData } from '../types/pingTypes';
 import { PING_CATEGORIES, getCategoryById, getTemplateById } from '../constants/pingCategories';
 import useAuth from '../hooks/auth';
 import usePings from '../hooks/usePings';
+import { haversineDistance } from '../utils/haversineDistance';
+import { scaleWidth, scaleHeight, scaleFontSize, moderateScale, spacing, borderRadius } from '../utils/responsive';
 
 interface PingEventModalProps {
   visible: boolean;
@@ -35,7 +38,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
 }) => {
   const { theme } = React.useContext(ThemeContext);
   const { user } = useAuth();
-  const { isCreatingPing, createPing } = usePings({ user });
+  const { isCreatingPing, createPing, findMatchingUsers } = usePings({ user });
   
   // Form state
   const [pingFormData, setPingFormData] = useState<PingFormData>({
@@ -74,6 +77,9 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
   const [allowAutoAdvance, setAllowAutoAdvance] = useState(true);
 
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isFindingMatches, setIsFindingMatches] = useState(false);
+  const [matchingUsers, setMatchingUsers] = useState<any[]>([]);
+  const [showUserList, setShowUserList] = useState(false);
   const [showLocationOptions, setShowLocationOptions] = useState(false);
   const [selectedMapLocation, setSelectedMapLocation] = useState<{
     latitude: number;
@@ -124,7 +130,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
 
   const pingTypeOptions = [
     { id: 'open', label: 'Open', description: 'Anyone can join', icon: 'public' },
-    { id: 'invite-only', label: 'Invite Only', description: 'You approve requests', icon: 'person-add' },
+    { id: 'invite-only', label: 'Invite Only', description: 'Only invited users can join', icon: 'person-add' },
     { id: 'friends-only', label: 'Friends Only', description: 'Only your available connections', icon: 'people' }
   ];
 
@@ -394,7 +400,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
     Keyboard.dismiss();
     const isValid = validateForm(pingStep);
     if (isValid) {
-      if (pingStep < 8) {
+      if (pingStep < 9) {
         // Re-enable auto-advance when manually going forward
         setAllowAutoAdvance(true);
         
@@ -518,6 +524,9 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
       setSelectedPingType('open');
       pingSuccessAnim.setValue(0);
       setShowLocationOptions(false);
+      setMatchingUsers([]);
+      setShowUserList(false);
+      setIsFindingMatches(false);
     });
   };
 
@@ -614,6 +623,28 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
       };
 
       getCurrentLocationForMap();
+    }
+  }, [pingStep, visible]);
+
+  // Find matching users when reaching step 9 (review step)
+  useEffect(() => {
+    if (pingStep === 9 && visible) {
+      const fetchMatchingUsers = async () => {
+        setIsFindingMatches(true);
+        try {
+          const matches = await findMatchingUsers(pingFormData, selectedMapLocation);
+          // Filter out the current user (organizer) from the list
+          const filteredMatches = matches.filter((matchUser: any) => matchUser.id !== user?.uid);
+          setMatchingUsers(filteredMatches);
+        } catch (error) {
+          console.error('Error finding matching users:', error);
+          setMatchingUsers([]);
+        } finally {
+          setIsFindingMatches(false);
+        }
+      };
+
+      fetchMatchingUsers();
     }
   }, [pingStep, visible]);
 
@@ -735,7 +766,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
 
           {/* Enhanced Step Indicator */}
           <View style={styles.pingStepIndicator}>
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((step) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((step) => (
               <React.Fragment key={step}>
                 <Animated.View 
                   style={[
@@ -752,7 +783,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
                     }
                   ]} 
                 />
-                {step < 8 && (
+                {step < 9 && (
                   <Animated.View 
                     style={[
                       styles.pingStepLine, 
@@ -1342,6 +1373,241 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
                 </View>
               </>
             )}
+            {pingStep === 9 && (
+              // Step 9: Review - Show matching users
+              <>
+                <ScrollView 
+                  style={styles.pingReviewContainer}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.pingReviewScrollContent}
+                >
+                  <Text style={[styles.pingReviewTitle, { 
+                    color: theme === "light" ? "#000000" : "#e4fbfe",
+                  }]}>
+                    Review Your Ping
+                  </Text>
+
+                  {/* Ping Summary Details */}
+                  <View style={[styles.pingReviewDetailsCard, {
+                    backgroundColor: theme === "light" ? "#f8fafc" : "#2a2a2a",
+                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
+                  }]}>
+                    <View style={styles.pingReviewDetailRow}>
+                      <MaterialIcons 
+                        name="title" 
+                        size={16} 
+                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                      />
+                      <Text style={[styles.pingReviewDetailLabel, { 
+                        color: theme === "light" ? "#64748B" : "#94a3b8" 
+                      }]}>
+                        Title:
+                      </Text>
+                      <Text style={[styles.pingReviewDetailValue, { 
+                        color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      }]}>
+                        {pingFormData.title}
+                      </Text>
+                    </View>
+                    <View style={styles.pingReviewDetailRow}>
+                      <MaterialIcons 
+                        name="location-on" 
+                        size={16} 
+                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                      />
+                      <Text style={[styles.pingReviewDetailLabel, { 
+                        color: theme === "light" ? "#64748B" : "#94a3b8" 
+                      }]}>
+                        Location:
+                      </Text>
+                      <Text style={[styles.pingReviewDetailValue, { 
+                        color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      }]}>
+                        {pingFormData.location}
+                      </Text>
+                    </View>
+                    <View style={styles.pingReviewDetailRow}>
+                      <MaterialIcons 
+                        name="schedule" 
+                        size={16} 
+                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                      />
+                      <Text style={[styles.pingReviewDetailLabel, { 
+                        color: theme === "light" ? "#64748B" : "#94a3b8" 
+                      }]}>
+                        Duration:
+                      </Text>
+                      <Text style={[styles.pingReviewDetailValue, { 
+                        color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      }]}>
+                        {pingFormData.duration}
+                      </Text>
+                    </View>
+                    <View style={styles.pingReviewDetailRow}>
+                      <MaterialIcons 
+                        name="people" 
+                        size={16} 
+                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                      />
+                      <Text style={[styles.pingReviewDetailLabel, { 
+                        color: theme === "light" ? "#64748B" : "#94a3b8" 
+                      }]}>
+                        Max:
+                      </Text>
+                      <Text style={[styles.pingReviewDetailValue, { 
+                        color: theme === "light" ? "#000000" : "#e4fbfe" 
+                      }]}>
+                        {pingFormData.maxParticipants}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {isFindingMatches ? (
+                    <View style={styles.pingMatchingLoader}>
+                      <ActivityIndicator size="large" color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+                      <Text style={[styles.pingMatchingLoaderText, { 
+                        color: theme === "light" ? "#64748B" : "#94a3b8" 
+                      }]}>
+                        Finding nearby people...
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      {/* Notification Summary Card - Hidden for invite-only pings */}
+                      {pingFormData.pingType !== 'invite-only' && (
+                        <View style={[styles.pingReviewSummary, {
+                          backgroundColor: theme === "light" ? "#f0f9ff" : "#1a2332",
+                          borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                        }]}>
+                          <View style={styles.pingReviewSummaryRow}>
+                            <MaterialIcons 
+                              name="notifications-active" 
+                              size={22} 
+                              color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                            />
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.pingReviewSummaryText, { 
+                                color: theme === "light" ? "#000000" : "#e4fbfe" 
+                              }]}>
+                                {matchingUsers.length} {matchingUsers.length === 1 ? 'person' : 'people'} will be notified
+                              </Text>
+                              <Text style={[styles.pingReviewSummarySubtext, { 
+                                color: theme === "light" ? "#64748B" : "#94a3b8" 
+                              }]}>
+                                {pingFormData.pingType === 'friends-only' 
+                                  ? 'Available friends within range'
+                                  : 'Anyone nearby can join'}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* User List - Hidden for invite-only pings */}
+                      {pingFormData.pingType !== 'invite-only' && matchingUsers.length > 0 && (
+                        <View style={styles.pingUserListContainer}>
+                          <TouchableOpacity 
+                            style={[styles.pingUserListHeader, {
+                              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(56, 165, 201, 0.05)",
+                              borderRadius: moderateScale(8)
+                            }]}
+                            onPress={() => setShowUserList(!showUserList)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.pingUserListHeaderText, { 
+                              color: theme === "light" ? "#37a4c8" : "#38a5c9" 
+                            }]}>
+                              {showUserList ? 'Hide' : 'View'} User List
+                            </Text>
+                            <Feather 
+                              name={showUserList ? "chevron-up" : "chevron-down"} 
+                              size={18} 
+                              color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                            />
+                          </TouchableOpacity>
+
+                          {showUserList && (
+                            <View style={[styles.pingUserList, {
+                              backgroundColor: theme === "light" ? "#f8fafc" : "#2a2a2a",
+                              borderColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(56, 165, 201, 0.15)"
+                            }]}>
+                              {matchingUsers.map((item, index) => (
+                                <View 
+                                  key={item.id}
+                                  style={[
+                                    styles.pingUserItem,
+                                    {
+                                      borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                                      borderBottomWidth: index < matchingUsers.length - 1 ? 1 : 0
+                                    }
+                                  ]}
+                                >
+                                  <View style={[styles.pingUserAvatar, {
+                                    backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
+                                  }]}>
+                                    <Text style={styles.pingUserAvatarText}>
+                                      {item.name?.charAt(0).toUpperCase() || '?'}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.pingUserInfo}>
+                                    <Text style={[styles.pingUserName, { 
+                                      color: theme === "light" ? "#000000" : "#e4fbfe" 
+                                    }]}>
+                                      {item.name || 'Unknown User'}
+                                    </Text>
+                                    {item.lastKnownCoordinates && selectedMapLocation && (
+                                      <Text style={[styles.pingUserDistance, { 
+                                        color: theme === "light" ? "#64748B" : "#94a3b8" 
+                                      }]}>
+                                        {(() => {
+                                          const distanceKm = haversineDistance(
+                                            selectedMapLocation.latitude,
+                                            selectedMapLocation.longitude,
+                                            item.lastKnownCoordinates.latitude,
+                                            item.lastKnownCoordinates.longitude
+                                          );
+                                          const distanceMiles = distanceKm * 0.621371;
+                                          return `${distanceMiles.toFixed(1)} miles away`;
+                                        })()}
+                                      </Text>
+                                    )}
+                                  </View>
+                                  <Feather 
+                                    name="bell" 
+                                    size={16} 
+                                    color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+                                  />
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {matchingUsers.length === 0 && (
+                        <View style={styles.pingNoMatchesContainer}>
+                          <MaterialIcons 
+                            name="info-outline" 
+                            size={48} 
+                            color={theme === "light" ? "#94a3b8" : "#64748B"} 
+                          />
+                          <Text style={[styles.pingNoMatchesTitle, { 
+                            color: theme === "light" ? "#000000" : "#e4fbfe" 
+                          }]}>
+                            No Immediate Matches
+                          </Text>
+                          <Text style={[styles.pingNoMatchesText, { 
+                            color: theme === "light" ? "#64748B" : "#94a3b8" 
+                          }]}>
+                            No users matching your criteria are currently available nearby. Don't worry—your ping will still be created and visible to users who match when they become available!
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  )}
+                </ScrollView>
+              </>
+            )}
           </Animated.View>
 
           {/* Enhanced Footer */}
@@ -1379,7 +1645,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
               </TouchableOpacity>
             )}
             
-            {pingStep < 8 ? (
+            {pingStep < 9 ? (
               <TouchableOpacity 
                 style={[styles.pingCreateButton, {
                   backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
@@ -1390,7 +1656,7 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
               >
                 <Feather name="arrow-right" size={14} color="#FFFFFF" />
                 <Text style={styles.pingCreateButtonText}>
-                  Next
+                  {pingStep === 8 ? 'Review' : 'Next'}
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -1398,14 +1664,14 @@ const PingEventModal: React.FC<PingEventModalProps> = ({
                 style={[
                   styles.pingCreateButton,
                   {
-                    backgroundColor: isCreatingPing 
+                    backgroundColor: (isCreatingPing || isFindingMatches)
                       ? (theme === "light" ? "#94a3b8" : "#64748B")
                       : (theme === "light" ? "#37a4c8" : "#38a5c9")
                   }
                 ]}
                 onPress={handleCreatePing}
                 activeOpacity={0.7}
-                disabled={isCreatingPing}
+                disabled={isCreatingPing || isFindingMatches}
               >
                 {isCreatingPing ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1433,94 +1699,94 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 20, // Reduced from 40 to better center the modal
+    paddingHorizontal: scaleWidth(20),
+    paddingVertical: scaleHeight(20), // Reduced from 40 to better center the modal
   },
   pingModal: {
     width: '100%',
     maxWidth: 400,
     maxHeight: '78.75%', // Increased by 5% from 75%
-    borderRadius: 24,
+    borderRadius: moderateScale(24),
     borderWidth: 0,
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 12 },
+    shadowOffset: { width: 0, height: scaleHeight(12) },
     shadowOpacity: 0.2,
-    shadowRadius: 24,
+    shadowRadius: moderateScale(24),
     elevation: 16,
     overflow: 'hidden',
   },
   pingModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingHorizontal: scaleWidth(24),
+    paddingVertical: scaleHeight(20),
     borderBottomWidth: 0,
   },
   pingModalIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: scaleWidth(36),
+    height: scaleHeight(36),
+    borderRadius: moderateScale(12),
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: scaleWidth(12),
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scaleHeight(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 2,
   },
   pingModalTitle: {
-    fontSize: 20,
+    fontSize: scaleFontSize(20),
     fontWeight: '600',
     flex: 1,
     letterSpacing: -0.2,
   },
   pingModalCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: scaleWidth(32),
+    height: scaleHeight(32),
+    borderRadius: moderateScale(8),
     alignItems: 'center',
     justifyContent: 'center',
   },
   pingModalContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    paddingBottom: 80, // Add bottom padding to account for fixed footer
-    minHeight: 400, // Ensure minimum height for consistency
+    paddingHorizontal: scaleWidth(24),
+    paddingVertical: scaleHeight(20),
+    paddingBottom: scaleHeight(80), // Add bottom padding to account for fixed footer
+    minHeight: scaleHeight(400), // Ensure minimum height for consistency
   },
   pingModalSubtitle: {
-    fontSize: 14,
-    lineHeight: 18,
-    marginBottom: 16,
+    fontSize: scaleFontSize(14),
+    lineHeight: scaleHeight(18),
+    marginBottom: scaleHeight(16),
     letterSpacing: 0.2,
     fontWeight: '600',
   },
   pingInputContainer: {
-    marginBottom: 24, // Increased from 20 for more spacing
+    marginBottom: scaleHeight(24), // Increased from 20 for more spacing
   },
   pingInputLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
-    marginBottom: 10,
+    marginBottom: scaleHeight(10),
     letterSpacing: 0.2,
   },
   pingInput: {
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 14,
+    borderRadius: moderateScale(10),
+    paddingHorizontal: scaleWidth(16),
+    paddingVertical: scaleHeight(14),
+    fontSize: scaleFontSize(14),
     letterSpacing: 0.2,
   },
   pingTextArea: {
-    height: 120, // Increased from 90 for more content area
+    height: scaleHeight(120), // Increased from 90 for more content area
     paddingTop: 14,
     paddingBottom: 14,
   },
   pingRow: {
     flexDirection: 'row',
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: scaleHeight(16),
+    gap: moderateScale(12),
   },
   pingPickerInput: {
     flexDirection: 'row',
@@ -1528,15 +1794,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   pingPickerText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '500',
     letterSpacing: 0.2,
   },
   pingModalFooter: {
     flexDirection: 'row',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    gap: 12,
+    paddingHorizontal: scaleWidth(24),
+    paddingVertical: scaleHeight(20),
+    gap: moderateScale(12),
     borderTopWidth: 0,
     position: 'absolute',
     bottom: 0,
@@ -1548,14 +1814,16 @@ const styles = StyleSheet.create({
   },
   pingCancelButton: {
     flex: 1,
-    paddingVertical: 16,
-    borderRadius: 10,
+    flexDirection: 'row',
+    paddingVertical: scaleHeight(16),
+    borderRadius: moderateScale(10),
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: moderateScale(8),
   },
   pingCancelButtonText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     letterSpacing: 0.2,
   },
@@ -1564,17 +1832,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 10,
-    gap: 8,
+    paddingVertical: scaleHeight(16),
+    borderRadius: moderateScale(10),
+    gap: moderateScale(8),
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: scaleHeight(4) },
     shadowOpacity: 0.15,
-    shadowRadius: 8,
+    shadowRadius: moderateScale(8),
     elevation: 4,
   },
   pingCreateButtonText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#FFFFFF',
     letterSpacing: 0.2,
@@ -1583,20 +1851,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 24,
+    marginBottom: scaleHeight(20),
+    paddingHorizontal: scaleWidth(24),
   },
   pingStepDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: scaleWidth(6),
+    height: scaleHeight(6),
+    borderRadius: moderateScale(3),
     backgroundColor: 'rgba(56, 165, 201, 0.2)',
   },
   pingStepLine: {
-    width: 16,
-    height: 1,
+    width: scaleWidth(16),
+    height: scaleHeight(1),
     backgroundColor: 'rgba(56, 165, 201, 0.2)',
-    marginHorizontal: 3,
+    marginHorizontal: scaleWidth(3),
   },
   pingSuccessOverlay: {
     position: 'absolute',
@@ -1607,44 +1875,44 @@ const styles = StyleSheet.create({
     zIndex: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 24,
+    borderRadius: moderateScale(24),
   },
   pingSuccessContent: {
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: scaleWidth(40),
   },
   pingSuccessIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: scaleWidth(80),
+    height: scaleHeight(80),
+    borderRadius: moderateScale(40),
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: scaleHeight(24),
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: scaleHeight(6) },
     shadowOpacity: 0.2,
-    shadowRadius: 12,
+    shadowRadius: moderateScale(12),
     elevation: 6,
   },
   pingSuccessTitle: {
-    fontSize: 22,
+    fontSize: scaleFontSize(22),
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     textAlign: 'center',
     letterSpacing: -0.3,
   },
   pingSuccessMessage: {
-    fontSize: 15,
+    fontSize: scaleFontSize(15),
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: scaleHeight(22),
     letterSpacing: -0.2,
   },
   pingInputError: {
     borderColor: '#ef4444',
   },
   pingErrorText: {
-    fontSize: 12,
-    marginTop: 6,
+    fontSize: scaleFontSize(12),
+    marginTop: scaleHeight(6),
     fontWeight: '500',
     letterSpacing: 0.2,
   },
@@ -1652,36 +1920,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: scaleHeight(6),
   },
   pingCharCount: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '500',
     letterSpacing: 0.2,
   },
   pingCategoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 12,
-    marginBottom: 20, // Added bottom margin for consistency
+    gap: moderateScale(10),
+    marginTop: scaleHeight(12),
+    marginBottom: scaleHeight(20), // Added bottom margin for consistency
   },
   pingCategoryCard: {
     width: '48%',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: scaleHeight(16),
+    paddingHorizontal: scaleWidth(12),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
     alignItems: 'center',
-    gap: 8,
+    gap: moderateScale(8),
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scaleHeight(2) },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 2,
   },
   pingCategoryCardText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
     textAlign: 'center',
     letterSpacing: 0.2,
@@ -1689,105 +1957,105 @@ const styles = StyleSheet.create({
   pingTemplateGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 12,
-    marginBottom: 20, // Added bottom margin for consistency
+    gap: moderateScale(10),
+    marginTop: scaleHeight(12),
+    marginBottom: scaleHeight(20), // Added bottom margin for consistency
   },
   pingTemplateCard: {
     width: '48%',
     flexDirection: 'column',
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: scaleHeight(20),
+    paddingHorizontal: scaleWidth(12),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
-    gap: 8,
+    gap: moderateScale(8),
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scaleHeight(2) },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 2,
   },
   pingTemplateContent: {
     alignItems: 'center',
   },
   pingTemplateLabel: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     fontWeight: '600',
     letterSpacing: 0.2,
     textAlign: 'center',
   },
   pingTemplateDescription: {
-    fontSize: 10,
-    lineHeight: 14,
+    fontSize: scaleFontSize(10),
+    lineHeight: scaleHeight(14),
     letterSpacing: 0.2,
     textAlign: 'center',
   },
   pingTypeContainer: {
-    gap: 12,
-    marginTop: 12,
-    marginBottom: 20, // Added bottom margin for consistency
+    gap: moderateScale(12),
+    marginTop: scaleHeight(12),
+    marginBottom: scaleHeight(20), // Added bottom margin for consistency
   },
   pingTypeCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    paddingVertical: scaleHeight(20),
+    paddingHorizontal: scaleWidth(20),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
-    gap: 16,
+    gap: moderateScale(16),
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scaleHeight(2) },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 2,
   },
   pingTypeCardSmall: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11, // 30% smaller (16 * 0.7)
-    paddingHorizontal: 11, // 30% smaller (16 * 0.7)
-    borderRadius: 8, // 30% smaller (12 * 0.7)
+    paddingVertical: scaleHeight(11), // 30% smaller (16 * 0.7)
+    paddingHorizontal: scaleWidth(11), // 30% smaller (16 * 0.7)
+    borderRadius: moderateScale(8), // 30% smaller (12 * 0.7)
     borderWidth: 1,
-    gap: 8, // 30% smaller (12 * 0.7)
+    gap: moderateScale(8), // 30% smaller (12 * 0.7)
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 1 }, // 30% smaller
+    shadowOffset: { width: 0, height: scaleHeight(1) }, // 30% smaller
     shadowOpacity: 0.1,
-    shadowRadius: 3, // 30% smaller (4 * 0.7)
+    shadowRadius: moderateScale(3), // 30% smaller (4 * 0.7)
     elevation: 1, // 30% smaller
   },
   pingTypeContent: {
     flex: 1,
   },
   pingTypeLabel: {
-    fontSize: 15,
+    fontSize: scaleFontSize(15),
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
     letterSpacing: 0.2,
   },
   pingTypeLabelSmall: {
-    fontSize: 12, // 30% smaller (16 * 0.75)
+    fontSize: scaleFontSize(12), // 30% smaller (16 * 0.75)
     fontWeight: '600',
-    marginBottom: 2, // 30% smaller
+    marginBottom: scaleHeight(2), // 30% smaller
     letterSpacing: 0.3,
   },
   pingTypeDescription: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: scaleFontSize(13),
+    lineHeight: scaleHeight(18),
     letterSpacing: 0.2,
   },
   pingTypeDescriptionSmall: {
-    fontSize: 10, // 30% smaller (14 * 0.75)
-    lineHeight: 15, // 30% smaller (20 * 0.75)
+    fontSize: scaleFontSize(10), // 30% smaller (14 * 0.75)
+    lineHeight: scaleHeight(15), // 30% smaller (20 * 0.75)
     letterSpacing: 0.2,
   },
   pingLocationInput: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    borderRadius: moderateScale(10),
     borderWidth: 1,
     borderColor: 'rgba(56, 165, 201, 0.3)',
   },
@@ -1797,23 +2065,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pingLocationText: {
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: scaleWidth(8),
+    fontSize: scaleFontSize(14),
     fontWeight: '500',
   },
   pingLocationOptions: {
-    borderRadius: 12,
+    borderRadius: moderateScale(12),
     borderWidth: 1,
     borderColor: 'rgba(56, 165, 201, 0.3)',
-    marginTop: 8,
+    marginTop: scaleHeight(8),
     overflow: 'hidden',
   },
   pingLocationOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+    paddingVertical: scaleHeight(16),
+    paddingHorizontal: scaleWidth(12),
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(56, 165, 201, 0.1)',
   },
@@ -1822,27 +2090,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pingLocationOptionText: {
-    marginLeft: 12,
+    marginLeft: scaleWidth(12),
   },
   pingLocationOptionTitle: {
-    fontSize: 15,
+    fontSize: scaleFontSize(15),
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: scaleHeight(2),
     letterSpacing: 0.2,
   },
   pingLocationOptionSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: scaleFontSize(13),
+    lineHeight: scaleHeight(18),
     letterSpacing: 0.1,
   },
   pingLocationCancel: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: scaleHeight(12),
     borderTopWidth: 1,
     borderTopColor: 'rgba(56, 165, 201, 0.1)',
   },
   pingLocationCancelText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     letterSpacing: 0.2,
   },
@@ -1850,24 +2118,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    borderRadius: moderateScale(10),
     borderWidth: 1,
     borderColor: 'rgba(56, 165, 201, 0.3)',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   pingLocationEditButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: scaleWidth(28),
+    height: scaleHeight(28),
+    borderRadius: moderateScale(6),
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(56, 165, 201, 0.1)',
   },
   pingLocationEditButtons: {
     flexDirection: 'row',
-    gap: 4,
+    gap: moderateScale(4),
   },
   mapContainer: {
     flex: 1,
@@ -1876,19 +2144,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: scaleWidth(20),
+    paddingVertical: scaleHeight(16),
     paddingTop: Platform.OS === 'ios' ? 60 : 20,
   },
   mapCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: scaleWidth(40),
+    height: scaleHeight(40),
+    borderRadius: moderateScale(20),
     alignItems: 'center',
     justifyContent: 'center',
   },
   mapTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: '600',
   },
   mapTitleContainer: {
@@ -1896,16 +2164,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mapSubtitle: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: scaleFontSize(12),
+    marginTop: scaleHeight(2),
   },
   mapConfirmButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: scaleWidth(16),
+    paddingVertical: scaleHeight(8),
+    borderRadius: moderateScale(20),
   },
   mapConfirmText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
   },
   map: {
@@ -1916,18 +2184,18 @@ const styles = StyleSheet.create({
     bottom: 40,
     left: 20,
     right: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: scaleWidth(16),
+    paddingVertical: scaleHeight(12),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
   },
   mapInstructionsContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: moderateScale(8),
   },
   mapInstructionsText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     flex: 1,
   },
   locationPreview: {
@@ -1935,25 +2203,25 @@ const styles = StyleSheet.create({
     top: 100,
     left: 20,
     right: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(8),
+    borderRadius: moderateScale(8),
     borderWidth: 1,
   },
   locationPreviewContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: moderateScale(6),
   },
   locationPreviewText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   pingMapContainer: {
-    height: 310, // Reduced by 3% from 320
-    borderRadius: 12,
+    height: scaleHeight(310), // Reduced by 3% from 320
+    borderRadius: moderateScale(12),
     overflow: 'hidden',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     borderWidth: 1,
     borderColor: 'rgba(56, 165, 201, 0.15)',
     position: 'relative',
@@ -1969,19 +2237,19 @@ const styles = StyleSheet.create({
     right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(8),
+    borderRadius: moderateScale(20),
     borderWidth: 1,
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scaleHeight(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 3,
-    gap: 6,
+    gap: moderateScale(6),
   },
   pingMapLocationText: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     fontWeight: '600',
     letterSpacing: 0.2,
   },
@@ -1989,9 +2257,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    borderRadius: moderateScale(10),
     borderWidth: 1,
     borderColor: 'rgba(56, 165, 201, 0.3)',
   },
@@ -2001,54 +2269,54 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pingConnectionIntentsText: {
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: scaleWidth(8),
+    fontSize: scaleFontSize(14),
     fontWeight: '500',
   },
   pingConnectionIntentsPreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 12,
-    gap: 6,
+    marginTop: scaleHeight(12),
+    gap: moderateScale(6),
   },
   pingConnectionIntentTag: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(56, 165, 201, 0.1)',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 16,
+    paddingVertical: scaleHeight(6),
+    paddingHorizontal: scaleWidth(10),
+    borderRadius: moderateScale(16),
     borderWidth: 1,
     borderColor: '#38a5c9',
-    gap: 6,
+    gap: moderateScale(6),
   },
   pingConnectionIntentTagText: {
     color: '#e4fbfe',
     fontFamily: 'Inter-Medium',
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
   },
   pingEventPreferencesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
+    gap: moderateScale(6),
+    marginTop: scaleHeight(8),
   },
   pingEventPreferenceCard: {
     width: '48%',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    paddingVertical: scaleHeight(10),
+    paddingHorizontal: scaleWidth(8),
+    borderRadius: moderateScale(8),
     borderWidth: 1,
     alignItems: 'center',
-    gap: 4,
+    gap: moderateScale(4),
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scaleHeight(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 2,
   },
   pingEventPreferenceText: {
-    fontSize: 11,
+    fontSize: scaleFontSize(11),
     fontWeight: '600',
     textAlign: 'center',
     letterSpacing: 0.2,
@@ -2060,16 +2328,16 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    margin: 20,
+    borderRadius: moderateScale(20),
+    margin: scaleHeight(20),
     maxHeight: '90%',
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: -2,
+      height: moderateScale(-2),
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: moderateScale(3.84),
     elevation: 5,
     borderWidth: 1,
     borderColor: '#38a5c9',
@@ -2078,53 +2346,53 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: moderateScale(20),
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(56, 165, 201, 0.2)',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: scaleFontSize(20),
     fontFamily: 'Inter-Bold',
     color: '#e4fbfe',
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 20,
+    padding: moderateScale(8),
+    borderRadius: moderateScale(20),
     backgroundColor: 'rgba(56, 165, 201, 0.1)',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#000000',
-    borderRadius: 12,
-    padding: 12,
-    margin: 16,
+    borderRadius: moderateScale(12),
+    padding: moderateScale(12),
+    margin: scaleHeight(16),
     borderWidth: 1,
     borderColor: '#38a5c9',
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: scaleHeight(2),
     },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: moderateScale(3.84),
     elevation: 5,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
+    marginLeft: scaleWidth(8),
+    fontSize: scaleFontSize(16),
     color: '#e4fbfe',
     fontFamily: 'Inter-Regular',
-    paddingVertical: 4,
+    paddingVertical: scaleHeight(4),
   },
   countryList: {
     maxHeight: 400,
-    borderRadius: 12,
+    borderRadius: moderateScale(12),
     backgroundColor: '#000000',
     borderWidth: 1,
     borderColor: '#38a5c9',
-    margin: 16,
+    margin: scaleHeight(16),
     marginTop: 0,
   },
   countryListContent: {
@@ -2134,30 +2402,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: scaleHeight(14),
+    paddingHorizontal: scaleWidth(16),
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(56, 165, 201, 0.2)',
   },
   countryItemText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     color: '#e4fbfe',
     fontFamily: 'Inter-Regular',
   },
   countryItemIcon: {
     opacity: 0.7,
     backgroundColor: 'rgba(56, 165, 201, 0.1)',
-    padding: 6,
-    borderRadius: 12,
+    padding: moderateScale(6),
+    borderRadius: moderateScale(12),
   },
   emptyState: {
-    padding: 32,
+    padding: moderateScale(32),
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyStateText: {
-    marginTop: 12,
-    fontSize: 16,
+    marginTop: scaleHeight(12),
+    fontSize: scaleFontSize(16),
     color: '#38a5c9',
     fontFamily: 'Inter-Medium',
   },
@@ -2165,34 +2433,191 @@ const styles = StyleSheet.create({
   pingOptionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 12,
-    marginBottom: 20, // Added bottom margin for consistency
+    gap: moderateScale(12),
+    marginTop: scaleHeight(12),
+    marginBottom: scaleHeight(20), // Added bottom margin for consistency
   },
   pingOptionCard: {
     width: '48%',
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: scaleHeight(18),
+    paddingHorizontal: scaleWidth(12),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
     alignItems: 'center',
-    gap: 8,
+    gap: moderateScale(8),
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scaleHeight(2) },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 2,
   },
   pingOptionCardText: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     fontWeight: '600',
     textAlign: 'center',
     letterSpacing: 0.2,
   },
 
-
-
-
+  // Review Step Styles
+  pingReviewContainer: {
+    flex: 1,
+  },
+  pingReviewScrollContent: {
+    paddingBottom: 100, // Increased to account for fixed footer buttons
+  },
+  pingReviewTitle: {
+    fontSize: scaleFontSize(16),
+    fontWeight: '600',
+    marginBottom: scaleHeight(16),
+    letterSpacing: 0.2,
+  },
+  pingReviewDetailsCard: {
+    borderRadius: moderateScale(12),
+    borderWidth: 1,
+    padding: moderateScale(16),
+    marginBottom: scaleHeight(16),
+    gap: moderateScale(12),
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: scaleHeight(2) },
+    shadowOpacity: 0.08,
+    shadowRadius: moderateScale(4),
+    elevation: 2,
+  },
+  pingReviewDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(8),
+  },
+  pingReviewDetailLabel: {
+    fontSize: scaleFontSize(13),
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    minWidth: 70,
+  },
+  pingReviewDetailValue: {
+    fontSize: scaleFontSize(13),
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  pingMatchingLoader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scaleHeight(60),
+    gap: moderateScale(16),
+  },
+  pingMatchingLoaderText: {
+    fontSize: scaleFontSize(14),
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  pingReviewSummary: {
+    borderRadius: moderateScale(12),
+    borderWidth: 2,
+    padding: moderateScale(18),
+    marginBottom: scaleHeight(16),
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: scaleHeight(3) },
+    shadowOpacity: 0.1,
+    shadowRadius: moderateScale(6),
+    elevation: 3,
+  },
+  pingReviewSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: moderateScale(12),
+  },
+  pingReviewSummaryText: {
+    fontSize: scaleFontSize(16),
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    marginBottom: scaleHeight(4),
+  },
+  pingReviewSummarySubtext: {
+    fontSize: scaleFontSize(13),
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  pingUserListContainer: {
+    marginBottom: scaleHeight(16),
+  },
+  pingUserListHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(16),
+    marginBottom: scaleHeight(8),
+  },
+  pingUserListHeaderText: {
+    fontSize: scaleFontSize(14),
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  pingUserList: {
+    borderRadius: moderateScale(12),
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  pingUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: scaleHeight(14),
+    paddingHorizontal: scaleWidth(16),
+    gap: moderateScale(12),
+  },
+  pingUserAvatar: {
+    width: scaleWidth(44),
+    height: scaleHeight(44),
+    borderRadius: moderateScale(22),
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: scaleHeight(2) },
+    shadowOpacity: 0.15,
+    shadowRadius: moderateScale(3),
+    elevation: 2,
+  },
+  pingUserAvatarText: {
+    fontSize: scaleFontSize(18),
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  pingUserInfo: {
+    flex: 1,
+  },
+  pingUserName: {
+    fontSize: scaleFontSize(15),
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    marginBottom: scaleHeight(3),
+  },
+  pingUserDistance: {
+    fontSize: scaleFontSize(13),
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  pingNoMatchesContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: scaleHeight(50),
+    paddingHorizontal: scaleWidth(24),
+    gap: moderateScale(12),
+  },
+  pingNoMatchesTitle: {
+    fontSize: scaleFontSize(16),
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0.2,
+    marginTop: scaleHeight(8),
+  },
+  pingNoMatchesText: {
+    fontSize: scaleFontSize(14),
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: scaleHeight(22),
+    letterSpacing: 0.2,
+  },
 });
 
 export default PingEventModal; 

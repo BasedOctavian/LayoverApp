@@ -29,6 +29,7 @@ import { db } from "../../../config/firebaseConfig";
 import * as LocalAuthentication from 'expo-local-authentication';
 import useNotificationCount from "../../hooks/useNotificationCount";
 import UserAvatar from "../../components/UserAvatar";
+import { isAdmin } from "../../utils/adminCheck";
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -604,7 +605,7 @@ export default function Settings() {
             </View>
 
             {/* Admin Tools Section - Only visible to admin users */}
-            {(authUser?.uid === 'hDn74gYZCdZu0efr3jMGTIWGrRQ2' || authUser?.uid === 'WhNhj8WPUpbomevJQ7j69rnLbDp2') && (
+            {isAdmin(authUser) && (
               <View style={styles.adminSection}>
                 <Text 
                   style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}

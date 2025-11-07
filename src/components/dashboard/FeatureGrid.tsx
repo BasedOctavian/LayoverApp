@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, memo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,22 +20,35 @@ interface FeatureGridProps {
   features: FeatureButton[];
 }
 
-export default function FeatureGrid({ features }: FeatureGridProps) {
+/**
+ * Feature Grid Component
+ * Displays a grid of features with icons and descriptions
+ * Memoized for performance optimization
+ */
+const FeatureGrid = memo(({ features }: FeatureGridProps) => {
   const { theme } = useContext(ThemeContext);
   const router = useRouter();
+
+  const handleFeaturePress = useCallback((screen: string) => {
+    router.push(screen);
+  }, [router]);
 
   return (
     <View style={styles.featureSection}>
       <View style={styles.featureGridContainer}>
         {features.map((feature, index) => (
           <TouchableOpacity
-            key={index}
+            key={`feature-${index}-${feature.title}`}
             style={[styles.featureGridItem, { 
               backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
               borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "#38a5c9"
             }]}
             activeOpacity={0.7}
-            onPress={() => router.push(feature.screen)}
+            onPress={() => handleFeaturePress(feature.screen)}
+            accessible={true}
+            accessibilityLabel={`${feature.title}. ${feature.description}`}
+            accessibilityRole="button"
+            accessibilityHint={`Navigate to ${feature.title} screen`}
           >
             <View style={[styles.featureIconContainer, {
               backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
@@ -57,7 +70,7 @@ export default function FeatureGrid({ features }: FeatureGridProps) {
       </View>
       <View style={[styles.footer, { 
         position: 'relative',
-        marginBottom: 100 // Add space at the bottom to prevent scrolling past
+        marginBottom: 100
       }]}>
         <Image
           source={theme === "light" 
@@ -66,14 +79,24 @@ export default function FeatureGrid({ features }: FeatureGridProps) {
           }
           style={styles.footerLogo}
           resizeMode="contain"
+          accessible={true}
+          accessibilityLabel="Wingman logo"
         />
-        <Text style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+        <Text 
+          style={[styles.copyrightText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}
+          accessible={true}
+          accessibilityLabel="Copyright 2025 Wingman. All rights reserved"
+        >
           © 2025 Wingman. All rights reserved.
         </Text>
       </View>
     </View>
   );
-}
+});
+
+FeatureGrid.displayName = 'FeatureGrid';
+
+export default FeatureGrid;
 
 const styles = StyleSheet.create({
   featureSection: {

@@ -1,4 +1,15 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+/**
+ * Dashboard Screen
+ * Main dashboard view showing user status, nearby users, events, and features
+ * 
+ * Performance optimizations:
+ * - Memoized callbacks and computed values
+ * - Virtualized lists with optimized props
+ * - Cached data with custom hooks
+ * - Error boundaries for graceful error handling
+ */
+
+import React, { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
 import {
   View,
   Text,
@@ -9,381 +20,61 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
   StatusBar,
-  Modal,
-  Linking,
-  Image,
-  ActivityIndicator,
-  ScrollView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
-import { MaterialIcons, Feather, FontAwesome5, Ionicons } from "@expo/vector-icons";
+import { MaterialIcons, Feather, FontAwesome5 } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, orderBy, limit, startAfter, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../../../config/firebaseConfig";
+import { User } from "firebase/auth";
 import * as Location from "expo-location";
-import StatusSheet, { presetStatuses, PresetStatus } from "../../components/StatusSheet";
-import { router } from "expo-router";
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LinearGradient } from "expo-linear-gradient";
+
+// Context and Hooks
+import { ThemeContext } from "../../context/ThemeContext";
 import useAuth from "../../hooks/auth";
 import useUsers from "../../hooks/useUsers";
 import useNotificationCount from "../../hooks/useNotificationCount";
 import useActivityCollapse from "../../hooks/useActivityCollapse";
 
-
+// Components
+import StatusSheet, { PresetStatus } from "../../components/StatusSheet";
+import { router } from "expo-router";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import ActivityCard from "../../components/ActivityCard";
-import { ThemeContext } from "../../context/ThemeContext";
-import { LinearGradient } from "expo-linear-gradient";
-import * as Notifications from 'expo-notifications';
 import LoadingImage from "../../components/LoadingImage";
 import PingEventModal from "../../components/PingEventModal";
-import { isProfileComplete } from "../../utils/profileCompletionCheck";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import ErrorBoundary from "../../components/ErrorBoundary";
 
 // Dashboard Components
-import UserAvailabilitySection, { NearbyUser } from "../../components/dashboard/UserAvailabilitySection";
 import FloatingActionButton from "../../components/dashboard/FloatingActionButton";
 import FeatureGrid, { FeatureButton } from "../../components/dashboard/FeatureGrid";
 import MoodStatusBar from "../../components/dashboard/MoodStatusBar";
 
-// Types are now imported from components
-
-interface UserData {
-  id: string;
-  name?: string;
-  moodStatus?: string;
-  airportCode?: string;
-  lastLogin?: any;
-  profilePicture?: string;
-  age?: string;
-  bio?: string;
-  languages?: string[];
-  interests?: string[];
-  goals?: string[];
-  pronouns?: string;
-  availabilitySchedule?: {
-    [key: string]: {
-      start: string;
-      end: string;
-    };
-  };
-  linkRatingScore?: {
-    average: number;
-    count: number;
-  };
-  currentCity?: string;
-  lastKnownCoordinates?: {
-    latitude: number;
-    longitude: number;
-  };
-}
-
-function haversineDistance(lat1: number, long1: number, lat2: number, long2: number): number {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const R = 6371; // Earth's radius in kilometers
-  const dLat = toRad(lat2 - lat1);
-  const dLong = toRad(long2 - long1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLong / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-// Helper function to check if user is currently available
-const isUserAvailable = (availabilitySchedule: any): boolean => {
-  if (!availabilitySchedule) return false;
-  
-  const now = new Date();
-  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDay = days[now.getDay()];
-  const currentTime = now.toLocaleTimeString('en-US', { 
-    hour12: false, 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
-  
-  const todaySchedule = availabilitySchedule[currentDay];
-  if (!todaySchedule) return false;
-  
-  const { start, end } = todaySchedule;
-  
-  // Check for invalid or zero times
-  if (!start || !end || start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
-    return false;
-  }
-  
-  // Check if start and end are the same (no availability window)
-  if (start === end) return false;
-  
-  return currentTime >= start && currentTime <= end;
-};
-
-// Helper function to format military time to AM/PM format
-const formatTimeToAMPM = (militaryTime: string): string => {
-  if (!militaryTime || militaryTime === "00:00") return "12:00 AM";
-  
-  const [hours, minutes] = militaryTime.split(':').map(Number);
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-  
-  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
-};
-
-// Helper function to validate availability schedule
-const isValidAvailabilitySchedule = (availabilitySchedule: any): boolean => {
-  if (!availabilitySchedule || typeof availabilitySchedule !== 'object') return false;
-  
-  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  
-  // Check if at least one day has valid availability
-  for (const day of days) {
-    const daySchedule = availabilitySchedule[day];
-    if (daySchedule && daySchedule.start && daySchedule.end) {
-      const { start, end } = daySchedule;
-      
-      // Skip invalid or zero times
-      if (start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
-        continue;
-      }
-      
-      // Skip if start and end are the same
-      if (start === end) {
-        continue;
-      }
-      
-      // If we find at least one valid day, the schedule is valid
-      return true;
-    }
-  }
-  
-  return false;
-};
-
-// Helper function to get availability time range for today
-const getTodayAvailability = (availabilitySchedule: any): string | null => {
-  if (!availabilitySchedule) return null;
-  
-  const now = new Date();
-  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDay = days[now.getDay()];
-  const todaySchedule = availabilitySchedule[currentDay];
-  
-  if (!todaySchedule) return null;
-  
-  const { start, end } = todaySchedule;
-  
-  // Check for invalid or zero times
-  if (!start || !end || start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
-    return null;
-  }
-  
-  // Check if start and end are the same
-  if (start === end) return null;
-  
-  return `${formatTimeToAMPM(start)} - ${formatTimeToAMPM(end)}`;
-};
-
-// Helper function to get remaining availability time
-const getRemainingTime = (availabilitySchedule: any): string | null => {
-  if (!availabilitySchedule) return null;
-  
-  const now = new Date();
-  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDay = days[now.getDay()];
-  const todaySchedule = availabilitySchedule[currentDay];
-  
-  if (!todaySchedule) return null;
-  
-  const { end } = todaySchedule;
-  
-  // Check for invalid or zero times
-  if (!end || end === '0:00' || end === '00:00') {
-    return null;
-  }
-  
-  const [endHour, endMinute] = end.split(':').map(Number);
-  const endTime = new Date();
-  endTime.setHours(endHour, endMinute, 0, 0);
-  
-  const diffMs = endTime.getTime() - now.getTime();
-  if (diffMs <= 0) return null;
-  
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  
-  if (diffHours > 0) {
-    return `${diffHours}h ${diffMinutes}m left`;
-  } else {
-    return `${diffMinutes}m left`;
-  }
-};
-
-// formatRating helper moved to UserAvailabilitySection component
-
-// Helper function to get next available time
-const getNextAvailableTime = (availabilitySchedule: any): string | null => {
-  if (!availabilitySchedule) return null;
-  
-  const now = new Date();
-  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDayIndex = now.getDay();
-  
-  // Check today and the next 7 days
-  for (let i = 0; i < 7; i++) {
-    const dayIndex = (currentDayIndex + i) % 7;
-    const dayName = days[dayIndex];
-    const daySchedule = availabilitySchedule[dayName];
-    
-    if (daySchedule && daySchedule.start && daySchedule.end) {
-      const { start, end } = daySchedule;
-      
-      // Skip invalid or zero times
-      if (start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') {
-        continue;
-      }
-      
-      // Skip if start and end are the same
-      if (start === end) {
-        continue;
-      }
-      
-      const [startHour, startMinute] = start.split(':').map(Number);
-      const startTime = new Date();
-      startTime.setDate(startTime.getDate() + i);
-      startTime.setHours(startHour, startMinute, 0, 0);
-      
-      // If this is today, check if the start time is in the future
-      if (i === 0 && startTime <= now) {
-        continue;
-      }
-      
-      // Format the day name
-      const dayNames = ['Today', 'Tomorrow', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      const displayDay = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayNames[dayIndex + 2];
-      
-      return `${displayDay} at ${formatTimeToAMPM(start)}`;
-    }
-  }
-  
-  return null;
-};
-
-type DashboardItem = {
-  type: "section" | "feature" | "spacer" | "activity";
-  id: string;
-  data: any;
-};
-
-type SearchItem = {
-  id: string;
-  name: string;
-  description: string;
-  isCreateEvent: boolean;
-  type?: string;
-  startTime?: string;
-};
-
-type FlatListItem = DashboardItem | SearchItem;
+// Utils and Types
+import { isProfileComplete } from "../../utils/profileCompletionCheck";
+import { 
+  UserData, 
+  DashboardItem, 
+  SearchItem, 
+  FlatListItem, 
+  PopupData,
+  UserLocation,
+  EventData
+} from "../../types/dashboard";
 
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<FlatListItem>);
 
-const getCategoryIcon = (category: string) => {
-  switch (category) {
-    case 'Wellness':
-      return <MaterialIcons name="self-improvement" size={20} color="#38a5c9" />;
-    case 'Food & Drink':
-      return <MaterialIcons name="restaurant" size={20} color="#38a5c9" />;
-    case 'Entertainment':
-      return <MaterialIcons name="theater-comedy" size={20} color="#38a5c9" />;
-    case 'Travel Tips':
-      return <MaterialIcons name="flight-takeoff" size={20} color="#38a5c9" />;
-    case 'Activity':
-      return <MaterialIcons name="sports-basketball" size={20} color="#38a5c9" />;
-    case 'Networking':
-      return <MaterialIcons name="groups" size={20} color="#38a5c9" />;
-    case 'Social':
-      return <MaterialIcons name="people" size={20} color="#38a5c9" />;
-    case 'Learning':
-      return <MaterialIcons name="school" size={20} color="#38a5c9" />;
-    case 'Business':
-      return <MaterialIcons name="business" size={20} color="#38a5c9" />;
-    case 'Misc':
-      return <MaterialIcons name="category" size={20} color="#38a5c9" />;
-    default:
-      return <MaterialIcons name="event" size={20} color="#38a5c9" />;
-  }
-};
-
-const getEventIcon = (eventName: string) => {
-  const name = eventName.toLowerCase();
-  if (name.includes('startup') || name.includes('pitch')) {
-    return <MaterialIcons name="rocket" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('mindful') || name.includes('meditation')) {
-    return <MaterialIcons name="self-improvement" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('coffee') || name.includes('career')) {
-    return <MaterialIcons name="coffee" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('mentor')) {
-    return <MaterialIcons name="psychology" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('industry') || name.includes('roundtable')) {
-    return <MaterialIcons name="forum" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('speed')) {
-    return <MaterialIcons name="speed" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('creative')) {
-    return <MaterialIcons name="palette" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('global') || name.includes('international')) {
-    return <MaterialIcons name="public" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('entrepreneur')) {
-    return <MaterialIcons name="trending-up" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('resume')) {
-    return <MaterialIcons name="description" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('travel')) {
-    return <MaterialIcons name="luggage" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('cultural')) {
-    return <MaterialIcons name="people" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('freelancer')) {
-    return <MaterialIcons name="work" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('book')) {
-    return <MaterialIcons name="book" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('tech')) {
-    return <MaterialIcons name="computer" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('problem') || name.includes('solve')) {
-    return <MaterialIcons name="lightbulb" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('story')) {
-    return <MaterialIcons name="record-voice-over" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('side') || name.includes('hustle')) {
-    return <MaterialIcons name="rocket" size={20} color="#38a5c9" />;
-  }
-  if (name.includes('leadership')) {
-    return <MaterialIcons name="leaderboard" size={20} color="#38a5c9" />;
-  }
-  return getCategoryIcon('Misc');
-};
-
-const CountdownTimer = ({ startTime }: { startTime: Date }) => {
+/**
+ * Countdown Timer Component (Memoized for performance)
+ */
+const CountdownTimer = memo(({ startTime }: { startTime: Date }) => {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const { theme } = React.useContext(ThemeContext);
 
@@ -433,17 +124,20 @@ const CountdownTimer = ({ startTime }: { startTime: Date }) => {
       </Text>
     </View>
   );
-};
+});
 
-// UserAvailabilityTimer component moved to separate file
+CountdownTimer.displayName = 'CountdownTimer';
 
+/**
+ * Main Dashboard Component
+ */
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
   const fadeAnim = useState(new Animated.Value(0))[0];
   const { theme } = React.useContext(ThemeContext);
 
-  const [userLocation, setUserLocation] = useState<{ lat: number; long: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
 
   // Animation values for theme transitions
   const backgroundAnim = useRef(new Animated.Value(theme === "light" ? 0 : 1)).current;
@@ -472,48 +166,38 @@ export default function Dashboard() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchType, setSearchType] = useState<"events">("events");
-  const { updateUser, updateUserLocationAndLogin, getNearbyUsers, getUsers } = useUsers();
+  const { updateUser } = useUsers();
   const [showStatusSheet, setShowStatusSheet] = useState(false);
   const sheetAnim = useState(new Animated.Value(0))[0];
   const [customStatus, setCustomStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const [usersLoaded, setUsersLoaded] = useState(false);
   const [updatingMood, setUpdatingMood] = useState(false);
   const [searchHeaderHeight, setSearchHeaderHeight] = useState(0);
   const [defaultSearchHeight, setDefaultSearchHeight] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [popupData, setPopupData] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    type: "success" | "error";
-  }>({
+  const [popupData, setPopupData] = useState<PopupData>({
     visible: false,
     title: "",
     message: "",
     type: "success",
   });
-  const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
-  const [pingStep, setPingStep] = useState(1);
 
   // Ping Modal State
   const [showPingModal, setShowPingModal] = useState(false);
 
   // Handle ping modal open/close
-  const handleOpenPingModal = () => {
+  const handleOpenPingModal = useCallback(() => {
     setShowPingModal(true);
     toggleFabExpansion();
-  };
+  }, []);
 
-  const handleClosePingModal = () => {
+  const handleClosePingModal = useCallback(() => {
     setShowPingModal(false);
-  };
+  }, []);
 
   const [displayText, setDisplayText] = useState<string>("");
-  const [isShowingRandom, setIsShowingRandom] = useState(false);
   const textFadeAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -522,7 +206,10 @@ export default function Dashboard() {
   // FAB expansion state
   const [fabExpanded, setFabExpanded] = useState(false);
 
-  // Random messages for alternating display
+  // Track if we've shown the mood modal this session
+  const hasShownMoodModalRef = useRef(false);
+
+  // Random messages for alternating display (Memoized)
   const randomMessages = useMemo(() => [
     "Spontaneity starts here.",
     "Start the party. Ping now.",
@@ -537,12 +224,12 @@ export default function Dashboard() {
     "It's time to lock in."
   ], []);
 
-  // Function to handle FAB expansion
+  // Function to handle FAB expansion (Memoized)
   const toggleFabExpansion = useCallback(() => {
     setFabExpanded(!fabExpanded);
   }, [fabExpanded]);
 
-  // Function to handle text transition with fade
+  // Function to handle text transition with fade (Memoized)
   const transitionText = useCallback((newText: string) => {
     // Fade out
     Animated.timing(textFadeAnim, {
@@ -566,23 +253,19 @@ export default function Dashboard() {
 
   // Effect to alternate between mood status and random messages
   useEffect(() => {
-    // Don't start alternating until userData is loaded
     if (!userData) {
       setDisplayText("Set your mood status");
       return;
     }
 
-    // If no mood status is set, just show the placeholder
     if (!userData.moodStatus) {
       setDisplayText("Set your mood status");
       return;
     }
 
-    // Set initial text to mood status with prefix
     const initialText = `Current status: ${userData.moodStatus}`;
     setDisplayText(initialText);
     displayTextRef.current = initialText;
-    setIsShowingRandom(false);
 
     // Trigger glow and scale animation for initial load
     Animated.sequence([
@@ -615,21 +298,17 @@ export default function Dashboard() {
 
   // Separate effect for the interval
   useEffect(() => {
-    // Only start interval if we have userData and moodStatus
     if (!userData?.moodStatus) {
       return;
     }
 
     const interval = setInterval(() => {
-      // Use ref to get current text without causing re-renders
       const currentText = displayTextRef.current;
       
-      // If current text starts with "Current status:", show random message
       if (currentText.startsWith("Current status:")) {
         const randomIndex = Math.floor(Math.random() * randomMessages.length);
         transitionText(randomMessages[randomIndex]);
       } else {
-        // If current text is a random message, show mood status with prefix
         transitionText(`Current status: ${userData.moodStatus}`);
       }
     }, 10000); // 10 seconds
@@ -639,17 +318,19 @@ export default function Dashboard() {
 
   const hasUpdatedRef = useRef(false);
   const [scrollY] = useState(new Animated.Value(0));
-  const searchHeaderOpacity = scrollY.interpolate({
+  
+  // Memoized interpolations
+  const searchHeaderOpacity = useMemo(() => scrollY.interpolate({
     inputRange: [0, 100],
     outputRange: [1, 0],
     extrapolate: 'clamp',
-  });
+  }), [scrollY]);
 
-  const searchHeaderTranslateY = scrollY.interpolate({
+  const searchHeaderTranslateY = useMemo(() => scrollY.interpolate({
     inputRange: [0, 100],
     outputRange: [0, -20],
     extrapolate: 'clamp',
-  });
+  }), [scrollY]);
 
   const searchTransitionAnim = useRef(new Animated.Value(0)).current;
   const listOpacityAnim = useRef(new Animated.Value(0)).current;
@@ -658,11 +339,13 @@ export default function Dashboard() {
   const notificationCount = useNotificationCount(userId);
   const { isCollapsed: activityCollapsed, isLoading: activityCollapseLoading, toggleCollapse: toggleActivityCollapse } = useActivityCollapse();
 
+  // Memoized callback for showing popups
   const showPopup = useCallback((title: string, message: string, type: "success" | "error") => {
     setPopupData({ visible: true, title, message, type });
     setTimeout(() => setPopupData((prev) => ({ ...prev, visible: false })), 3000);
   }, []);
 
+  // Memoized callback for updating mood status
   const handleUpdateMoodStatus = useCallback(async (status: string) => {
     if (!userId) return;
     setUpdatingMood(true);
@@ -675,12 +358,14 @@ export default function Dashboard() {
       await updateUser(userId, updatedData);
     } catch (error) {
       console.error(error);
+      showPopup("Error", "Failed to update mood status", "error");
     } finally {
       setUpdatingMood(false);
       setIsUpdating(false);
     }
-  }, [userId, updateUser]);
+  }, [userId, updateUser, showPopup]);
 
+  // Memoized callback for toggling status sheet
   const toggleStatusSheet = useCallback(() => {
     Animated.spring(sheetAnim, {
       toValue: showStatusSheet ? 0 : 1,
@@ -689,21 +374,24 @@ export default function Dashboard() {
     }).start();
     setShowStatusSheet(!showStatusSheet);
   }, [showStatusSheet, sheetAnim]);
-  
 
   // Fetch user location on mount
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        console.log("Permission to access location was denied");
-        return;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          console.log("Permission to access location was denied");
+          return;
+        }
+        const location = await Location.getCurrentPositionAsync({});
+        setUserLocation({
+          lat: location.coords.latitude,
+          long: location.coords.longitude,
+        });
+      } catch (error) {
+        console.error("Error fetching location:", error);
       }
-      const location = await Location.getCurrentPositionAsync({});
-      setUserLocation({
-        lat: location.coords.latitude,
-        long: location.coords.longitude,
-      });
     })();
   }, []);
 
@@ -711,7 +399,6 @@ export default function Dashboard() {
   useEffect(() => {
     const initializeDashboard = async () => {
       try {
-        // Set initial load complete
         setInitialLoadComplete(true);
       } catch (error) {
         console.error("Error initializing dashboard:", error);
@@ -724,175 +411,32 @@ export default function Dashboard() {
     }
   }, [userId, showPopup]);
 
+  // Set loading to false once initial load is complete
   useEffect(() => {
-    const fetchNearbyUsers = async () => {
-      if (!userId || !userLocation) return;
-      
-      // Prevent multiple fetches
-      if (usersLoaded) return;
-      
-      try {
-        const users = await getUsers() as UserData[];
-     
-
-        // Get current user's document to check blocked users
-        if (!userId) {
-          console.error('User ID is null');
-          return;
-        }
-        const currentUserRef = doc(db, 'users', userId);
-        const currentUserDoc = await getDoc(currentUserRef);
-        const currentUserData = currentUserDoc.data();
-
-        // Get lists of blocked users
-        const blockedUsers = currentUserData?.blockedUsers || [];
-        const hasMeBlocked = currentUserData?.hasMeBlocked || [];
-
-        // Get current user's coordinates
-        const myLat = userLocation?.lat;
-        const myLong = userLocation?.long;
-
-        // Helper: check if user is available right now
-        const isAvailableNow = (availabilitySchedule: any) => {
-          if (!availabilitySchedule) return false;
-          const now = new Date();
-          const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-          const currentDay = days[now.getDay()];
-          const todaySchedule = availabilitySchedule[currentDay];
-          if (!todaySchedule) return false;
-          const { start, end } = todaySchedule;
-          if (!start || !end || start === '0:00' || end === '0:00' || start === '00:00' || end === '00:00') return false;
-          if (start === end) return false;
-          const currentTime = now.toTimeString().slice(0,5);
-          return currentTime >= start && currentTime <= end;
-        };
-
-        // Filter users by block, distance, and availability
-        const formattedUsers: NearbyUser[] = users
-          .filter(user => {
-            if (user.id === userId) {
-              return false;
-            }
-            if (blockedUsers.includes(user.id)) {
-              return false;
-            }
-            if (hasMeBlocked.includes(user.id)) {
-              return false;
-            }
-            // Availability filter
-            if (!isAvailableNow(user.availabilitySchedule)) {
-              return false;
-            }
-            // Distance filter
-            if (!user.lastKnownCoordinates || myLat == null || myLong == null) {
-              return false;
-            }
-            const { latitude, longitude } = user.lastKnownCoordinates;
-            if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-              return false;
-            }
-            const dist = haversineDistance(myLat, myLong, latitude, longitude);
-            if (dist > 40) {
-              return false;
-            }
-            return true;
-          })
-          .map(user => ({
-            id: user.id,
-            name: user.name || 'Anonymous',
-            status: user.moodStatus || 'Available',
-            profilePicture: user.profilePicture,
-            age: user.age,
-            bio: user.bio,
-            languages: user.languages || [],
-            interests: user.interests || [],
-            goals: user.goals || [],
-            pronouns: user.pronouns,
-            lastLogin: user.lastLogin,
-            availabilitySchedule: user.availabilitySchedule,
-            linkRatingScore: user.linkRatingScore,
-            currentCity: user.currentCity,
-          }));
-
-
-
-        // Generate a unique timestamp for this batch of invite cards
-        const timestamp = Date.now();
-        let finalUsers: NearbyUser[] = [...formattedUsers];
-        if (formattedUsers.length >= 5) {
-          finalUsers = [
-            ...formattedUsers,
-            {
-              id: `view-more-${timestamp}`,
-              name: 'View More',
-              status: 'See all travelers',
-              isViewMoreCard: true,
-              profilePicture: undefined,
-              age: undefined,
-              bio: undefined,
-              languages: [],
-              interests: [], 
-              goals: [],
-              pronouns: undefined,
-              lastLogin: null,
-              availabilitySchedule: {},
-              linkRatingScore: { average: 0, count: 0 },
-              currentCity: '',
-            }
-          ];
-        } else {
-          // If we have fewer than 5 users, add "Invite Friends" cards
-          const inviteFriendsCards = Array(5 - formattedUsers.length)
-            .fill(null)
-            .map((_, index) => ({
-              id: `invite-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-              name: 'Invite Friends',
-              status: 'Click to invite',
-              isInviteCard: true,
-              profilePicture: undefined,
-              age: undefined,
-              bio: undefined,
-              languages: [],
-              interests: [],
-              goals: [],
-              pronouns: undefined,
-              lastLogin: null,
-              availabilitySchedule: {},
-              linkRatingScore: { average: 0, count: 0 },
-              currentCity: '',
-            }));
-          finalUsers = [...formattedUsers, ...inviteFriendsCards];
-        }
-        setNearbyUsers(finalUsers);
-        setUsersLoaded(true);
-      } catch (error) {
-        console.error('Error fetching nearby users:', error);
-        setNearbyUsers([]);
-        setUsersLoaded(true);
-      }
-    };
-    fetchNearbyUsers();
-  }, [userId, userLocation, getUsers]);
-
-  // Update loading state based on users loading status
-  useEffect(() => {
-    if (usersLoaded) {
+    if (initialLoadComplete) {
       setLoading(false);
     }
-  }, [usersLoaded]);
+  }, [initialLoadComplete]);
 
+  // Memoized features array
   const features: FeatureButton[] = useMemo(() => [
     { 
-      icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, 
-      title: "Connect", 
-      screen: "swipe",
-      description: "Swipe to find the perfect match"
+      icon: <MaterialIcons name="groups" size={24} color="#38a5c9" />, 
+      title: "Groups", 
+      screen: "group",
+      description: "View and create groups"
     },
     { 
       icon: <MaterialIcons name="explore" size={24} color="#38a5c9" />, 
       title: "Explore", 
       screen: "explore",
       description: "Discover events and people nearby"
+    },
+    { 
+      icon: <FontAwesome5 name="user-friends" size={24} color="#38a5c9" />, 
+      title: "Connect", 
+      screen: "swipe",
+      description: "Swipe to find the perfect match"
     },
     { 
       icon: <MaterialIcons name="message" size={24} color="#38a5c9" />, 
@@ -907,12 +451,6 @@ export default function Dashboard() {
       description: "Manage your account settings"
     },
     { 
-      icon: <MaterialIcons name="edit" size={24} color="#38a5c9" />, 
-      title: "Edit Profile", 
-      screen: "profile/editProfile",
-      description: "Update your profile information"
-    },
-    { 
       icon: <MaterialIcons name="settings" size={24} color="#38a5c9" />, 
       title: "Settings", 
       screen: "settings/settings",
@@ -920,10 +458,12 @@ export default function Dashboard() {
     },
   ], [userId]);
 
+  // Memoized refresh callback
   const refreshData = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
+      console.log('🔄 [Dashboard] Refreshing data');
       // Refresh logic can be added here if needed
     } catch (error) {
       console.error("Error refreshing data:", error);
@@ -933,12 +473,14 @@ export default function Dashboard() {
     }
   }, [isRefreshing, showPopup]);
 
+  // Memoized filtered results
   const filteredResults: SearchItem[] = useMemo(() => [
     // Search results can be added here if needed
   ], [searchQuery]);
 
   const visibleResults: SearchItem[] = useMemo(() => filteredResults, [filteredResults]);
 
+  // Memoized search handlers
   const handleSearchPress = useCallback(() => {
     setShowSearch(true);
     Animated.parallel([
@@ -958,7 +500,6 @@ export default function Dashboard() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      // After search transition completes, animate the list in
       Animated.parallel([
         Animated.timing(listOpacityAnim, {
           toValue: 1,
@@ -993,7 +534,6 @@ export default function Dashboard() {
       }),
     ]).start(() => {
       setShowSearch(false);
-      // After closing search, animate the dashboard back in
       Animated.parallel([
         Animated.timing(listOpacityAnim, {
           toValue: 1,
@@ -1013,12 +553,16 @@ export default function Dashboard() {
     toggleStatusSheet();
   }, [toggleStatusSheet]);
 
+  // Memoized render functions
   const renderSearchResult = useCallback((item: SearchItem) => {
     const isCreateEvent = item.isCreateEvent;
     return (
       <TouchableOpacity
         style={styles.resultItem}
         activeOpacity={0.9}
+        accessible={true}
+        accessibilityLabel={`${item.name}. ${item.description}`}
+        accessibilityRole="button"
         onPress={() => {
           if (isCreateEvent) {
             router.push('eventCreation');
@@ -1088,12 +632,12 @@ export default function Dashboard() {
     return null;
   }, []);
 
+  // Memoized dashboard data
   const dashboardData: DashboardItem[] = useMemo(() => [
     { type: "activity", id: "activity", data: { userLocation, userId, isCollapsed: activityCollapsed } },
-    { type: "section", id: "users", data: nearbyUsers || [] },
     { type: "spacer", id: "spacer1", data: null },
     { type: "feature", id: "feature-grid", data: features },
-  ], [userLocation, userId, activityCollapsed, nearbyUsers, features]);
+  ], [userLocation, userId, activityCollapsed, features]);
 
   useEffect(() => {
     if (!loading && initialLoadComplete) {
@@ -1107,70 +651,24 @@ export default function Dashboard() {
     }
   }, [loading, initialLoadComplete, fadeAnim]);
 
-  
-
-  // Check notification permissions
-  const checkNotificationPermissions = async () => {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    return existingStatus === 'granted';
-  };
-
-  // Request notification permissions
-  const requestNotificationPermissions = async () => {
-    try {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status === 'granted') {
-        // Get the token if permissions are granted
-        const projectId = '61cfadd9-25bb-4566-abec-1e9679ef882b';
-        const token = await Notifications.getExpoPushTokenAsync({ projectId });
-        
-        // Update user document with token
-        if (userId) {
-          const userRef = doc(db, 'users', userId);
-          await updateDoc(userRef, {
-            expoPushToken: token.data,
-            notificationPreferences: {
-              announcements: true,
-              chats: true,
-              connections: true,
-              events: true,
-              notificationsEnabled: true
-            }
-          });
-
-          // Navigate to notification preferences screen
-          router.push('/settings/notificationPreferences');
-        }
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error requesting notification permissions:', error);
-      return false;
-    }
-  };
-
   // Add state to track if profile completion has been checked
   const [profileCompletionChecked, setProfileCompletionChecked] = useState(false);
 
-  // Separate effect for profile completion check (runs only once)
+  // Profile completion check (runs only once)
   useEffect(() => {
     if (!userId || profileCompletionChecked) return;
 
     const checkProfileCompletion = async () => {
       try {
-        // Check if we've already verified this user's profile completion
         const storageKey = `profileComplete_${userId}`;
         const storedCompletionStatus = await AsyncStorage.getItem(storageKey);
         
         if (storedCompletionStatus === 'true') {
-          // Profile was previously verified as complete, skip check
           console.log('✅ Dashboard - Profile completion previously verified, skipping check');
           setProfileCompletionChecked(true);
           return;
         }
         
-        // Get current user data to check profile completion
         const userRef = doc(db, "users", userId);
         const userDoc = await getDoc(userRef);
         
@@ -1178,7 +676,6 @@ export default function Dashboard() {
           const data = userDoc.data() as UserData;
           console.log('🔄 Dashboard - Checking profile completion...');
           
-          // Check profile completion
           const isComplete = isProfileComplete(data);
           
           if (!isComplete) {
@@ -1186,14 +683,12 @@ export default function Dashboard() {
             router.replace("/profileComplete");
           } else {
             console.log('✅ Dashboard - Profile complete, saving to storage');
-            // Save completion status to AsyncStorage
             await AsyncStorage.setItem(storageKey, 'true');
             setProfileCompletionChecked(true);
           }
         }
       } catch (error) {
         console.error('Error checking profile completion status:', error);
-        // Mark as checked to prevent infinite retries
         setProfileCompletionChecked(true);
       }
     };
@@ -1201,7 +696,7 @@ export default function Dashboard() {
     checkProfileCompletion();
   }, [userId, profileCompletionChecked]);
 
-  // Separate effect for real-time user data updates
+  // Real-time user data updates
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     
@@ -1222,7 +717,77 @@ export default function Dashboard() {
     };
   }, [userId]);
 
+  // Auto-open mood picker if status is neutral (once per session)
+  useEffect(() => {
+    if (
+      userData?.moodStatus === 'neutral' && 
+      !hasShownMoodModalRef.current && 
+      !showStatusSheet &&
+      initialLoadComplete &&
+      !loading
+    ) {
+      console.log('🎭 Auto-opening mood picker for neutral status');
+      hasShownMoodModalRef.current = true;
+      // Add a small delay to ensure the UI is fully loaded
+      setTimeout(() => {
+        toggleStatusSheet();
+      }, 1000);
+    }
+  }, [userData?.moodStatus, showStatusSheet, initialLoadComplete, loading, toggleStatusSheet]);
 
+  // Memoized key extractor
+  const keyExtractor = useCallback((item: FlatListItem, index: number) => {
+    if (showSearch) {
+      return `search-${index}`;
+    }
+    return item.id;
+  }, [showSearch]);
+
+  // Memoized render item
+  const renderItem = useCallback(({ item, index }: { item: FlatListItem; index: number }) => {
+    if (showSearch) {
+      return (
+        <Animated.View
+          style={{
+            opacity: listOpacityAnim,
+            transform: [{ translateY: listTranslateYAnim }],
+          }}
+        >
+          {renderSearchResult(item as SearchItem)}
+        </Animated.View>
+      );
+    } else {
+      if ('type' in item && 'data' in item) {
+        const dashboardItem = item as DashboardItem;
+        
+        if (dashboardItem.type === "activity") {
+          return (
+            <View style={styles.section}>
+              <View style={styles.headerRow}>
+                <View style={styles.headerLeft}>
+                  <MaterialIcons name="local-activity" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
+                  <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+                    What's Happening
+                  </Text>
+                </View>
+              </View>
+              <ActivityCard 
+                userLocation={dashboardItem.data.userLocation}
+                userId={dashboardItem.data.userId}
+                isCollapsed={false}
+                onToggleCollapse={() => {}}
+              />
+            </View>
+          );
+        } else if (dashboardItem.type === "feature") {
+          return <FeatureGrid features={features} />;
+        } else if (dashboardItem.type === "spacer") {
+          return <View style={styles.spacer} />;
+        }
+      }
+    }
+    return null;
+  }, [showSearch, listOpacityAnim, listTranslateYAnim, renderSearchResult, theme, loading, features, router]);
 
   // Show black screen during auth check
   if (!userId) {
@@ -1234,400 +799,175 @@ export default function Dashboard() {
     return <LoadingScreen message={!userId ? "Loading your dashboard..." : "Updating..."} />;
   }
 
-  // Show loading screen only during data loading
-  if (loading || !initialLoadComplete) {
+  // Show loading screen ONLY during initial auth check, not for data loading
+  // This allows the dashboard to render immediately while data loads
+  if (!initialLoadComplete) {
     return (
       <LoadingScreen 
-        isUsersLoading={!usersLoaded} 
+        isUsersLoading={true} 
       />
     );
   }
 
   return (
-    <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar 
-        onProfilePress={() => router.push(`profile/${authUser?.uid}`)} 
-        notificationCount={notificationCount}
-      />
-      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-          <Animated.View style={{ flex: 1, position: "relative", opacity: fadeAnim }}>
-            {/* Removed Profile Picture Popup and Notifications Popup */}
-            <Animated.View 
-              style={[
-                styles.searchHeaderContainer,
-                {
-                  opacity: searchHeaderOpacity,
-                  transform: [{ translateY: searchHeaderTranslateY }],
-                }
-              ]}
-            >
-              {showSearch ? (
-                <Animated.View
-                  style={[
-                    styles.searchHeader,
-                    {
-                      opacity: searchTransitionAnim,
-                      transform: [
-                        {
-                          scale: searchTransitionAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.95, 1],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                  onLayout={(event) => {
-                    const { height } = event.nativeEvent.layout;
-                    setSearchHeaderHeight(height);
-                  }}
-                >
-                  <View style={[styles.searchInputContainer, { 
-                    backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
-                    borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(56, 165, 201, 0.3)"
-                  }]}>
-                    <TextInput
-                      style={[styles.searchInput, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
-                      placeholder="Search events..."
-                      placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-                      value={searchQuery}
-                      onChangeText={setSearchQuery}
-                    />
-                    {searchQuery.length > 0 && (
+    <ErrorBoundary>
+      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
+        <TopBar 
+          onProfilePress={() => router.push(`profile/${authUser?.uid}`)} 
+          notificationCount={notificationCount}
+        />
+        <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+            <Animated.View style={{ flex: 1, position: "relative", opacity: fadeAnim }}>
+              <Animated.View 
+                style={[
+                  styles.searchHeaderContainer,
+                  {
+                    opacity: searchHeaderOpacity,
+                    transform: [{ translateY: searchHeaderTranslateY }],
+                  }
+                ]}
+              >
+                {showSearch ? (
+                  <Animated.View
+                    style={[
+                      styles.searchHeader,
+                      {
+                        opacity: searchTransitionAnim,
+                        transform: [
+                          {
+                            scale: searchTransitionAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.95, 1],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                    onLayout={(event) => {
+                      const { height } = event.nativeEvent.layout;
+                      setSearchHeaderHeight(height);
+                    }}
+                  >
+                    <View style={[styles.searchInputContainer, { 
+                      backgroundColor: theme === "light" ? "#e6e6e6" : "#000000",
+                      borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(56, 165, 201, 0.3)"
+                    }]}>
+                      <TextInput
+                        style={[styles.searchInput, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}
+                        placeholder="Search events..."
+                        placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        accessible={true}
+                        accessibilityLabel="Search events"
+                        accessibilityHint="Enter text to search for events"
+                      />
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity 
+                          style={[styles.clearButton, { 
+                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
+                          }]} 
+                          onPress={() => setSearchQuery("")}
+                          accessible={true}
+                          accessibilityLabel="Clear search"
+                          accessibilityRole="button"
+                        >
+                          <Feather name="x-circle" size={20} color={theme === "light" ? "#64748B" : "#64748B"} />
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity 
-                        style={[styles.clearButton, { 
+                        style={[styles.cancelButton, { 
                           backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
                         }]} 
-                        onPress={() => setSearchQuery("")}
+                        onPress={handleSearchClose}
+                        accessible={true}
+                        accessibilityLabel="Close search"
+                        accessibilityRole="button"
                       >
-                        <Feather name="x-circle" size={20} color={theme === "light" ? "#64748B" : "#64748B"} />
+                        <Feather name="x" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
                       </TouchableOpacity>
-                    )}
-                    <TouchableOpacity 
-                      style={[styles.cancelButton, { 
-                        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                      }]} 
-                      onPress={handleSearchClose}
-                    >
-                      <Feather name="x" size={24} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-                    </TouchableOpacity>
+                    </View>
+                  </Animated.View>
+                ) : (
+                  <View
+                    onLayout={(event) => {
+                      const { height } = event.nativeEvent.layout;
+                      setDefaultSearchHeight(height);
+                    }}
+                  >
+                    <MoodStatusBar 
+                      displayText={displayText}
+                      onPress={handleMoodPress}
+                      textFadeAnim={textFadeAnim}
+                    />
                   </View>
-
-                </Animated.View>
-              ) : (
-                <View
-                  onLayout={(event) => {
-                    const { height } = event.nativeEvent.layout;
-                    setDefaultSearchHeight(height);
-                  }}
-                >
-                  <MoodStatusBar 
-                    displayText={displayText}
-                    onPress={handleMoodPress}
-                    textFadeAnim={textFadeAnim}
-                  />
-                  </View>
+                )}
+              </Animated.View>
+              
+              <AnimatedFlatList
+                style={{ flex: 1 }}
+                data={showSearch ? visibleResults : dashboardData}
+                keyExtractor={keyExtractor}
+                renderItem={renderItem}
+                refreshing={isRefreshing}
+                onRefresh={refreshData}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                  { useNativeDriver: true }
+                )}
+                scrollEventThrottle={16}
+                contentContainerStyle={{ 
+                  paddingTop: showSearch ? searchHeaderHeight + 40 : defaultSearchHeight + 20,
+                  paddingHorizontal: 16, 
+                  paddingBottom: Platform.OS === 'ios' ? 100 : 80 
+                }}
+                removeClippedSubviews={true}
+                maxToRenderPerBatch={5}
+                windowSize={10}
+                initialNumToRender={5}
+                updateCellsBatchingPeriod={50}
+              />
+              
+              {!showSearch && (
+                <FloatingActionButton
+                  expanded={fabExpanded}
+                  onToggle={toggleFabExpansion}
+                  onEventPress={toggleFabExpansion}
+                  onPingPress={handleOpenPingModal}
+                  sheetAnim={sheetAnim}
+                />
               )}
+              
+              {showStatusSheet && (
+                <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.2)', zIndex: 1 }]} />
+              )}
+              
+              <View style={{ zIndex: 2 }}>
+                <StatusSheet
+                  showStatusSheet={showStatusSheet}
+                  sheetAnim={sheetAnim}
+                  customStatus={customStatus}
+                  setCustomStatus={setCustomStatus}
+                  handleUpdateMoodStatus={handleUpdateMoodStatus}
+                  toggleStatusSheet={toggleStatusSheet}
+                />
+              </View>
+
+              <PingEventModal
+                visible={showPingModal}
+                onClose={handleClosePingModal}
+                onSuccess={showPopup}
+              />
             </Animated.View>
-            <AnimatedFlatList
-              style={{ flex: 1 }}
-              data={showSearch ? visibleResults : dashboardData}
-              keyExtractor={(item: FlatListItem, index) => {
-                if (showSearch) {
-                  return `search-${index}`;
-                }
-                return item.id;
-              }}
-              refreshing={isRefreshing}
-              onRefresh={refreshData}
-              onScroll={Animated.event(
-                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                { useNativeDriver: true }
-              )}
-              scrollEventThrottle={16}
-              contentContainerStyle={{ 
-                paddingTop: showSearch ? searchHeaderHeight + 40 : defaultSearchHeight + 20,
-                paddingHorizontal: 16, 
-                paddingBottom: Platform.OS === 'ios' ? 100 : 80 
-              }}
-              renderItem={({ item, index }) => {
-                if (showSearch) {
-                  return (
-                    <Animated.View
-                      style={{
-                        opacity: listOpacityAnim,
-                        transform: [{ translateY: listTranslateYAnim }],
-                      }}
-                    >
-                      {renderSearchResult(item as SearchItem)}
-                    </Animated.View>
-                  );
-                } else {
-                  // Type guard to check if item is a DashboardItem
-                  if ('type' in item && 'data' in item) {
-                    const dashboardItem = item as DashboardItem;
-                  if (dashboardItem.type === "activity") {
-                    return (
-                      <View style={styles.section}>
-                        <View style={styles.headerRow}>
-                          <View style={styles.headerLeft}>
-                            <MaterialIcons name="local-activity" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
-                            <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                              What's Happening
-                            </Text>
-                          </View>
-                        </View>
-                        <ActivityCard 
-                          userLocation={dashboardItem.data.userLocation}
-                          userId={dashboardItem.data.userId}
-                          isCollapsed={false}
-                          onToggleCollapse={() => {}}
-                        />
-                      </View>
-                    );
-
-                  } else if (dashboardItem.type === "section") {
-                    if (dashboardItem.id === "users") {
-                      return (
-                        <UserAvailabilitySection 
-                          users={dashboardItem.data}
-                          loading={loading}
-                          onFilterPress={() => router.push('/explore')}
-                        />
-                      );
-                    } else if (dashboardItem.id === "events") {
-                      return (
-                        <View style={styles.section}>
-                          <View style={styles.headerRow}>
-                            <MaterialIcons name="event" size={20} color={theme === "light" ? "#37a4c8" : "#38a5c9"} style={styles.headerIcon} />
-                            <Text style={[styles.sectionHeader, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                              Nearby Events
-                            </Text>
-                          </View>
-                          {dashboardItem.data.length > 0 ? (
-                            <FlatList
-                              horizontal
-                              data={[...dashboardItem.data]
-                                .filter(event => {
-                                  // Only filter out events that have a start time and are more than 1 hour past
-                                  if (!event.startTime) return true;
-                                  const startTime = new Date(event.startTime);
-                                  const now = new Date();
-                                  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-                                  return startTime > oneHourAgo;
-                                })
-                                .sort((a, b) => {
-                                  // First sort by whether user is attending
-                                  const userIsAttendingA = a.attendees?.includes(authUser?.uid);
-                                  const userIsAttendingB = b.attendees?.includes(authUser?.uid);
-                                  if (userIsAttendingA && !userIsAttendingB) return -1;
-                                  if (!userIsAttendingA && userIsAttendingB) return 1;
-                                  
-                                  // Then sort by whether user is organizer
-                                  const userIsOrganizerA = a.organizer === authUser?.uid;
-                                  const userIsOrganizerB = b.organizer === authUser?.uid;
-                                  if (userIsOrganizerA && !userIsOrganizerB) return -1;
-                                  if (!userIsOrganizerA && userIsOrganizerB) return 1;
-                                  
-                                  // Then sort by start time (events without start time go to the end)
-                                  if (!a.startTime && !b.startTime) return 0;
-                                  if (!a.startTime) return 1;
-                                  if (!b.startTime) return -1;
-                                  return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-                                })}
-                              keyExtractor={(event) => `${event.type}-${event.id}`}
-                              renderItem={({ item: event }) => (
-                                <TouchableOpacity
-                                  style={[styles.eventCard, { 
-                                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                                    borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                  }]}
-                                  activeOpacity={0.8}
-                                  onPress={() => router.push(event.type === "sport" ? `/sport/${event.id}` : `/event/${event.id}`)}
-                                >
-                                  <View style={styles.eventImageContainer}>
-                                  {event.eventImage ? (
-                                    <LoadingImage 
-                                      source={{ uri: event.eventImage }} 
-                                      style={styles.eventImage}
-                                    />
-                                  ) : (
-                                    <View style={[styles.eventImagePlaceholder, {
-                                      backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                    }]}>
-                                      <MaterialIcons 
-                                        name="event" 
-                                        size={32} 
-                                        color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
-                                      />
-                                    </View>
-                                  )}
-                                  {event.organizer && event.organizer === authUser?.uid && (
-                                    <View style={[styles.organizerBadge, {
-                                      backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                    }]}>
-                                      <Feather name="star" size={12} color="#FFFFFF" />
-                                      <Text style={styles.organizerText}>Organized by you</Text>
-                                    </View>
-                                  )}
-                                  {event.attendees?.includes(authUser?.uid) && event.organizer !== authUser?.uid && (
-                                    <View style={[styles.attendingBadge, {
-                                      backgroundColor: theme === "light" ? "#4CAF50" : "#45a049"
-                                    }]}>
-                                      <Feather name="check" size={12} color="#FFFFFF" />
-                                      <Text style={styles.attendingText}>You're attending</Text>
-                                    </View>
-                                  )}
-                                  </View>
-                                  <View style={styles.eventContent}>
-                                    <View style={[styles.eventHeader, { 
-                                      borderBottomColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                    }]}>
-                                      <View style={styles.eventTitleContainer}>
-                                        <Text style={[styles.eventName, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
-                                          {event.name}
-                                        </Text>
-                                        {event.category && (
-                                          <View style={[styles.categoryTag, {
-                                            backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
-                                            borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                          }]}>
-                                            <Text style={[styles.categoryText, {
-                                              color: theme === "light" ? "#37a4c8" : "#38a5c9"
-                                            }]}>
-                                              {event.category}
-                                            </Text>
-                                          </View>
-                                        )}
-                                      </View>
-                                    </View>
-                                    <Text style={[styles.eventDescription, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-                                      {event.description}
-                                    </Text>
-                                    <View style={styles.eventMetaContainer}>
-                                      {event.startTime && (
-                                        <View style={[styles.eventMetaItem, { 
-                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                        }]}>
-                                          <Feather name="clock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                            {new Date(event.startTime).toLocaleDateString()} at {new Date(event.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
-                                          </Text>
-                                        </View>
-                                      )}
-                                      {event.startTime && (
-                                        <CountdownTimer startTime={new Date(event.startTime)} />
-                                      )}
-                                      {event.attendees && (
-                                        <View style={[styles.eventMetaItem, { 
-                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                        }]}>
-                                          <Feather name="users" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                            {event.attendees.length} {event.attendees.length === 1 ? 'attendee' : 'attendees'}
-                                          </Text>
-                                        </View>
-                                      )}
-                                      {event.private && (
-                                        <View style={[styles.eventMetaItem, { 
-                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                        }]}>
-                                          <Feather name="lock" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                            Private
-                                          </Text>
-                                        </View>
-                                      )}
-                                      {event.airportCode && (
-                                        <View style={[styles.eventMetaItem, { 
-                                          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-                                        }]}>
-                                          <Feather name="airplay" size={14} color={theme === "light" ? "#37a4c8" : "#64748B"} />
-                                          <Text style={[styles.eventMeta, { color: theme === "light" ? "#37a4c8" : "#64748B" }]}>
-                                            {event.airportCode}
-                                          </Text>
-                                        </View>
-                                      )}
-                                    </View>
-                                  </View>
-                                </TouchableOpacity>
-                              )}
-                              showsHorizontalScrollIndicator={false}
-                            />
-                          ) : (
-                            <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>No events at this airport.</Text>
-                          )}
-                        </View>
-                      );
-                    }
-                  } else if (dashboardItem.type === "feature") {
-                    return (
-                      <FeatureGrid features={features} />
-                    );
-                  } else if (dashboardItem.type === "spacer") {
-                    return <View style={styles.spacer} />;
-                  }
-                  return null;
-                }
-                return null;
-              }
-              return null;
-              }}
-            />
-            {/* Floating Action Button */}
-            {!showSearch && (
-              <FloatingActionButton
-                expanded={fabExpanded}
-                onToggle={toggleFabExpansion}
-                onEventPress={toggleFabExpansion}
-                onPingPress={handleOpenPingModal}
-                sheetAnim={sheetAnim}
-              />
-            )}
-            {/* Status Sheet Component */}
-            {showStatusSheet && (
-              <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.2)', zIndex: 1 }]} />
-            )}
-            <View style={{ zIndex: 2 }}>
-              <StatusSheet
-                showStatusSheet={showStatusSheet}
-                sheetAnim={sheetAnim}
-                customStatus={customStatus}
-                setCustomStatus={setCustomStatus}
-                handleUpdateMoodStatus={handleUpdateMoodStatus}
-                toggleStatusSheet={toggleStatusSheet}
-              />
-            </View>
-
-            {/* Ping Event Modal */}
-            <PingEventModal
-              visible={showPingModal}
-              onClose={handleClosePingModal}
-              onSuccess={showPopup}
-            />
-          </Animated.View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </LinearGradient>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </LinearGradient>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    backgroundColor: "transparent",
-    borderBottomWidth: 0,
-  },
-  logo: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#e4fbfe",
-    letterSpacing: 0.5,
-  },
   section: {
     marginBottom: 0,
     marginTop: 12,
@@ -1652,249 +992,108 @@ const styles = StyleSheet.create({
     color: "#e4fbfe",
     letterSpacing: 0.3,
   },
-  // User card styles moved to UserAvailabilitySection component
-  userInfo: {
-    padding: 0,
-    alignItems: 'center',
-    width: '100%',
-  },
-  userSection: {
-    borderBottomWidth: 0,
-    paddingBottom: 8,
-    marginBottom: 8,
-    width: '100%',
-    alignItems: 'center',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    gap: 6,
-  },
-  nameAgeContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-    width: '100%',
-  },
-  userName: {
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 2,
-    letterSpacing: -0.2,
-  },
-  userAge: {
-    fontSize: 12,
-    fontWeight: '600',
-    opacity: 0.8,
-  },
-  pronouns: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  userBio: {
-    fontSize: 12,
-    lineHeight: 14,
-    letterSpacing: 0.1,
-    textAlign: 'center',
-    marginVertical: 6,
-    paddingHorizontal: 4,
-  },
-  userMetaContainer: {
-    width: '100%',
-    alignItems: 'center',
-    marginTop: 0,
-    gap: 6,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    gap: 5,
-    minHeight: 24,
-    maxWidth: '100%',
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  metaText: {
-    fontSize: 10,
-    fontWeight: '600',
-    textAlign: 'center',
-    flexShrink: 1,
-    letterSpacing: 0.1,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 3,
-    marginTop: 2,
-  },
-  tag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-    backgroundColor: 'rgba(56, 165, 201, 0.08)',
-  },
-  tagIcon: {
-    marginRight: 2,
-  },
-  tagText: {
-    fontSize: 9,
-    color: "#38a5c9",
-    fontWeight: "500",
-    letterSpacing: 0.1,
-  },
-  moreTags: {
-    fontSize: 9,
-    color: "#38a5c9",
-    fontWeight: "500",
-    letterSpacing: 0.1,
-  },
-  inviteCardGradient: {
-    padding: 12,
-    alignItems: 'center',
-    backgroundColor: 'rgba(56, 165, 201, 0.03)',
-  },
-  inviteAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(56, 165, 201, 0.08)',
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-    borderWidth: 1.5,
-    borderColor: "#38a5c9",
-    overflow: 'hidden',
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-  },
-  inviteTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#e4fbfe",
-    letterSpacing: -0.2,
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  inviteSubtitle: {
-    fontSize: 11,
-    color: "#38a5c9",
-    letterSpacing: 0.1,
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 14,
-    paddingHorizontal: 2,
-  },
-  inviteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(56, 165, 201, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 165, 201, 0.25)',
-  },
-  inviteButtonText: {
-    fontSize: 11,
-    color: "#38a5c9",
-    fontWeight: "600",
-    letterSpacing: 0.1,
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  eventCard: {
-    width: 280,
-    marginRight: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    overflow: 'hidden',
-    elevation: 6,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-  },
-  eventImageContainer: {
-    position: 'relative',
-    width: '100%',
-    height: 160,
-  },
-  eventImage: {
-    width: '100%',
-    height: '100%',
-  },
-  eventImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  organizerBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  organizerText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  attendingBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  attendingText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  eventContent: {
+  searchHeader: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 16,
+    borderRadius: 24,
     padding: 20,
+    elevation: 4,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    borderWidth: 1,
+  },
+  searchInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 17,
+    paddingVertical: 8,
+    letterSpacing: 0.3,
+  },
+  clearButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  cancelButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resultItem: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 24,
+    overflow: "hidden",
+    padding: 6,
+  },
+  resultItemView: {
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1a1a1a",
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    borderRadius: 24,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  resultIcon: {
+    marginRight: 14,
+  },
+  eventResultContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  createEventItemView: {
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1a1a1a",
+    borderWidth: 1,
+    borderColor: "#38a5c9",
+    borderRadius: 24,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  spacer: {
+    height: 18,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+  },
+  searchHeaderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1,
+    backgroundColor: 'transparent',
+    paddingTop: Platform.OS === 'ios' ? 0 : 0,
   },
   eventHeader: {
     marginBottom: 16,
@@ -1944,342 +1143,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.2,
   },
-  categoryTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  categoryText: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  featureItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    marginHorizontal: 16,
-    elevation: 2,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderWidth: 0,
-  },
-  featureItemContent: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  featureItemLeft: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  featureItemTextContainer: {
-    flex: 1,
-  },
-  featureItemText: {
-    fontSize: 17,
-    fontWeight: "600",
-    marginBottom: 4,
-    letterSpacing: 0.3,
-  },
-  featureItemDescription: {
-    fontSize: 14,
-    letterSpacing: 0.2,
-    lineHeight: 20,
-  },
-  featureChevronContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  searchHeader: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 16,
-    borderRadius: 24,
-    padding: 20,
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    borderWidth: 1,
-  },
-  searchInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 17,
-    paddingVertical: 8,
-    letterSpacing: 0.3,
-  },
-  clearButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-  },
-  cancelButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterContainer: {
-    flexDirection: "row",
-    gap: 14,
-    paddingHorizontal: 4,
-  },
-  // Filter button styles moved to UserAvailabilitySection component
-  filterButtonInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 20,
-    padding: 14,
-    borderWidth: 1,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  filterText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  // Filter button text styles moved to UserAvailabilitySection component
-  // Search styles moved to MoodStatusBar component
-  searchIcon: {
-    marginLeft: 10,
-  },
-  directionsButton: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    elevation: 4,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    borderWidth: 1,
-  },
-  directionsButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-  resultItem: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 24,
-    overflow: "hidden",
-    padding: 6,
-  },
-  resultItemView: {
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1a1a1a",
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    borderRadius: 24,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  organizedResultItemView: {
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#38a5c9",
-    borderRadius: 24,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  },
-  resultIcon: {
-    marginRight: 14,
-  },
-  resultText: {
-    flex: 1,
-    fontSize: 17,
-    color: "#e4fbfe",
-    fontWeight: "500",
-    letterSpacing: 0.3,
-  },
-  organizedResultText: {
-    flex: 1,
-    fontSize: 17,
-    color: "#000000",
-    fontWeight: "500",
-    letterSpacing: 0.3,
-  },
-  fab: {
-    position: "absolute",
-    bottom: Platform.OS === 'ios' ? 40 : 32,
-    right: 32,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#38a5c9",
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 6,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  spacer: {
-    height: 18,
-  },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1,
-  },
-  airportResultContent: {
-    flex: 1,
-    marginRight: 12,
-  },
-  airportName: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#e4fbfe",
-    marginBottom: 4,
-    letterSpacing: 0.3,
-  },
-  airportLocation: {
-    fontSize: 15,
-    color: "#38a5c9",
-    marginBottom: 2,
-    letterSpacing: 0.2,
-  },
-  airportCode: {
-    fontSize: 14,
-    color: "#64748B",
-    fontWeight: "500",
-    letterSpacing: 0.5,
-  },
-  eventResultContent: {
-    flex: 1,
-    marginRight: 12,
-  },
-  createEventItemView: {
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1a1a1a",
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    borderRadius: 24,
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  createEventName: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#38a5c9",
-    marginBottom: 4,
-    letterSpacing: 0.3,
-  },
-  createEventDescription: {
-    fontSize: 14,
-    color: "#64748B",
-    letterSpacing: 0.2,
-    lineHeight: 20,
-  },
-  loadMoreButton: {
-    marginHorizontal: 16,
-    marginVertical: 16,
-    padding: 16,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  loadMoreText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#38a5c9",
-    letterSpacing: 0.3,
-  },
-  searchHeaderContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1,
-    backgroundColor: 'transparent',
-    paddingTop: Platform.OS === 'ios' ? 0 : 0, // Ensure no extra padding
-  },
-  noDataText: {
-    fontSize: 16,
-    color: "#64748B",
-    textAlign: "center",
-    marginTop: 24,
-    letterSpacing: 0.3,
-    fontStyle: 'italic',
-  },
-  organizedEventName: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#FFFFFF",
-    marginBottom: 4,
-    letterSpacing: 0.3,
-  },
-  organizedEventDescription: {
-    fontSize: 14,
-    color: "#FFFFFF",
-    letterSpacing: 0.2,
-    lineHeight: 20,
-  },
   countdownContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2300,179 +1163,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.2,
   },
-  airportMetaContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  airportDistance: {
-    fontSize: 14,
-    color: "#64748B",
-    fontWeight: "500",
-    letterSpacing: 0.2,
-  },
-  // Feature grid styles moved to FeatureGrid component
-  featureGridText: {
-    fontSize: 14,
-    color: "#64748B",
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-  // Footer styles moved to FeatureGrid component
-  // Loading styles moved to UserAvailabilitySection component
-  loadingDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#37a4c8",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingDotInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#e4fbfe",
-  },
-  profilePicturePopup: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -175 }, { translateY: -180 }],
-    width: 350,
-    padding: 32,
-    paddingTop: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    alignItems: 'center',
-  },
-  popupLogo: {
-    width: 128,
-    height: 128,
-    marginBottom: 16,
-    marginTop: -16,
-  },
-  popupTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 16,
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  popupMessage: {
-    fontSize: 16,
-    marginBottom: 28,
-    textAlign: 'center',
-    lineHeight: 24,
-    letterSpacing: -0.2,
-  },
-  popupButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-  },
-  popupButton: {
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-    minWidth: 140,
-    alignItems: 'center',
-  },
-  popupButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  // Available tag styles moved to UserAvailabilitySection component
-  // FAB styles moved to FloatingActionButton component
-  fabOptionLabel: {
-    position: 'absolute',
-    left: 60,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  fabOptionText: {
-    fontSize: 12,
-    color: "#FFFFFF",
-    fontWeight: "600",
-    letterSpacing: 0.2,
-  },
-  eventFabOption: {
-    // Positioned above the main FAB
-  },
-  pingFabOption: {
-    // Positioned above the event FAB
-  },
-  viewMoreCard: {
-    padding: 16,
-    alignItems: 'center',
-    backgroundColor: 'rgba(56, 165, 201, 0.02)',
-  },
-  viewMoreIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(56, 165, 201, 0.08)',
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-    borderWidth: 1.5,
-    borderColor: "#38a5c9",
-    overflow: 'hidden',
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  viewMoreTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#e4fbfe",
-    letterSpacing: -0.2,
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  viewMoreSubtitle: {
-    fontSize: 11,
-    color: "#38a5c9",
-    letterSpacing: 0.1,
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 14,
-    paddingHorizontal: 2,
-  },
-  viewMoreButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-
 });
 
 export { Dashboard };

@@ -11,6 +11,7 @@ import {
   Platform,
   Animated,
   Easing,
+  StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -22,6 +23,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemeContext } from "../../context/ThemeContext";
 import TopBar from "../../components/TopBar";
 import * as Haptics from "expo-haptics";
+import useNotificationCount from "../../hooks/useNotificationCount";
 
 const ADMIN_IDS = ['hDn74gYZCdZu0efr3jMGTIWGrRQ2', 'WhNhj8WPUpbomevJQ7j69rnLbDp2'];
 
@@ -30,6 +32,17 @@ export default function Feedback() {
   const { theme } = React.useContext(ThemeContext);
   const [feedback, setFeedback] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
+  // Handle back button press
+  const handleBack = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.back();
+  };
   
   // Animation values
   const contentBounceAnim = useRef(new Animated.Value(0)).current;
@@ -149,7 +162,16 @@ export default function Feedback() {
       style={styles.container}
     >
       <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <TopBar showBackButton={true} />
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          showBackButton={true}
+          title=""
+          onBackPress={handleBack}
+          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
+        />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.container}

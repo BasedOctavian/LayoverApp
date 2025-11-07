@@ -35,6 +35,8 @@ import LoadingScreen from "../../components/LoadingScreen";
 import { containsFilteredContent, getFilteredContentCategory } from "../../utils/contentFilter";
 import { ThemeContext } from "../../context/ThemeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import useNotificationCount from "../../hooks/useNotificationCount";
+import * as Haptics from 'expo-haptics';
 
 interface AvailabilitySchedule {
   monday: { start: string; end: string };
@@ -237,6 +239,17 @@ const EditProfile = () => {
   } | null>(null);
   
   const insets = useSafeAreaInsets();
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(userId || null);
+  
+  // Handle back button press
+  const handleBack = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.back();
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -708,10 +721,17 @@ const EditProfile = () => {
       colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} 
       style={styles.container}
     >
-      <TopBar />
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        
+      <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+      <TopBar 
+          showBackButton={true}
+          title=""
+          onBackPress={handleBack}
+          onProfilePress={() => router.push(`/profile/${userId}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
+        />
+      <SafeAreaView style={styles.safeArea} edges={["bottom"]}>
         <ScrollView 
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
@@ -1135,7 +1155,9 @@ const EditProfile = () => {
 
                 {/* Day-by-Day Schedule */}
                 <View style={styles.scheduleContainer}>
-                  {Object.entries(formData.availabilitySchedule).map(([day, times]) => (
+                  {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => {
+                    const times = formData.availabilitySchedule[day as keyof AvailabilitySchedule];
+                    return (
                     <View key={day} style={[styles.availabilityRow, {
                       backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.05)" : "rgba(56, 165, 201, 0.05)",
                       borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(56, 165, 201, 0.2)"
@@ -1226,7 +1248,8 @@ const EditProfile = () => {
                         </View>
                       )}
                     </View>
-                  ))}
+                  );
+                  })}
                 </View>
               </View>
             </View>
@@ -1443,6 +1466,9 @@ const EditProfile = () => {
               <Text style={[styles.fieldLabel, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
                 Connect your social media accounts
               </Text>
+              <Text style={[styles.helperText, { color: theme === "light" ? "#94A3B8" : "#64748B" }]}>
+                Enter usernames only for Instagram and X. LinkedIn requires full profile URL.
+              </Text>
               <View style={styles.socialMediaContainer}>
                 <View style={[styles.socialMediaInput, {
                   backgroundColor: theme === "light" ? "#F8FAFC" : "#000000",
@@ -1458,7 +1484,7 @@ const EditProfile = () => {
                     style={[styles.input, styles.socialInput, {
                       color: theme === "light" ? "#1E293B" : "#e4fbfe"
                     }]}
-                    placeholder="Instagram Username"
+                    placeholder="Instagram Username (without @)"
                     value={extractUsername(formData.socialMedia.instagram || '', 'instagram')}
                     onChangeText={(text) => {
                       if (containsFilteredContent(text)) {
@@ -1472,6 +1498,8 @@ const EditProfile = () => {
                       }));
                     }}
                     placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                 </View>
                 <View style={[styles.socialMediaInput, {
@@ -1488,7 +1516,7 @@ const EditProfile = () => {
                     style={[styles.input, styles.socialInput, {
                       color: theme === "light" ? "#1E293B" : "#e4fbfe"
                     }]}
-                    placeholder="LinkedIn Profile Link"
+                    placeholder="LinkedIn Profile URL (e.g., linkedin.com/in/yourname)"
                     value={formData.socialMedia.linkedin || ''}
                     onChangeText={(text) => {
                       if (containsFilteredContent(text)) {
@@ -1502,6 +1530,9 @@ const EditProfile = () => {
                       }));
                     }}
                     placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
                   />
                 </View>
                 <View style={[styles.socialMediaInput, {
@@ -1518,7 +1549,7 @@ const EditProfile = () => {
                     style={[styles.input, styles.socialInput, {
                       color: theme === "light" ? "#1E293B" : "#e4fbfe"
                     }]}
-                    placeholder="X (Twitter) Username"
+                    placeholder="X (Twitter) Username (without @)"
                     value={extractUsername(formData.socialMedia.twitter || '', 'twitter')}
                     onChangeText={(text) => {
                       if (containsFilteredContent(text)) {
@@ -1532,6 +1563,8 @@ const EditProfile = () => {
                       }));
                     }}
                     placeholderTextColor={theme === "light" ? "#94A3B8" : "#94A3B8"}
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                 </View>
               </View>
@@ -1564,8 +1597,8 @@ const EditProfile = () => {
                 </Text>
               )}
             </TouchableOpacity>
-          </Animated.View>
-        </ScrollView>
+            </Animated.View>
+          </ScrollView>
       </SafeAreaView>
 
       {/* Language Selection Modal */}
@@ -1950,8 +1983,8 @@ const EditProfile = () => {
               </ScrollView>
             </View>
           </View>
-        </View>
-      </Modal>
+          </View>
+        </Modal>
     </LinearGradient>
   );
 };
@@ -1967,31 +2000,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: 20,
     paddingBottom: 120,
   },
   header: {
     padding: 20,
-    marginBottom: 16,
+    marginBottom: 24,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 4,
+    fontSize: 32,
+    fontWeight: "800",
+    marginBottom: 10,
+    letterSpacing: -0.8,
   },
   headerSubtitle: {
-    fontSize: 16,
-    opacity: 0.8,
+    fontSize: 17,
+    fontWeight: "500",
+    lineHeight: 24,
+    letterSpacing: 0.1,
   },
   card: {
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    marginBottom: 16,
+    borderRadius: 20,
+    padding: 28,
+    borderWidth: 1.5,
+    marginBottom: 24,
     elevation: 4,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
   },
   profileHeader: {
     alignItems: "center",
@@ -1999,12 +2035,17 @@ const styles = StyleSheet.create({
   },
   profileImageContainer: {
     position: 'relative',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: "#37a4c8",
+    elevation: 4,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
   profileImage: {
     width: '100%',
@@ -2019,48 +2060,66 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     opacity: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   changePhotoButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    borderRadius: 28,
+    gap: 12,
+    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
   },
   changePhotoText: {
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: 0.5,
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
     gap: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: -0.3,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   fieldLabel: {
-    fontSize: 14,
-    marginBottom: 8,
+    fontSize: 15,
+    marginBottom: 12,
     fontWeight: '600',
     letterSpacing: 0.3,
+    opacity: 0.95,
+  },
+  helperText: {
+    fontSize: 13,
+    marginBottom: 16,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    fontStyle: 'italic',
+    opacity: 0.85,
   },
   input: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1.5,
     fontSize: 16,
+    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
   multilineInput: {
-    height: 100,
+    height: 120,
     textAlignVertical: "top",
   },
   socialMediaContainer: {
@@ -2069,10 +2128,14 @@ const styles = StyleSheet.create({
   socialMediaInput: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderWidth: 1.5,
+    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
   socialIcon: {
     marginRight: 12,
@@ -2111,22 +2174,31 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   radiusButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    minWidth: 50,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    borderWidth: 2,
+    minWidth: 60,
     alignItems: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   radiusButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   availabilityRow: {
-    marginBottom: 8,
-    borderRadius: 12,
-    borderWidth: 1,
+    marginBottom: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
     overflow: 'hidden',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   dayHeader: {
     flexDirection: 'row',
@@ -2135,19 +2207,25 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   dayLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   toggleDayButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   toggleDayText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   timeInputs: {
     flexDirection: 'row',
@@ -2176,17 +2254,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   timeButton: {
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   timeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   timeLabel: {
     fontSize: 13,
@@ -2201,18 +2284,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   presetButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 100,
+    minWidth: 110,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   presetButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   scheduleContainer: {
     gap: 8,
@@ -2274,15 +2362,14 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 420,
     maxHeight: '80%',
-    borderRadius: 24,
-    borderWidth: 1,
-    elevation: 8,
-    shadowColor: "#000",
+    borderRadius: 28,
+    borderWidth: 2,
+    elevation: 6,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -2302,9 +2389,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   closeButton: {
     padding: 8,
@@ -2449,17 +2536,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   selectionButton: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1.5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+    height: 60,
   },
   selectionButtonContent: {
     flexDirection: 'row',
@@ -2468,7 +2555,8 @@ const styles = StyleSheet.create({
   },
   selectionButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -2479,40 +2567,41 @@ const styles = StyleSheet.create({
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 20,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   tagText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     marginRight: 8,
+    letterSpacing: 0.3,
   },
   saveButton: {
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: 24,
+    padding: 20,
     alignItems: "center",
-    marginVertical: 24,
-    borderWidth: 1,
-    elevation: 4,
-    shadowOffset: { width: 0, height: 4 },
+    marginVertical: 32,
+    borderWidth: 2.5,
+    elevation: 5,
+    shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowRadius: 10,
+    minWidth: 220,
   },
   saveButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   saveButtonText: {
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "800",
     letterSpacing: 0.5,
   },
   saveButtonTextLoading: {

@@ -10,6 +10,8 @@ import {
   Animated,
   Easing,
   Dimensions,
+  StatusBar,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,13 +19,29 @@ import { ThemeContext } from "../../context/ThemeContext";
 import TopBar from "../../components/TopBar";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import LoadingScreen from "../../components/LoadingScreen";
+import { router } from "expo-router";
+import useAuth from "../../hooks/auth";
+import useNotificationCount from "../../hooks/useNotificationCount";
+import * as Haptics from 'expo-haptics';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 export default function About() {
   const { theme } = React.useContext(ThemeContext);
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
+  // Handle back button press
+  const handleBack = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.back();
+  };
   
   // Enhanced animation values
   const logoScaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -123,7 +141,16 @@ export default function About() {
       style={styles.container}
     >
       <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <TopBar showBackButton={true} />
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          showBackButton={true}
+          title=""
+          onBackPress={handleBack}
+          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
+        />
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}

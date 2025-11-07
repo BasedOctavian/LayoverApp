@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ThemeContext } from '../context/ThemeContext';
 import useAuth from '../hooks/auth';
 import useUsers from '../hooks/useUsers';
+import { scaleWidth, scaleHeight } from '../utils/responsive';
 
 // Define props interface
 interface TopBarProps {
@@ -17,6 +18,8 @@ interface TopBarProps {
   onNotificationPress?: () => void;
   notificationCount?: number;
   onBackPress?: () => void;
+  showLogo?: boolean;
+  centerLogo?: boolean;
 }
 
 const TopBar: React.FC<TopBarProps> = ({ 
@@ -26,10 +29,12 @@ const TopBar: React.FC<TopBarProps> = ({
   showNotifications = true,
   onNotificationPress,
   notificationCount = 0,
-  onBackPress
+  onBackPress,
+  showLogo = true,
+  centerLogo = false
 }): React.JSX.Element => {
   const insets = useSafeAreaInsets();
-  const topBarHeight = 50 + insets.top;
+  const topBarHeight = scaleHeight(50) + insets.top;
   const { theme } = useContext(ThemeContext);
   const { user } = useAuth();
   const { getUser } = useUsers();
@@ -40,6 +45,7 @@ const TopBar: React.FC<TopBarProps> = ({
   const [isLoadingUserData, setIsLoadingUserData] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const logoFadeAnim = useRef(new Animated.Value(1)).current;
+  const centerLogoFadeAnim = useRef(new Animated.Value(1)).current;
 
   // Check if we're on a profile page
   const isOnProfilePage = pathname.startsWith('/profile/');
@@ -66,14 +72,60 @@ const TopBar: React.FC<TopBarProps> = ({
   }, [user?.uid, getUser]);
 
   useEffect(() => {
-    if (isLogoLoaded) {
+    if (!showLogo) {
+      // If logo is hidden, show TopBar immediately
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    } else if (isLogoLoaded) {
+      // If logo is shown, wait for it to load
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 150,
         useNativeDriver: true,
       }).start();
     }
-  }, [isLogoLoaded]);
+  }, [isLogoLoaded, showLogo]);
+
+  // Initialize center logo fade animation when centerLogo is enabled
+  useEffect(() => {
+    if (centerLogo && showLogo) {
+      centerLogoFadeAnim.setValue(1);
+    }
+  }, [centerLogo, showLogo]);
+
+  // Track previous pathname to detect navigation transitions
+  const prevPathname = useRef<string>(pathname);
+  const shouldFadeInLeftLogo = useRef(false);
+  
+  useEffect(() => {
+    // Check if we navigated from a center logo screen (chatExplore) to a left logo screen
+    const wasOnCenterLogoScreen = prevPathname.current === '/chat/chatExplore';
+    const isOnLeftLogoScreen = !centerLogo && showLogo;
+    
+    // If we just navigated from chatExplore to another screen, flag for fade-in
+    if (wasOnCenterLogoScreen && pathname !== '/chat/chatExplore' && isOnLeftLogoScreen) {
+      shouldFadeInLeftLogo.current = true;
+    }
+    
+    prevPathname.current = pathname;
+  }, [pathname, centerLogo, showLogo]);
+  
+  useEffect(() => {
+    // Fade in left logo when flag is set and logo is loaded
+    if (shouldFadeInLeftLogo.current && showLogo && !centerLogo && isLogoLoaded) {
+      logoFadeAnim.setValue(0);
+      Animated.timing(logoFadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        shouldFadeInLeftLogo.current = false;
+      });
+    }
+  }, [pathname, showLogo, centerLogo, isLogoLoaded]);
 
   // Fade out and fade in when theme changes
   useEffect(() => {
@@ -119,12 +171,28 @@ const TopBar: React.FC<TopBarProps> = ({
     if (isNavigating.current) return;
     
     isNavigating.current = true;
-    router.back();
     
-    setTimeout(() => {
-      isNavigating.current = false;
-    }, 300);
-  }, []);
+    // If center logo is shown, fade it out smoothly before navigation
+    if (showLogo && centerLogo) {
+      Animated.timing(centerLogoFadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        router.back();
+        setTimeout(() => {
+          isNavigating.current = false;
+          // Reset animation for next time
+          centerLogoFadeAnim.setValue(1);
+        }, 100);
+      });
+    } else {
+      router.back();
+      setTimeout(() => {
+        isNavigating.current = false;
+      }, 300);
+    }
+  }, [showLogo, centerLogo, centerLogoFadeAnim]);
 
   const handleNotificationPress = useCallback(() => {
     if (isNavigating.current) return;
@@ -165,30 +233,66 @@ const TopBar: React.FC<TopBarProps> = ({
             style={styles.backButton}
             activeOpacity={0.7}
           >
-            <Ionicons name="chevron-back" size={28} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+            <Ionicons name="chevron-back" size={scaleWidth(28)} color={theme === "light" ? "#0F172A" : "#ffffff"} />
           </TouchableOpacity>
         )}
-        <TouchableOpacity 
-          onPress={handleLogoPress}
-          activeOpacity={0.7}
-        >
-          <Animated.Image
-            source={theme === "light" 
-              ? require('../../assets/images/splash-icon.png')
-              : require('../../assets/images/splash-icon-dark.png')
-            }
-            style={[
-              styles.logo, 
-              showBackButton && styles.logoWithBack,
-              { opacity: logoFadeAnim }
-            ]}
-            resizeMode="contain"
-            fadeDuration={0}
-            onLoad={() => setIsLogoLoaded(true)}
-          />
-        </TouchableOpacity>
+        {showLogo && !centerLogo && (
+          <TouchableOpacity 
+            onPress={handleLogoPress}
+            activeOpacity={0.7}
+          >
+            <Animated.Image
+              source={theme === "light" 
+                ? require('../../assets/images/splash-icon.png')
+                : require('../../assets/images/splash-icon-dark.png')
+              }
+              style={[
+                styles.logo, 
+                showBackButton && styles.logoWithBack,
+                { opacity: logoFadeAnim }
+              ]}
+              resizeMode="contain"
+              fadeDuration={0}
+              onLoad={() => setIsLogoLoaded(true)}
+            />
+          </TouchableOpacity>
+        )}
         {title && <Text style={[styles.title, { color: theme === "light" ? "#0F172A" : "#ffffff" }]}>{title}</Text>}
       </Animated.View>
+
+      {showLogo && centerLogo && (
+        <Animated.View style={[
+          styles.centerSection, 
+          { 
+            opacity: centerLogoFadeAnim,
+            top: insets.top,
+            height: scaleHeight(50),
+          }
+        ]}>
+          <TouchableOpacity 
+            onPress={handleLogoPress}
+            activeOpacity={0.7}
+          >
+            <Animated.Image
+              source={theme === "light" 
+                ? require('../../assets/images/splash-icon.png')
+                : require('../../assets/images/splash-icon-dark.png')
+              }
+              style={[
+                styles.logo, 
+                { 
+                  opacity: centerLogoFadeAnim,
+                  width: scaleWidth(95),
+                  height: scaleWidth(95),
+                }
+              ]}
+              resizeMode="contain"
+              fadeDuration={0}
+              onLoad={() => setIsLogoLoaded(true)}
+            />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
       
       <Animated.View style={[styles.rightSection, { opacity: fadeAnim }]}>
         {showNotifications && (
@@ -198,10 +302,9 @@ const TopBar: React.FC<TopBarProps> = ({
             activeOpacity={0.7}
           >
             <View style={styles.notificationContainer}>
-              <Ionicons name="notifications" size={24} color={theme === "light" ? "#0F172A" : "#ffffff"} />
+              <Ionicons name="notifications" size={scaleWidth(24)} color={theme === "light" ? "#0F172A" : "#ffffff"} />
               {notificationCount > 0 && (
                 <View style={[styles.notificationBadge, { 
-                  borderColor: theme === "light" ? "#FFFFFF" : "#000000",
                   backgroundColor: "#37a4c8"
                 }]}>
                   <Text style={[styles.notificationText, { 
@@ -239,7 +342,7 @@ const TopBar: React.FC<TopBarProps> = ({
               }]}>
                 <Ionicons 
                   name="person" 
-                  size={20} 
+                  size={scaleWidth(20)} 
                   color={isOnProfilePage ? "#37a4c8" : (theme === "light" ? "#0F172A" : "#ffffff")} 
                 />
               </View>
@@ -255,14 +358,32 @@ const TopBar: React.FC<TopBarProps> = ({
   );
 };
 
+// Calculate responsive values
+const responsivePadding = scaleWidth(16);
+const responsiveGap = scaleWidth(12);
+const responsiveLogoSize = scaleWidth(95);
+const responsiveLogoWithBackSize = scaleWidth(65);
+const responsiveProfileSize = scaleWidth(40);
+const responsiveStatusIndicatorSize = scaleWidth(12);
+const responsiveBackButtonPadding = scaleWidth(4);
+const responsiveBackButtonMargin = scaleWidth(8);
+const responsiveTitleMargin = scaleWidth(8);
+const responsiveIconPadding = scaleWidth(4);
+const responsiveNotificationBadgeSize = scaleWidth(20);
+const responsiveNotificationBadgeRadius = scaleWidth(10);
+const responsiveNotificationBadgeOffset = scaleWidth(4);
+const responsiveNotificationTextSize = scaleWidth(12);
+const responsiveNotificationTextPadding = scaleWidth(4);
+
 // Type-safe styles
 const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row' as const,
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
-    paddingHorizontal: 16,
+    paddingHorizontal: responsivePadding,
     marginTop: 0,
+    position: 'relative' as const,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -278,34 +399,49 @@ const styles = StyleSheet.create({
   leftSection: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    flex: 1,
+  },
+  centerSection: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    pointerEvents: 'box-none' as const,
   },
   logo: {
-    width: 95,
-    height: 95,
+    width: responsiveLogoSize,
+    height: responsiveLogoSize,
   },
   logoWithBack: {
-    width: 65,
-    height: 65,
+    width: responsiveLogoWithBackSize,
+    height: responsiveLogoWithBackSize,
+  },
+  logoCentered: {
+    width: responsiveLogoWithBackSize,
+    height: responsiveLogoWithBackSize,
   },
   backButton: {
-    padding: 4,
-    marginRight: 8,
+    padding: responsiveBackButtonPadding,
+    marginRight: responsiveBackButtonMargin,
   },
   title: {
-    fontSize: 20,
+    fontSize: scaleWidth(20),
     fontWeight: '600',
-    marginLeft: 8,
+    marginLeft: responsiveTitleMargin,
   },
   rightSection: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 12,
+    gap: responsiveGap,
+    flex: 1,
+    justifyContent: 'flex-end' as const,
   },
   iconButton: {
-    padding: 4,
+    padding: responsiveIconPadding,
   },
   profileButton: {
-    padding: 4,
+    padding: responsiveIconPadding,
   },
   avatarContainer: {
     position: 'relative',
@@ -316,53 +452,62 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   profileImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
+    width: responsiveProfileSize,
+    height: responsiveProfileSize,
+    borderRadius: responsiveProfileSize / 2,
+    borderWidth: scaleWidth(2),
     borderColor: '#38a5c9',
   },
   profilePlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: responsiveProfileSize,
+    height: responsiveProfileSize,
+    borderRadius: responsiveProfileSize / 2,
     backgroundColor: '#1a1a1a',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: scaleWidth(2),
     borderColor: '#38a5c9',
   },
   statusIndicator: {
     position: "absolute",
     bottom: 0,
     right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: responsiveStatusIndicatorSize,
+    height: responsiveStatusIndicatorSize,
+    borderRadius: responsiveStatusIndicatorSize / 2,
     backgroundColor: "#37a4c8",
-    borderWidth: 2,
+    borderWidth: scaleWidth(2),
   },
   notificationContainer: {
     position: 'relative',
   },
   notificationBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -responsiveNotificationBadgeOffset,
+    right: -responsiveNotificationBadgeOffset,
     backgroundColor: '#FF3B30',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    borderRadius: responsiveNotificationBadgeRadius,
+    minWidth: responsiveNotificationBadgeSize,
+    height: responsiveNotificationBadgeSize,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#000000',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   notificationText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: responsiveNotificationTextSize,
     fontWeight: '600',
-    paddingHorizontal: 4,
+    paddingHorizontal: responsiveNotificationTextPadding,
   },
 });
 

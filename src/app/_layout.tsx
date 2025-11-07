@@ -38,10 +38,16 @@ const ThemeAwareStack = () => {
   
   // Define routes where bottom nav should be hidden
   const hideBottomNavRoutes = ['/login/login', '/userOnboarding', '/profileComplete'];
+  // Check if it's an individual chat conversation (not chatInbox or chatExplore)
+  const isIndividualChat = pathname.startsWith('/chat/') && 
+    pathname !== '/chat/chatInbox' && 
+    pathname !== '/chat/chatExplore';
+  
   const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
-    !pathname.startsWith('/chat/[id]') && // Only hide for individual chat conversations
+    !isIndividualChat && // Hide for individual chat conversations
     !pathname.startsWith('/event/eventChat/') && 
-    !pathname.startsWith('/ping/pingChat/') && 
+    !pathname.startsWith('/ping/pingChat/') &&
+    !pathname.startsWith('/group/chat/') && // Hide for group chat
     !pathname.includes('loading');
 
   return (
@@ -327,6 +333,70 @@ const ThemeAwareStack = () => {
           animation: 'none',
         }}
       />
+      {/* Groups Screens */}
+      <Stack.Screen
+        name="group/index"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/explore"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/[id]"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/chat/[id]"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/create"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/post/[id]"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/proposal/[id]"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/proposal/create"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="group/post/create"
+        options={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      />
     </Stack>
   );
 };
@@ -358,10 +428,24 @@ function MainLayout() {
   
   // Define routes where bottom nav should be hidden
   const hideBottomNavRoutes = ['/login/login', '/userOnboarding', '/profileComplete'];
+  // Check if it's an individual chat conversation (not chatInbox or chatExplore)
+  const isIndividualChat = pathname.startsWith('/chat/') && 
+    pathname !== '/chat/chatInbox' && 
+    pathname !== '/chat/chatExplore';
+  
+  // Hide bottom nav for settings sub-routes (but not the main settings page)
+  const isSettingsSubRoute = pathname.startsWith('/settings/') && pathname !== '/settings/settings';
+  const isProfileEditRoute = pathname.startsWith('/profile/editProfile');
+  
   const shouldShowBottomNav = !hideBottomNavRoutes.includes(pathname) && 
-    !pathname.startsWith('/chat/[id]') && // Only hide for individual chat conversations
+    !isIndividualChat && // Hide for individual chat conversations
     !pathname.startsWith('/event/eventChat/') && 
-    !pathname.startsWith('/ping/pingChat/') && 
+    !pathname.startsWith('/ping/pingChat/') &&
+    !pathname.startsWith('/group/chat/') && // Hide for group chat
+    !pathname.startsWith('/group/post/') && // Hide for group post detail
+    !pathname.startsWith('/group/proposal/') && // Hide for group proposal detail
+    !isSettingsSubRoute && // Hide for settings sub-routes
+    !isProfileEditRoute && // Hide for profile edit route
     !pathname.includes('loading');
 
   // Initialize external routes handler

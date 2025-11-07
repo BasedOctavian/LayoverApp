@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Easing, Modal, TextInput, Linking, Platform } from "react-native";
+import { Text, View, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Easing, Modal, TextInput, Linking, Platform, Share } from "react-native";
 import useEvents from "../../hooks/useEvents";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import useUsers from "../../hooks/useUsers";
 import useAuth from "../../hooks/auth";
+import useConnections from "../../hooks/useConnections";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../../../config/firebaseConfig";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
@@ -15,11 +16,12 @@ import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import useChat from "../../hooks/useChat";
-import { doc, getDoc, updateDoc, arrayUnion, deleteDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, deleteDoc, addDoc, collection, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 import LoadingImage from "../../components/LoadingImage";
 import UserAvatar from "../../components/UserAvatar";
 import * as Haptics from 'expo-haptics';
+import { generateEventShareUrl, generateWebEventShareUrl } from "../../utils/externalRoutes";
 
 interface Event {
   id: string;
@@ -115,29 +117,75 @@ const sendPushNotification = async (expoPushToken: string, eventName: string, at
 
 const notifyOrganizer = async (organizerId: string, eventName: string, attendeeName: string, eventUID: string) => {
   try {
-    const organizerDoc = await getDoc(doc(db, 'users', organizerId));
-    if (organizerDoc.exists()) {
-      const organizerData = organizerDoc.data();
-      
-      // Check if organizer has notifications enabled and has a push token
-      if (organizerData.expoPushToken && 
-          organizerData.notificationPreferences?.notificationsEnabled && 
-          organizerData.notificationPreferences?.events) {
-        await sendPushNotification(organizerData.expoPushToken, eventName, attendeeName, 'event_attendee');
-      }
-
-      // Add notification to organizer's notifications array
-      const notification = {
-        type: 'event_attendee',
-        message: `${attendeeName} is attending your event "${eventName}"`,
-        timestamp: serverTimestamp(),
-        read: false,
-        eventUID: eventUID
+    const organizerRef = doc(db, 'users', organizerId);
+    const organizerDoc = await getDoc(organizerRef);
+    
+    if (!organizerDoc.exists()) {
+      console.error('Organizer not found:', organizerId);
+      return;
+    }
+    
+    const organizerData = organizerDoc.data();
+    
+    // Create in-app notification (same style as open settings)
+    const joinNotification = {
+      id: Date.now().toString(),
+      title: "Someone Joined Your Activity! 🎉",
+      body: `${attendeeName} joined your activity "${eventName}"`,
+      data: {
+        type: "event_join",
+        eventUID: eventUID,
+        eventTitle: eventName,
+        joinedUserId: attendeeName, // Store attendee name for display
+        joinedUserName: attendeeName,
+      },
+      timestamp: new Date().toISOString(),
+      read: false,
+    };
+    
+    // Add notification to organizer's notifications array
+    await updateDoc(organizerRef, {
+      notifications: arrayUnion(joinNotification),
+    });
+    
+    // Send push notification if organizer has token and notifications enabled
+    if (
+      organizerData?.expoPushToken &&
+      organizerData?.notificationPreferences?.notificationsEnabled &&
+      (organizerData?.notificationPreferences?.activities ||
+        organizerData?.notificationPreferences?.events)
+    ) {
+      const pushPayload = {
+        to: organizerData.expoPushToken,
+        title: "Someone Joined Your Activity! 🎉",
+        body: `${attendeeName} joined your activity "${eventName}"`,
+        sound: "default",
+        priority: "high",
+        data: {
+          type: "event_join",
+          eventUID: eventUID,
+          eventTitle: eventName,
+          joinedUserName: attendeeName,
+        },
       };
-
-      await updateDoc(doc(db, 'users', organizerId), {
-        notifications: arrayUnion(notification)
-      });
+      
+      try {
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Accept-encoding": "gzip, deflate",
+          },
+          body: JSON.stringify(pushPayload),
+        });
+        
+        if (!response.ok) {
+          console.error('Push notification failed:', response.status);
+        }
+      } catch (pushError) {
+        console.error('Error sending push notification:', pushError);
+      }
     }
   } catch (error) {
     console.error('Error notifying organizer:', error);
@@ -203,7 +251,7 @@ const notifyAdmins = async (eventName: string) => {
       // Send push notification if attendee has token and notifications enabled
       if (attendeeData.expoPushToken && 
           attendeeData.notificationPreferences?.notificationsEnabled && 
-          attendeeData.notificationPreferences?.events) {
+          (attendeeData.notificationPreferences?.activities || attendeeData.notificationPreferences?.events)) {
         await sendPushNotification(
           attendeeData.expoPushToken,
           eventName,
@@ -216,6 +264,87 @@ const notifyAdmins = async (eventName: string) => {
     await Promise.all(notificationPromises);
   } catch (error) {
     console.error("Error notifying attendees:", error);
+  }
+};
+
+const notifyEventCancellation = async (event: Event) => {
+  try {
+    if (!event?.participants?.length) return;
+
+    // Get all participant documents
+    const attendeeDocs = await Promise.all(
+      event.participants.map((participantId: string) => getDoc(doc(db, 'users', participantId)))
+    );
+
+    // Process each attendee (excluding the organizer)
+    const notificationPromises = attendeeDocs.map(async (attendeeDoc: any) => {
+      if (!attendeeDoc.exists()) return;
+
+      // Skip if this attendee is the creator/organizer of the event
+      if (attendeeDoc.id === event.creatorId) return;
+
+      const attendeeData = attendeeDoc.data();
+      
+      // Create cancellation notification
+      const cancellationNotification = {
+        id: Date.now().toString(),
+        title: "Event Cancelled",
+        body: `The event "${event.title}" has been cancelled`,
+        data: {
+          type: "event_cancelled",
+          eventUID: event.eventUID || event.id,
+          eventTitle: event.title,
+        },
+        timestamp: new Date().toISOString(),
+        read: false,
+      };
+
+      // Add notification to attendee's notifications array
+      await updateDoc(doc(db, 'users', attendeeDoc.id), {
+        notifications: arrayUnion(cancellationNotification)
+      });
+
+      // Send push notification if attendee has token and notifications enabled
+      if (attendeeData.expoPushToken && 
+          attendeeData.notificationPreferences?.notificationsEnabled && 
+          (attendeeData.notificationPreferences?.activities || attendeeData.notificationPreferences?.events)) {
+        const pushPayload = {
+          to: attendeeData.expoPushToken,
+          title: "Event Cancelled",
+          body: `The event "${event.title}" has been cancelled`,
+          sound: "default",
+          priority: "high",
+          data: {
+            type: "event_cancelled",
+            eventUID: event.eventUID || event.id,
+            eventTitle: event.title,
+            timestamp: new Date().toISOString()
+          },
+        };
+        
+        try {
+          const response = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "Accept-encoding": "gzip, deflate",
+            },
+            body: JSON.stringify(pushPayload),
+          });
+          
+          if (!response.ok) {
+            console.error('Push notification failed:', response.status);
+          }
+        } catch (pushError) {
+          console.error('Error sending push notification:', pushError);
+        }
+      }
+    });
+
+    await Promise.all(notificationPromises);
+  } catch (error) {
+    console.error("Error notifying event cancellation:", error);
   }
 };
 
@@ -282,6 +411,7 @@ export default function Event() {
   const eventId = Array.isArray(id) ? id[0] : id;
   const { getEvent, updateEvent } = useEvents();
   const { getUser } = useUsers();
+  const { getUserConnections } = useConnections();
   const [event, setEvent] = useState<Event | null>(null);
   const [organizer, setOrganizer] = useState<UserData | null>(null);
   const [isAttending, setIsAttending] = useState(false);
@@ -302,10 +432,19 @@ export default function Event() {
   const { messages } = useChat(eventId);
   const messageCount = messages?.length || 0;
 
+  // Invite functionality state
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [connections, setConnections] = useState<any[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
+  const [invitingUser, setInvitingUser] = useState<string | null>(null);
+  const [currentUserData, setCurrentUserData] = useState<any>(null);
+
   // Animation values for bounce effect
   const contentBounceAnim = useRef(new Animated.Value(0)).current;
   const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
   const loadingStartTime = useRef<number | null>(null);
+  const invitingSpinnerAnim = useRef(new Animated.Value(0)).current;
+  const loadingSpinnerAnim = useRef(new Animated.Value(0)).current;
 
   // Edit functionality state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -319,7 +458,7 @@ export default function Event() {
   // Privacy options for organizers
   const privacyOptions = [
     { id: 'open', label: 'Open', description: 'Anyone can join', icon: 'public' },
-    { id: 'invite-only', label: 'Invite Only', description: 'You approve requests', icon: 'person-add' },
+    { id: 'invite-only', label: 'Invite Only', description: 'Only invited users can join', icon: 'person-add' },
     { id: 'friends-only', label: 'Friends Only', description: 'Only your available connections', icon: 'people' }
   ];
 
@@ -355,6 +494,57 @@ export default function Event() {
         const eventData = await getEvent(eventId);
         if (eventData) {
           const typedEventData = eventData as Event;
+          
+          // Access control check
+          if (user?.uid) {
+            const isCreator = typedEventData.creatorId === user.uid;
+            const isParticipant = typedEventData.participants?.includes(user.uid);
+            
+            // Check if user has permission to view this event
+            if (typedEventData.pingType === 'invite-only') {
+              // Invite-only: only creator and participants can view
+              if (!isCreator && !isParticipant) {
+                Alert.alert(
+                  'Access Denied',
+                  'This is an invite-only event. You need to be invited to view it.',
+                  [{ text: 'OK', onPress: () => router.back() }]
+                );
+                setInitialLoadComplete(true);
+                return;
+              }
+            } else if (typedEventData.pingType === 'friends-only') {
+              // Friends-only: only creator and their connections can view
+              if (!isCreator && !isParticipant) {
+                // Check if user is connected to creator
+                try {
+                  const connectionsRef = collection(db, 'connections');
+                  const q = query(connectionsRef, where('participants', 'array-contains', user.uid));
+                  const snapshot = await getDocs(q);
+                  
+                  let isConnected = false;
+                  snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.status === 'active' && data.participants.includes(typedEventData.creatorId)) {
+                      isConnected = true;
+                    }
+                  });
+                  
+                  if (!isConnected) {
+                    Alert.alert(
+                      'Access Denied',
+                      'This is a friends-only event. You need to be connected with the creator to view it.',
+                      [{ text: 'OK', onPress: () => router.back() }]
+                    );
+                    setInitialLoadComplete(true);
+                    return;
+                  }
+                } catch (error) {
+                  console.error('Error checking connection status:', error);
+                }
+              }
+            }
+          }
+          
           setEvent(typedEventData);
           const creatorID = typedEventData.creatorId;
           if (creatorID) {
@@ -378,7 +568,7 @@ export default function Event() {
         }
       })();
     }
-  }, [eventId]);
+  }, [eventId, user?.uid]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -422,6 +612,196 @@ export default function Event() {
       ]).start();
     }
   }, [loading, initialLoadComplete, event]);
+
+  // Spinner animations for invite modal
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(invitingSpinnerAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    ).start();
+
+    Animated.loop(
+      Animated.timing(loadingSpinnerAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    ).start();
+  }, []);
+
+  // Fetch connections when invite modal opens
+  useEffect(() => {
+    if (showInviteModal && user?.uid) {
+      fetchUserConnections();
+      fetchCurrentUserData();
+    }
+  }, [showInviteModal, user?.uid]);
+
+  // Fetch current user data for invitations
+  const fetchCurrentUserData = async () => {
+    if (!user?.uid) return;
+    try {
+      const userData = await getUser(user.uid);
+      setCurrentUserData(userData);
+    } catch (error) {
+      console.error('Error fetching current user data:', error);
+    }
+  };
+
+  // Fetch user connections for invitations
+  const fetchUserConnections = async () => {
+    if (!user?.uid) return;
+    
+    setLoadingConnections(true);
+    try {
+      const userConnections = await getUserConnections(user.uid);
+      
+      // Get detailed user data for each connection
+      const connectionsWithUserData = await Promise.all(
+        userConnections
+          .filter(connection => connection.status === 'active')
+          .map(async (connection) => {
+            const otherUserId = connection.participants.find(id => id !== user.uid);
+            if (!otherUserId) return null;
+            
+            try {
+              const userData = await getUser(otherUserId);
+              return {
+                ...connection,
+                otherUser: userData
+              };
+            } catch (error) {
+              console.error('Error fetching user data for connection:', error);
+              return null;
+            }
+          })
+      );
+      
+      setConnections(connectionsWithUserData.filter(Boolean));
+    } catch (error) {
+      console.error('Error fetching connections:', error);
+    } finally {
+      setLoadingConnections(false);
+    }
+  };
+
+  // Handle inviting a connection to the event
+  const handleInviteConnection = async (connectionUserId: string, connectionUserName: string) => {
+    if (!event || !user) return;
+    
+    setInvitingUser(connectionUserId);
+    try {
+      // Get the connection user's document
+      const connectionUserRef = doc(db, 'users', connectionUserId);
+      const connectionUserDoc = await getDoc(connectionUserRef);
+      
+      if (!connectionUserDoc.exists()) {
+        Alert.alert('Error', 'User not found');
+        return;
+      }
+      
+      const connectionUserData = connectionUserDoc.data();
+      
+      // Create invitation notification
+      const notification = {
+        id: Date.now().toString(),
+        title: `Event Invitation`,
+        body: `${currentUserData?.name || 'Someone'} invited you to join "${event.title}"`,
+        data: {
+          type: 'event_invitation',
+          eventId: event.id,
+          eventUID: event.eventUID,
+          eventTitle: event.title,
+          inviterId: user.uid,
+          inviterName: currentUserData?.name || 'Someone',
+          eventLocation: event.location,
+          eventCategory: event.category
+        },
+        timestamp: new Date(),
+        read: false
+      };
+      
+      // Add notification to connection user's notifications array
+      await updateDoc(connectionUserRef, {
+        notifications: arrayUnion(notification)
+      });
+      
+      // Send push notification if user has token and notifications enabled
+      if (connectionUserData.expoPushToken && 
+          connectionUserData.notificationPreferences?.notificationsEnabled && 
+          (connectionUserData.notificationPreferences?.activities || connectionUserData.notificationPreferences?.events)) {
+        
+        const pushPayload = {
+          to: connectionUserData.expoPushToken,
+          title: `Event Invitation`,
+          body: `${currentUserData?.name || 'Someone'} invited you to join "${event.title}"`,
+          sound: 'default',
+          priority: 'high',
+          data: {
+            type: 'event_invitation',
+            eventId: event.id,
+            eventUID: event.eventUID,
+            eventTitle: event.title,
+            inviterId: user.uid,
+            inviterName: currentUserData?.name || 'Someone',
+            eventLocation: event.location,
+            eventCategory: event.category
+          },
+        };
+
+        try {
+          await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+            },
+            body: JSON.stringify(pushPayload),
+          });
+        } catch (error) {
+          console.error('Error sending push notification:', error);
+        }
+      }
+      
+      Alert.alert('Success', `Invitation sent to ${connectionUserName}!`);
+      
+    } catch (error) {
+      console.error('Error in invitation process:', error);
+      Alert.alert('Error', 'Failed to send invitation. Please try again.');
+    } finally {
+      setInvitingUser(null);
+    }
+  };
+
+  const formatLastActive = (lastLogin: any) => {
+    if (!lastLogin) return 'Unknown';
+    
+    try {
+      const lastLoginDate = lastLogin.toDate ? lastLogin.toDate() : new Date(lastLogin);
+      const now = new Date();
+      const diffInMinutes = Math.floor((now.getTime() - lastLoginDate.getTime()) / (1000 * 60));
+      
+      if (diffInMinutes < 1) return 'Just now';
+      if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+      
+      const diffInHours = Math.floor(diffInMinutes / 60);
+      if (diffInHours < 24) return `${diffInHours}h ago`;
+      
+      const diffInDays = Math.floor(diffInHours / 24);
+      if (diffInDays < 7) return `${diffInDays}d ago`;
+      
+      return lastLoginDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (error) {
+      console.error('Error formatting last active:', error);
+      return 'Unknown';
+    }
+  };
 
   // Existing handler functions
   const formatDateTime = (timestamp: any) => {
@@ -555,6 +935,80 @@ export default function Event() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle share event
+  const handleShareEvent = async () => {
+    if (!event) return;
+    
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Generate shareable URL
+      const deepLinkUrl = generateEventShareUrl(event.id);
+      
+      // Build share message
+      const shareMessage = `${event.title} - Wingman\n${deepLinkUrl}`;
+      
+      await Share.share({
+        message: shareMessage,
+        title: `${event.title} - Wingman`,
+        url: deepLinkUrl,
+      });
+    } catch (error) {
+      console.error('Error sharing event:', error);
+      Alert.alert('Error', 'Failed to share event. Please try again.');
+    }
+  };
+
+  // Handle delete event
+  const handleDeleteEvent = async () => {
+    if (!event || !user || user.uid !== event.creatorId) return;
+
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${event.title}"? This action cannot be undone and all attendees will be notified.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+              // Notify all attendees about cancellation
+              await notifyEventCancellation(event);
+
+              // Delete all chat messages in the subcollection
+              try {
+                const messagesRef = collection(db, 'events', event.id, 'messages');
+                const messagesSnapshot = await getDocs(messagesRef);
+                const deleteMessagePromises = messagesSnapshot.docs.map((messageDoc) => 
+                  deleteDoc(doc(db, 'events', event.id, 'messages', messageDoc.id))
+                );
+                await Promise.all(deleteMessagePromises);
+              } catch (error) {
+                console.error('Error deleting messages:', error);
+                // Continue with event deletion even if message deletion fails
+              }
+
+              // Delete the event document
+              const eventRef = doc(db, 'events', event.id);
+              await deleteDoc(eventRef);
+
+              Alert.alert('Event Deleted', `"${event.title}" has been deleted and all attendees have been notified.`);
+              router.back();
+            } catch (error) {
+              console.error('Error deleting event:', error);
+              Alert.alert('Error', 'Failed to delete event. Please try again.');
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Add report handler
@@ -875,12 +1329,31 @@ export default function Event() {
     setShowEditModal(true);
   };
 
+  const postSystemMessage = async (updateMessage: string) => {
+    if (!event) return;
+    
+    try {
+      const messagesRef = collection(db, 'events', event.id, 'messages');
+      await addDoc(messagesRef, {
+        text: updateMessage,
+        userId: 'SYSTEM',
+        userName: 'System',
+        timestamp: new Date(),
+        isSystemMessage: true
+      });
+    } catch (error) {
+      console.error('Error posting system message:', error);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!editingField || !event || !user) return;
     
     setLoading(true);
     setLoadingMessage("Updating event...");
     try {
+      const oldValue = event[editingField as keyof Event];
+      
       // Update the event document in Firestore
       const eventRef = doc(db, 'events', event.id);
       await updateDoc(eventRef, {
@@ -890,6 +1363,10 @@ export default function Event() {
       
       // Update local state
       setEvent(prev => prev ? { ...prev, [editingField]: editValue } : null);
+      
+      // Post system message to chat
+      const fieldName = getFieldDisplayName(editingField);
+      await postSystemMessage(`${fieldName} updated: "${oldValue}" → "${editValue}"`);
       
       // Notify attendees about the update
       await notifyAttendees(event, event.title, editingField, event.eventUID);
@@ -982,6 +1459,8 @@ export default function Event() {
     setLoading(true);
     setLoadingMessage("Updating privacy settings...");
     try {
+      const oldType = getPrivacyTypeLabel(event.pingType);
+      
       const eventRef = doc(db, 'events', event.id);
       await updateDoc(eventRef, {
         pingType: newPrivacyType,
@@ -991,11 +1470,15 @@ export default function Event() {
       // Update local state
       setEvent(prev => prev ? { ...prev, pingType: newPrivacyType } : null);
       
+      // Post system message to chat
+      const newType = getPrivacyTypeLabel(newPrivacyType);
+      await postSystemMessage(`Privacy updated: Event is now ${newType}`);
+      
       // Notify attendees about the privacy change
       await notifyAttendees(event, event.title, 'privacy', event.eventUID);
       
       setShowPrivacyModal(false);
-      Alert.alert('Privacy Updated', `Event is now ${getPrivacyTypeLabel(newPrivacyType)}`);
+      Alert.alert('Privacy Updated', `Event is now ${newType}`);
       
       // Provide haptic feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1066,14 +1549,23 @@ export default function Event() {
                       {event.category}
                     </Text>
                   </View>
-                  {isOrganizer && (
+                  <View style={styles.titleActions}>
                     <TouchableOpacity 
-                      style={styles.editButton}
-                      onPress={() => handleEditField('title', event.title)}
+                      style={styles.shareButton}
+                      onPress={handleShareEvent}
+                      activeOpacity={0.7}
                     >
-                      <Feather name="edit-2" size={16} color="#37a4c8" />
+                      <Ionicons name="share-outline" size={18} color="#37a4c8" />
                     </TouchableOpacity>
-                  )}
+                    {isOrganizer && (
+                      <TouchableOpacity 
+                        style={styles.editButton}
+                        onPress={() => handleEditField('title', event.title)}
+                      >
+                        <Feather name="edit-2" size={16} color="#37a4c8" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
                 
 
@@ -1264,12 +1756,27 @@ export default function Event() {
                   <Text style={[styles.sectionTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
                     Participants ({event.participantCount || 0})
                   </Text>
-                  <TouchableOpacity 
-                    style={styles.viewAllButton}
-                    onPress={handleShowAttendees}
-                  >
-                    <Text style={styles.viewAllText}>View All</Text>
-                  </TouchableOpacity>
+                  <View style={styles.participantsHeaderActions}>
+                    {isOrganizer && (
+                      <TouchableOpacity 
+                        style={[styles.inviteButton, {
+                          backgroundColor: theme === "light" ? "rgba(156, 39, 176, 0.1)" : "rgba(156, 39, 176, 0.15)",
+                          borderColor: "#9C27B0"
+                        }]}
+                        onPress={() => setShowInviteModal(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="paper-plane" size={14} color="#9C27B0" />
+                        <Text style={[styles.inviteButtonText, { color: "#9C27B0" }]}>Invite</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity 
+                      style={styles.viewAllButton}
+                      onPress={handleShowAttendees}
+                    >
+                      <Text style={styles.viewAllText}>View All</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 
                 <View style={styles.participantsContainer}>
@@ -1474,6 +1981,28 @@ export default function Event() {
                       { color: theme === "light" ? "#0F172A" : "#e4fbfe" }
                     ]}>
                       Get Directions
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {/* Cancel Event Container - Only for Organizers */}
+              {isOrganizer && (
+                <TouchableOpacity 
+                  style={styles.directionsButton}
+                  onPress={handleDeleteEvent}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.directionsButtonGradient,
+                    { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+                  ]}>
+                    <MaterialIcons name="cancel" size={20} color="#ef4444" />
+                    <Text style={[
+                      styles.directionsButtonText,
+                      { color: "#ef4444" }
+                    ]}>
+                      Cancel Event
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -1808,6 +2337,228 @@ export default function Event() {
         </Modal>
 
         {renderAttendeesModal()}
+
+        {/* Invite Connections Modal */}
+        <Modal 
+          visible={showInviteModal} 
+          animationType="slide" 
+          transparent={true}
+          onRequestClose={() => setShowInviteModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.inviteModalContent, { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }]}>
+              {/* Header */}
+              <View style={[styles.inviteModalHeader, { 
+                borderBottomColor: theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.08)" 
+              }]}>
+                <View style={styles.inviteModalHeaderContent}>
+                  <Text style={[styles.inviteModalTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                    Invite Connections
+                  </Text>
+                  <Text style={[styles.inviteModalSubtitle, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                    Share this event with your connections
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.closeButton, { 
+                    backgroundColor: theme === "light" ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)" 
+                  }]}
+                  onPress={() => setShowInviteModal(false)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color={theme === "light" ? "#0F172A" : "#e4fbfe"} />
+                </TouchableOpacity>
+              </View>
+              
+              {/* Content */}
+              <ScrollView 
+                style={styles.inviteModalBody} 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.inviteModalScrollContent}
+              >
+                {loadingConnections ? (
+                  <View style={styles.loadingContainer}>
+                    <Animated.View 
+                      style={[
+                        styles.loadingSpinner, 
+                        { 
+                          borderColor: theme === "light" ? "rgba(55, 164, 200, 0.2)" : "rgba(55, 164, 200, 0.3)",
+                          borderTopColor: "#37a4c8",
+                          transform: [{
+                            rotate: loadingSpinnerAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ['0deg', '360deg']
+                            })
+                          }]
+                        }
+                      ]} 
+                    />
+                    <Text style={[styles.loadingText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Loading your connections...
+                    </Text>
+                  </View>
+                ) : connections.length > 0 ? (
+                  <>
+                    <Text style={[styles.connectionsCount, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      {connections.length} connection{connections.length !== 1 ? 's' : ''} available
+                    </Text>
+                    {connections.map((connection, idx) => (
+                      <View key={connection.id || idx} style={[styles.inviteConnectionItem, { 
+                        backgroundColor: theme === "light" ? "#ffffff" : "#2a2a2a",
+                        borderColor: theme === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.06)",
+                      }]}>
+                        {/* Top Row: Avatar and User Info */}
+                        <View style={styles.topRow}>
+                          {/* Avatar */}
+                          <View style={styles.avatarContainer}>
+                            <UserAvatar user={connection.otherUser} size={48} />
+                            <View style={[
+                              styles.onlineIndicator,
+                              { 
+                                backgroundColor: (() => {
+                                  if (!connection.otherUser.lastLogin) return '#94A3B8';
+                                  const lastLogin = connection.otherUser.lastLogin.toDate ? 
+                                    connection.otherUser.lastLogin.toDate() : 
+                                    new Date(connection.otherUser.lastLogin);
+                                  const now = new Date();
+                                  const diffInMinutes = (now.getTime() - lastLogin.getTime()) / (1000 * 60);
+                                  return diffInMinutes <= 30 ? '#10B981' : '#94A3B8';
+                                })()
+                              }
+                            ]} />
+                          </View>
+                          
+                          {/* User Info */}
+                          <View style={styles.userInfoContainer}>
+                            <View style={styles.nameRow}>
+                              <Text style={[styles.inviteConnectionName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                                {connection.otherUser.name}
+                              </Text>
+                              {connection.otherUser.age && (
+                                <Text style={[styles.ageText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                                  {connection.otherUser.age}
+                                </Text>
+                              )}
+                            </View>
+                            
+                            <View style={styles.metaRow}>
+                              <View style={styles.metaItem}>
+                                <Ionicons 
+                                  name="location" 
+                                  size={12} 
+                                  color={theme === "light" ? "#64748B" : "#94A3B8"} 
+                                  style={styles.metaIcon}
+                                />
+                                <Text style={[styles.metaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                                  {connection.otherUser.airportCode || 'Unknown'}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.metaDivider} />
+                              
+                              <View style={styles.metaItem}>
+                                <Ionicons 
+                                  name="time" 
+                                  size={12} 
+                                  color={theme === "light" ? "#64748B" : "#94A3B8"} 
+                                  style={styles.metaIcon}
+                                />
+                                <Text style={[styles.metaText, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                                  {formatLastActive(connection.otherUser.lastLogin)}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                        
+                        {/* Bottom Row: Invite Button */}
+                        <View style={styles.buttonRow}>
+                          <TouchableOpacity
+                            style={[
+                              styles.inviteButtonModal,
+                              { 
+                                backgroundColor: invitingUser === connection.otherUser.id 
+                                  ? "#9C27B0"
+                                  : theme === "light" 
+                                    ? "#f8f9fa" 
+                                    : "#3a3a3a",
+                                borderColor: invitingUser === connection.otherUser.id 
+                                  ? "#9C27B0"
+                                  : theme === "light" 
+                                    ? "rgba(156, 39, 176, 0.2)" : 
+                                    "rgba(156, 39, 176, 0.3)"
+                              }
+                            ]}
+                            onPress={() => handleInviteConnection(connection.otherUser.id, connection.otherUser.name)}
+                            disabled={invitingUser === connection.otherUser.id}
+                            activeOpacity={0.7}
+                          >
+                            {invitingUser === connection.otherUser.id ? (
+                              <View style={styles.invitingContent}>
+                                <Animated.View 
+                                  style={[
+                                    styles.invitingSpinner, 
+                                    { 
+                                      borderTopColor: "#ffffff",
+                                      transform: [{
+                                        rotate: invitingSpinnerAnim.interpolate({
+                                          inputRange: [0, 1],
+                                          outputRange: ['0deg', '360deg']
+                                        })
+                                      }]
+                                    }
+                                  ]} 
+                                />
+                                <Text style={styles.inviteButtonTextActive}>Inviting...</Text>
+                              </View>
+                            ) : (
+                              <>
+                                <Ionicons name="paper-plane" size={16} color="#9C27B0" />
+                                <Text style={[styles.inviteButtonText, { color: "#9C27B0" }]}>
+                                  Invite
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <View style={[styles.noConnectionsContainer, { 
+                    backgroundColor: theme === "light" ? "#f8f9fa" : "#2a2a2a",
+                    borderColor: theme === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.06)",
+                  }]}>
+                    <View style={[styles.noConnectionsIcon, { 
+                      backgroundColor: theme === "light" ? "rgba(156, 39, 176, 0.1)" : "rgba(156, 39, 176, 0.15)" 
+                    }]}>
+                      <MaterialIcons name="people-outline" size={32} color="#9C27B0" />
+                    </View>
+                    <Text style={[styles.noConnectionsText, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
+                      No connections yet
+                    </Text>
+                    <Text style={[styles.noConnectionsSubtext, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+                      Connect with people first to invite them to events
+                    </Text>
+                    <TouchableOpacity 
+                      style={[styles.exploreButton, { 
+                        backgroundColor: "#9C27B0",
+                        borderColor: "#9C27B0"
+                      }]}
+                      onPress={() => {
+                        setShowInviteModal(false);
+                        router.push('/explore');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.exploreButtonText}>Explore People</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -2006,7 +2757,31 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   editButton: {
-    padding: 4,
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+    marginLeft: 8,
+  },
+  cancelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 12,
+    shadowColor: "#ef4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   modalContainer: {
     flex: 1,
@@ -2197,6 +2972,16 @@ const styles = StyleSheet.create({
   titleContent: {
     flex: 1,
   },
+  titleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shareButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+  },
   title: {
     fontSize: 24,
     fontWeight: '700',
@@ -2293,6 +3078,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
+  },
+  participantsHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  inviteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
   },
   organizerIconContainer: {
     width: 50,
@@ -2609,5 +3408,223 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: 0.3,
+  },
+  // Invite modal styles
+  inviteModalContent: {
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '85%',
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+  },
+  inviteModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+  },
+  inviteModalHeaderContent: {
+    flex: 1,
+    marginRight: 16,
+  },
+  inviteModalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  inviteModalSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginTop: 4,
+  },
+  inviteModalBody: {
+    maxHeight: 550,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+  },
+  inviteModalScrollContent: {
+    paddingBottom: 24,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  loadingSpinner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  connectionsCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  inviteConnectionItem: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  userInfoContainer: {
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 8,
+  },
+  inviteConnectionName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  ageText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  metaIcon: {
+    marginRight: 4,
+  },
+  metaText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  metaDivider: {
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#94A3B8',
+  },
+  buttonRow: {
+    alignItems: 'center',
+  },
+  inviteButtonModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    width: '100%',
+    justifyContent: 'center',
+    shadowColor: "#9C27B0",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  inviteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  invitingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  invitingSpinner: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  inviteButtonTextActive: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  noConnectionsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 20,
+  },
+  noConnectionsIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  noConnectionsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noConnectionsSubtext: {
+    fontSize: 13,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  exploreButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  exploreButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

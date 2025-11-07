@@ -15,7 +15,9 @@ import {
   Platform,
   Share,
   Linking,
+  Dimensions,
 } from "react-native";
+import { scaleFontSize, scaleHeight, scaleWidth, moderateScale, spacing, borderRadius, isSmallDevice } from "../../utils/responsive";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 import { 
@@ -630,6 +632,11 @@ const Profile = () => {
   const fetchUserData = useCallback(async () => {
     if (!userId || !id) return;
     
+    // Don't fetch if user is not authenticated (e.g., during logout)
+    if (!authUser) {
+      return;
+    }
+    
     setIsLoadingProfile(true);
     setIsLoadingContent(true);
     
@@ -681,16 +688,22 @@ const Profile = () => {
           }, 300);
         });
       } else {
-        setError("No user data found.");
+        // Only show error if user is still authenticated
+        if (authUser) {
+          setError("No user data found.");
+        }
       }
     } catch (error) {
       console.error("Error fetching user data:", error);
-      setError("Failed to fetch user data.");
+      // Only show error if user is still authenticated
+      if (authUser) {
+        setError("Failed to fetch user data.");
+      }
     } finally {
       setIsLoadingProfile(false);
       setIsLoadingContent(false);
     }
-  }, [userId, id, headerFadeAnim, scaleAnim, sectionsFadeAnim, cardScaleAnim, socialFadeAnim]);
+  }, [userId, id, authUser, headerFadeAnim, scaleAnim, sectionsFadeAnim, cardScaleAnim, socialFadeAnim]);
 
   const fetchCurrentUserData = useCallback(async () => {
     if (!authUser?.uid || isOwnProfile) return;
@@ -913,31 +926,15 @@ const Profile = () => {
     try {
       triggerHapticFeedback('light');
       
-      // Generate shareable URLs
+      // Generate shareable URL
       const deepLinkUrl = generateProfileShareUrl(id);
-      const webUrl = generateWebProfileShareUrl(id);
       
-      // Build up profile info
-      const nameLine = `${userData?.name || 'User'}${userData?.pronouns ? ` (${userData.pronouns})` : ''}`;
-      const ageLine = userData?.age ? `Age: ${userData.age}` : '';
-      const airportLine = userData?.airportCode ? `Airport: ${userData.airportCode}` : '';
-      const bioLine = userData?.bio ? `Bio: ${userData.bio}` : '';
-      const photoLine = userData?.profilePicture ? `Profile Photo: ${userData.profilePicture}` : '';
-      
-      // Create share message with all info
-      const shareMessage =
-        `Check out this Wingman profile!\n\n` +
-        `${nameLine}\n` +
-        (ageLine ? `${ageLine}\n` : '') +
-        (airportLine ? `${airportLine}\n` : '') +
-        (bioLine ? `${bioLine}\n` : '') +
-        (photoLine ? `${photoLine}\n` : '') +
-        `\nOpen in app: ${deepLinkUrl}\n` +
-        `Or view on web: ${webUrl}`;
+      // Create share message
+      const shareMessage = `${userData?.name} - Wingman\n${deepLinkUrl}`;
       
       await Share.share({
         message: shareMessage,
-        title: `${userData?.name}'s Profile`,
+        title: `${userData?.name} - Wingman`,
         url: deepLinkUrl, // iOS will use this for deep linking
       });
     } catch (error) {
@@ -1560,6 +1557,7 @@ const Profile = () => {
         return (
           <SocialTab
             userData={userData}
+            userId={id}
             theme={theme}
             tabFadeAnim={tabFadeAnim}
             tabScaleAnim={tabScaleAnim}
@@ -1843,12 +1841,12 @@ const Profile = () => {
                 backgroundColor: theme === "light" ? "#37a4c8" : "#000000",
                 borderColor: theme === "light" ? "#38a5c9" : "#37a4c8",
               }]}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
               onPress={() => router.push('/profile/editProfile')}
             >
               <MaterialIcons 
                 name="edit" 
-                size={24} 
+                size={28} 
                 color={theme === "light" ? "#ffffff" : "#37a4c8"} 
               />
             </TouchableOpacity>
@@ -1875,19 +1873,14 @@ const Profile = () => {
         />
 
         {/* Status Sheet */}
-        {showStatusSheet && (
-          <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.2)', zIndex: 1 }]} />
-        )}
-        <View style={{ zIndex: 2 }}>
-          <StatusSheet
-            showStatusSheet={showStatusSheet}
-            sheetAnim={sheetAnim}
-            customStatus={customStatus}
-            setCustomStatus={setCustomStatus}
-            handleUpdateMoodStatus={handleUpdateMoodStatus}
-            toggleStatusSheet={toggleStatusSheet}
-          />
-        </View>
+        <StatusSheet
+          showStatusSheet={showStatusSheet}
+          sheetAnim={sheetAnim}
+          customStatus={customStatus}
+          setCustomStatus={setCustomStatus}
+          handleUpdateMoodStatus={handleUpdateMoodStatus}
+          toggleStatusSheet={toggleStatusSheet}
+        />
       </LinearGradient>
     </SafeAreaView>
   );
@@ -1896,7 +1889,7 @@ const Profile = () => {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    marginBottom: -20,
+    marginBottom: scaleHeight(-20),
   },
   gradient: {
     flex: 1,
@@ -1911,7 +1904,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(56, 165, 201, 0.2)',
   },
   logo: {
-    fontSize: 20,
+    fontSize: scaleFontSize(20),
     fontWeight: "700",
     color: "#e4fbfe",
     letterSpacing: 0.5,
@@ -1919,12 +1912,12 @@ const styles = StyleSheet.create({
   topBarRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: spacing.lg,
   },
   settingsGradient: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: moderateScale(20),
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -1934,29 +1927,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 160,
-    paddingTop: 16,
+    padding: spacing.xl,
+    paddingBottom: scaleHeight(160),
+    paddingTop: spacing.xl,
   },
   contentContainer: {
     flex: 1,
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 16,
-    paddingTop: 80,
+    marginBottom: spacing.lg,
+    paddingTop: scaleHeight(80),
     position: 'relative',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 16,
-    marginTop: 10,
+    marginBottom: spacing.lg,
+    marginTop: spacing.sm,
   },
   profileImage: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: moderateScale(128),
+    height: moderateScale(128),
+    borderRadius: moderateScale(64),
     borderWidth: 2,
     borderColor: '#37a4c8',
     backgroundColor: 'rgba(55, 164, 200, 0.05)',
@@ -1979,20 +1972,20 @@ const styles = StyleSheet.create({
   },
   nameContainer: {
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: spacing.md,
     width: '100%',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
   },
   nameText: {
-    fontSize: 32,
+    fontSize: scaleFontSize(isSmallDevice() ? 28 : 32),
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     letterSpacing: -0.5,
     textAlign: 'center',
-    lineHeight: 38,
+    lineHeight: scaleFontSize(isSmallDevice() ? 34 : 38),
   },
   pronounsText: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: "400",
     opacity: 0.6,
     letterSpacing: -0.1,
@@ -2001,105 +1994,106 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 16,
+    gap: spacing.lg,
+    marginTop: spacing.lg,
     flexWrap: 'wrap',
     width: '100%',
+    paddingHorizontal: spacing.sm,
   },
   ageContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(55, 164, 200, 0.12)",
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 18,
+    height: moderateScale(36),
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.xl,
     borderWidth: 1.5,
     borderColor: "#37a4c8",
-    minWidth: 130,
+    minWidth: scaleWidth(130),
     justifyContent: 'center',
     shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: moderateScale(2) },
     shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 3,
   },
   moodContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(55, 164, 200, 0.12)",
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 18,
+    height: moderateScale(36),
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.xl,
     borderWidth: 1.5,
     borderColor: "#37a4c8",
-    minWidth: 130,
+    minWidth: scaleWidth(130),
     justifyContent: 'center',
     shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: moderateScale(2) },
     shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowRadius: moderateScale(4),
     elevation: 3,
   },
   ageText: {
-    fontSize: 13,
-    marginLeft: 6,
+    fontSize: scaleFontSize(13),
+    marginLeft: spacing.xs,
     fontWeight: "600",
     flex: 1,
     textAlign: 'center',
-    lineHeight: 36,
+    lineHeight: moderateScale(36),
     letterSpacing: 0.2,
   },
   moodText: {
-    fontSize: 13,
-    marginLeft: 6,
+    fontSize: scaleFontSize(13),
+    marginLeft: spacing.xs,
     fontWeight: "600",
     flex: 1,
     textAlign: 'center',
-    lineHeight: 36,
+    lineHeight: moderateScale(36),
     letterSpacing: 0.2,
   },
   sectionsContainer: {
     flex: 1,
   },
   card: {
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
     borderWidth: 0.5,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: moderateScale(2) },
+    shadowRadius: moderateScale(8),
     elevation: 2,
-    marginBottom: 16,
+    marginBottom: spacing.lg,
     shadowColor: 'rgba(0, 0, 0, 0.04)',
     shadowOpacity: 0.08,
     overflow: 'hidden',
   },
   aboutCard: {
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   gridContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    gap: 16,
+    gap: spacing.lg,
   },
   gridCard: {
     width: "100%",
-    minHeight: 120,
-    marginBottom: 12,
+    minHeight: scaleHeight(120),
+    marginBottom: spacing.md,
   },
   cardIcon: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   cardTitle: {
-    fontSize: 20,
+    fontSize: scaleFontSize(20),
     fontWeight: "600",
-    marginBottom: 16,
+    marginBottom: spacing.lg,
     letterSpacing: -0.2,
     flexShrink: 1,
   },
   cardContent: {
-    fontSize: 16,
-    lineHeight: 26,
+    fontSize: scaleFontSize(16),
+    lineHeight: scaleFontSize(26),
     letterSpacing: 0.1,
     fontWeight: "400",
   },
@@ -2246,20 +2240,20 @@ const styles = StyleSheet.create({
     minHeight: 100,
   },
   editFab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#37a4c8",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: "#38a5c9",
     marginBottom: 30,
-    shadowColor: 'rgba(0, 0, 0, 0.15)',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
   uploadingContainer: {
     backgroundColor: '#1a1a1a',
@@ -2450,15 +2444,15 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    marginTop: 48,
-    marginBottom: 24,
-    paddingTop: 24,
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(55, 164, 200, 0.3)',
+    marginTop: 56,
+    marginBottom: 32,
+    paddingTop: 32,
+    borderTopWidth: 2,
+    borderTopColor: 'rgba(55, 164, 200, 0.35)',
     shadowColor: 'rgba(0, 0, 0, 0.05)',
-    shadowOffset: { width: 0, height: -1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
   },
   footerLogo: {
     width: 95,
@@ -2466,10 +2460,10 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   membershipText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     textAlign: 'center',
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
   actionButtonsContainer: {
     alignItems: 'center',
@@ -2481,43 +2475,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 28,
-    borderWidth: 1.5,
-    gap: 10,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 30,
+    borderWidth: 2,
+    gap: 12,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 5,
     transform: [{ scale: 1 }],
     shadowColor: 'rgba(0, 0, 0, 0.08)',
   },
   reportButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   blockButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 28,
-    borderWidth: 1.5,
-    gap: 10,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 30,
+    borderWidth: 2,
+    gap: 12,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 5,
     transform: [{ scale: 1 }],
     shadowColor: 'rgba(0, 0, 0, 0.08)',
   },
   blockButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   badgeContainer: {
     flexDirection: 'row',

@@ -10,9 +10,13 @@ import {
   AuthError,
   sendEmailVerification,
 } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, storage } from "../../config/firebaseConfig";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getAuthErrorMessage } from "../utils/authErrorHandler";
+import { validateEmail, normalizeEmail, isDisposableEmail } from "../utils/emailValidation";
+import { validatePassword, isPasswordValid } from "../utils/passwordValidation";
+import Logger from "../utils/logger";
 
 interface UserData {
   age: number;
@@ -46,22 +50,40 @@ const useAuth = () => {
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     setError(null);
+    
     try {
+      // Client-side validation
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.isValid) {
+        throw new Error(emailValidation.message);
+      }
+
+      // Normalize email
+      const normalizedEmail = normalizeEmail(email);
+
       // Add a small delay to ensure Firebase auth state is cleared
       await new Promise(resolve => setTimeout(resolve, 500));
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       setUser(userCredential.user);
-    } catch (error) {
-      const authError = error as AuthError;
-      // Handle specific Firebase auth errors
-      if (authError.code === 'auth/too-many-requests') {
-        setError('Too many login attempts. Please try again later.');
-      } else if (authError.code === 'auth/user-not-found' || authError.code === 'auth/wrong-password') {
-        setError('Invalid email or password.');
-      } else {
-        setError(authError.message || 'Failed to log in');
+      
+      // Update lastLogin timestamp so user appears in swipe/explore/chatExplore
+      try {
+        const userDocRef = doc(db, "users", userCredential.user.uid);
+        await updateDoc(userDocRef, {
+          lastLogin: serverTimestamp(),
+        });
+      } catch (updateError) {
+        // Log error but don't fail login if lastLogin update fails
+        console.error("Failed to update lastLogin:", updateError);
       }
-      throw authError;
+    } catch (error) {
+      // Check if it's a Firebase auth error by checking for the 'code' property
+      const isFirebaseError = error && typeof error === 'object' && 'code' in error;
+      const errorMessage = isFirebaseError 
+        ? getAuthErrorMessage(error as AuthError)
+        : error instanceof Error ? error.message : 'An unexpected error occurred';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -70,24 +92,50 @@ const useAuth = () => {
   const signup = useCallback(async (email: string, password: string, userData: any) => {
     try {
       setLoading(true);
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      setError(null);
+
+      // Client-side validation
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.isValid) {
+        throw new Error(emailValidation.message);
+      }
+
+      // Check for disposable email
+      if (isDisposableEmail(email)) {
+        throw new Error('Temporary or disposable email addresses are not allowed');
+      }
+
+      // Validate password strength
+      const passwordValidation = validatePassword(password);
+      if (!passwordValidation.isValid) {
+        throw new Error(passwordValidation.feedback.join('. '));
+      }
+
+      // Normalize email
+      const normalizedEmail = normalizeEmail(email);
+
+      const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       
       // Create user document
       const userDocRef = doc(db, "users", userCredential.user.uid);
       await setDoc(userDocRef, {
         ...userData,
+        email: normalizedEmail, // Store normalized email
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
+      // Send email verification
+      await sendEmailVerification(userCredential.user);
+
       return userCredential;
-    } catch (error: any) {
-      let errorMessage = "Failed to create account";
-      if (error.code === "auth/email-already-in-use") {
-        errorMessage = "Email is already in use";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage = "Password is too weak";
-      }
+    } catch (error) {
+      // Check if it's a Firebase auth error by checking for the 'code' property
+      const isFirebaseError = error && typeof error === 'object' && 'code' in error;
+      const errorMessage = isFirebaseError 
+        ? getAuthErrorMessage(error as AuthError)
+        : error instanceof Error ? error.message : 'Failed to create account';
+      setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
       setLoading(false);
@@ -105,8 +153,12 @@ const useAuth = () => {
       // Add a small delay to ensure Firebase auth state is cleared
       await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
-      const authError = error as AuthError;
-      setError(authError.message || 'Failed to log out');
+      // Check if it's a Firebase auth error by checking for the 'code' property
+      const isFirebaseError = error && typeof error === 'object' && 'code' in error;
+      const errorMessage = isFirebaseError 
+        ? getAuthErrorMessage(error as AuthError)
+        : error instanceof Error ? error.message : 'Failed to log out';
+      setError(errorMessage);
       // Even if there's an error, we want to clear the user state
       setUser(null);
     } finally {
@@ -121,15 +173,24 @@ const useAuth = () => {
       setError(errMsg);
       throw new Error(errMsg);
     }
+
     try {
+      // Validate new password strength
+      const passwordValidation = validatePassword(newPassword);
+      if (!passwordValidation.isValid) {
+        throw new Error(passwordValidation.feedback.join('. '));
+      }
+
       await updatePassword(auth.currentUser, newPassword);
-      console.log("Password updated successfully");
+      Logger.info("Password updated successfully");
     } catch (error) {
-      const authError = error as AuthError;
-      setError(authError.message);
-      // Note: If you get an error like "requires recent authentication",
-      // you'll need to reauthenticate the user before calling updatePassword.
-      throw authError;
+      // Check if it's a Firebase auth error by checking for the 'code' property
+      const isFirebaseError = error && typeof error === 'object' && 'code' in error;
+      const errorMessage = isFirebaseError 
+        ? getAuthErrorMessage(error as AuthError)
+        : error instanceof Error ? error.message : 'Failed to update password';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   }, []);
 

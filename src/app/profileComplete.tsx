@@ -422,7 +422,7 @@ export default function ProfileComplete() {
           'announcements' in data.notificationPreferences &&
           'chats' in data.notificationPreferences &&
           'connections' in data.notificationPreferences &&
-          'events' in data.notificationPreferences &&
+          ('activities' in data.notificationPreferences || 'events' in data.notificationPreferences) &&
           'notificationsEnabled' in data.notificationPreferences;
 
         // If notification preferences don't exist, create them with all values set to true
@@ -431,7 +431,7 @@ export default function ProfileComplete() {
             announcements: true,
             chats: true,
             connections: true,
-            events: true,
+            activities: true,
             notificationsEnabled: true
           };
 

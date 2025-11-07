@@ -101,7 +101,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         ) : (
           <UserAvatar
             user={userData || { name: 'User', profilePicture: null }}
-            size={128}
+            size={140}
             style={styles.profileImage}
           />
         )}
@@ -112,12 +112,12 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               {
                 opacity: headerFadeAnim,
                 transform: [{ scale: scaleAnim }],
-                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
                 borderColor: "#37a4c8",
               }
             ]}
           >
-            <MaterialIcons name="camera-alt" size={24} color="#ffffff" />
+            <MaterialIcons name="camera-alt" size={22} color="#ffffff" />
           </Animated.View>
         )}
         <View style={[styles.statusIndicator, { 
@@ -400,12 +400,17 @@ const styles = {
     marginTop: 10,
   },
   profileImage: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    borderWidth: 2,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 3,
     borderColor: '#37a4c8',
     backgroundColor: 'rgba(55, 164, 200, 0.05)',
+    shadowColor: '#37a4c8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   },
   statusIndicator: {
     position: "absolute",
@@ -430,18 +435,18 @@ const styles = {
     paddingHorizontal: 20,
   },
   nameText: {
-    fontSize: 32,
-    fontWeight: "700",
+    fontSize: 34,
+    fontWeight: "800",
     marginBottom: 8,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
     textAlign: 'center',
-    lineHeight: 38,
+    lineHeight: 40,
   },
   pronounsText: {
-    fontSize: 18,
-    fontWeight: "400",
-    opacity: 0.6,
-    letterSpacing: -0.1,
+    fontSize: 17,
+    fontWeight: "500",
+    opacity: 0.7,
+    letterSpacing: 0,
   },
   nameRow: {
     flexDirection: 'row',
@@ -477,16 +482,16 @@ const styles = {
   moodContainerUnderName: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(55, 164, 200, 0.12)",
-    borderRadius: 18,
-    borderWidth: 1.5,
+    backgroundColor: "rgba(55, 164, 200, 0.15)",
+    borderRadius: 20,
+    borderWidth: 2,
     borderColor: "#37a4c8",
     justifyContent: 'center',
     shadowColor: '#37a4c8',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
   },
   moodText: {
     fontSize: 13,
@@ -537,16 +542,16 @@ const styles = {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
-    borderWidth: 2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 26,
+    borderWidth: 2.5,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
     minWidth: 60,
-    height: 44,
+    height: 48,
     transform: [{ scale: 1 }],
   },
   statusButtonText: {
@@ -591,18 +596,18 @@ const styles = {
   },
   editImageOverlay: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: 4,
+    right: 4,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 20,
-    padding: 8,
-    borderWidth: 1,
+    borderRadius: 22,
+    padding: 10,
+    borderWidth: 2,
     borderColor: '#38a5c9',
     shadowColor: '#38a5c9',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 6,
   },
 } as any;
 

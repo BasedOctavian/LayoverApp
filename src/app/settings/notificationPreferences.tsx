@@ -1,65 +1,51 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, Platform, Alert, ScrollView, Animated, Image, TextInput, Linking } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, Platform, Alert, ScrollView, Animated, Linking, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ThemeContext } from '../../context/ThemeContext';
 import TopBar from '../../components/TopBar';
-import { doc, getDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebaseConfig';
 import { auth } from '../../../config/firebaseConfig';
 import * as ExpoNotifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import * as Haptics from 'expo-haptics';
-import useUsers from '../../hooks/useUsers';
-import Constants from 'expo-constants';
-import * as Application from 'expo-application';
-import * as Clipboard from 'expo-clipboard';
+import useAuth from '../../hooks/auth';
+import useNotificationCount from '../../hooks/useNotificationCount';
 
 interface NotificationPreferences {
   announcements: boolean;
   chats: boolean;
-  events: boolean;
+  activities: boolean;
   connections: boolean;
   notificationsEnabled: boolean;
 }
 
-interface User {
-  id: string;
-  name: string;
-  expoPushToken: string;
-  profilePicture?: string;
-  email?: string;
-  airportCode?: string;
-}
-
-interface ExpoPushToken {
-  data: string;
-  type: 'expo' | 'apns' | 'fcm';
-}
-
 export default function NotificationPreferences() {
-  const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
+  const { user } = useAuth();
   const [preferences, setPreferences] = useState<NotificationPreferences>({
     announcements: true,
     chats: true,
-    events: true,
+    activities: true,
     connections: true,
     notificationsEnabled: false,
   });
-  const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<User[]>([]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
-  const [userData, setUserData] = useState<any>(null);
-  const { getUser } = useUsers();
-  const [currentToken, setCurrentToken] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
-
-  const ADMIN_UIDS = ['hDn74gYZCdZu0efr3jMGTIWGrRQ2', 'WhNhj8WPUpbomevJQ7j69rnLbDp2'];
-  const isAdmin = auth.currentUser?.uid ? ADMIN_UIDS.includes(auth.currentUser.uid) : false;
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
+  // Handle back button press
+  const handleBack = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.back();
+  };
 
   useEffect(() => {
     const initializeData = async () => {
@@ -73,13 +59,8 @@ export default function NotificationPreferences() {
           const token = await getExpoPushToken();
         }
 
-        // Load other data
+        // Load notification preferences
         await loadNotificationPreferences();
-        await loadUsers();
-        if (auth.currentUser) {
-          const data = await getUser(auth.currentUser.uid);
-          setUserData(data);
-        }
         
         setIsInitialized(true);
       } catch (error) {
@@ -119,7 +100,7 @@ export default function NotificationPreferences() {
           'announcements' in data.notificationPreferences &&
           'chats' in data.notificationPreferences &&
           'connections' in data.notificationPreferences &&
-          'events' in data.notificationPreferences;
+          ('activities' in data.notificationPreferences || 'events' in data.notificationPreferences);
 
         // If notification preferences don't exist or are incomplete, create/update them
         if (!hasNotificationPreferences) {
@@ -127,7 +108,7 @@ export default function NotificationPreferences() {
             announcements: true,
             chats: true,
             connections: true,
-            events: true,
+            activities: true,
             notificationsEnabled: status === 'granted' && !!data.expoPushToken
           };
 
@@ -139,10 +120,11 @@ export default function NotificationPreferences() {
           setPreferences(defaultPreferences);
         } else {
           // Use existing preferences with fallback to true
+          // Support both 'activities' (new) and 'events' (legacy) field names
           const currentPreferences = {
             announcements: data.notificationPreferences?.announcements ?? true,
             chats: data.notificationPreferences?.chats ?? true,
-            events: data.notificationPreferences?.events ?? true,
+            activities: data.notificationPreferences?.activities ?? data.notificationPreferences?.events ?? true,
             connections: data.notificationPreferences?.connections ?? true,
             notificationsEnabled: status === 'granted' && !!data.expoPushToken,
           };
@@ -160,37 +142,6 @@ export default function NotificationPreferences() {
       }
     } catch (error) {
       console.error('Error loading notification preferences:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadUsers = async () => {
-    try {
-      const usersQuery = query(
-        collection(db, 'users'),
-        where('expoPushToken', '!=', null)
-      );
-      const querySnapshot = await getDocs(usersQuery);
-      const usersList: User[] = [];
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (doc.id !== auth.currentUser?.uid) {
-          usersList.push({
-            id: doc.id,
-            name: data.name,
-            expoPushToken: data.expoPushToken,
-            profilePicture: data.profilePicture,
-            email: data.email,
-            airportCode: data.airportCode,
-          });
-        }
-      });
-      
-      setUsers(usersList);
-    } catch (error) {
-      console.error('Error loading users:', error);
     }
   };
 
@@ -198,9 +149,6 @@ export default function NotificationPreferences() {
     try {
       const projectId = '61cfadd9-25bb-4566-abec-1e9679ef882b';
       const token = await ExpoNotifications.getExpoPushTokenAsync({ projectId });
-      if (isAdmin) {
-        setCurrentToken(token.data);
-      }
       return token;
     } catch (error) {
       console.error('Error getting token:', error);
@@ -300,7 +248,7 @@ export default function NotificationPreferences() {
         notificationPreferences: {
           announcements: newPreferences.announcements,
           chats: newPreferences.chats,
-          events: newPreferences.events,
+          activities: newPreferences.activities,
           connections: newPreferences.connections,
           notificationsEnabled: newPreferences.notificationsEnabled,
         }
@@ -367,45 +315,19 @@ export default function NotificationPreferences() {
     );
   };
 
-  const sendTestNotification = async (token: string, userName: string) => {
-    try {
-      const response = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-        },
-        body: JSON.stringify({
-          to: token,
-          title: '[Admin] Test Notification',
-          body: `This is a test notification from the admin panel to ${userName}`,
-          sound: 'default',
-          priority: 'high',
-          data: { type: 'admin_test' },
-        }),
-      });
-
-      const responseData = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(`Failed to send test notification: ${responseData.message || 'Unknown error'}`);
-      }
-
-      Alert.alert('Success', `Test notification sent successfully to ${userName}`);
-    } catch (error) {
-      console.error('Error sending test notification:', error);
-      Alert.alert(
-        'Error',
-        `Failed to send test notification to ${userName}: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
-  };
-
   return (
     <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar showBackButton={true} onProfilePress={() => router.push(`/profile/${auth.currentUser?.uid}`)} />
       <SafeAreaView style={[styles.container]} edges={["bottom"]}>
+        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          showBackButton={true}
+          title=""
+          onBackPress={handleBack}
+          onProfilePress={() => router.push(`/profile/${user?.uid || auth.currentUser?.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
+        />
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.settingsContainer}
@@ -461,9 +383,9 @@ export default function NotificationPreferences() {
               'chatbubble'
             )}
             {renderPreferenceItem(
-              'Events',
-              'Stay updated about event updates and reminders',
-              'events',
+              'Activities',
+              'Get notified about pings, events, groups, and activity updates',
+              'activities',
               'calendar'
             )}
             {renderPreferenceItem(
@@ -473,95 +395,6 @@ export default function NotificationPreferences() {
               'people'
             )}
           </View>
-
-          {isAdmin && (
-            <Animated.View 
-              style={[
-                styles.adminSection,
-                { 
-                  backgroundColor: theme === "light" ? "#FFFFFF" : "#1a1a1a",
-                  borderColor: theme === "light" ? "#e0e0e0" : "#2a2a2a",
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideAnim }]
-                }
-              ]}
-            >
-              <Text style={[styles.adminTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                Your Push Token
-              </Text>
-              <View style={[styles.tokenContainer, { backgroundColor: theme === "light" ? "#f8f9fa" : "#2a2a2a" }]}>
-                <Text style={[styles.tokenText, { color: theme === "light" ? "#666666" : "#a0a0a0" }]}>
-                  {currentToken || 'No token available'}
-                </Text>
-                {currentToken && (
-                  <TouchableOpacity
-                    style={styles.copyButton}
-                    onPress={() => {
-                      Clipboard.setStringAsync(currentToken);
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    }}
-                  >
-                    <Ionicons name="copy-outline" size={20} color="#37a4c8" />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <Text style={[styles.adminTitle, { color: theme === "light" ? "#0F172A" : "#e4fbfe", marginTop: 24 }]}>
-                Users with Push Tokens
-              </Text>
-              <ScrollView style={styles.usersList}>
-                {users.map((user) => (
-                  <View 
-                    key={user.id} 
-                    style={[
-                      styles.userItem,
-                      { backgroundColor: theme === "light" ? "#f8f9fa" : "#2a2a2a" }
-                    ]}
-                  >
-                    <View style={styles.userInfo}>
-                      {user.profilePicture ? (
-                        <Image 
-                          source={{ uri: user.profilePicture }} 
-                          style={styles.userAvatar}
-                        />
-                      ) : (
-                        <View style={[styles.userAvatar, { backgroundColor: '#37a4c8' }]}>
-                          <Text style={styles.userAvatarText}>
-                            {user.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.userDetails}>
-                        <Text style={[styles.userName, { color: theme === "light" ? "#0F172A" : "#e4fbfe" }]}>
-                          {user.name}
-                        </Text>
-                        {user.email && (
-                          <Text style={[styles.userEmail, { color: theme === "light" ? "#666666" : "#a0a0a0" }]}>
-                            {user.email}
-                          </Text>
-                        )}
-                        {user.airportCode && (
-                          <Text style={[styles.userAirport, { color: theme === "light" ? "#666666" : "#a0a0a0" }]}>
-                            Airport: {user.airportCode}
-                          </Text>
-                        )}
-                        <Text style={[styles.userToken, { color: theme === "light" ? "#666666" : "#a0a0a0" }]}>
-                          Token: {user.expoPushToken}
-                        </Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.sendButton, { backgroundColor: "#37a4c8" }]}
-                      onPress={() => sendTestNotification(user.expoPushToken, user.name)}
-                    >
-                      <Ionicons name="notifications" size={20} color="#FFFFFF" style={styles.buttonIcon} />
-                      <Text style={styles.sendButtonText}>Send Test</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            </Animated.View>
-          )}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -632,103 +465,5 @@ const styles = StyleSheet.create({
   preferenceDescription: {
     fontSize: 14,
     lineHeight: 20,
-  },
-  adminSection: {
-    padding: 16,
-    borderRadius: 16,
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  adminTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  usersList: {
-    maxHeight: 400,
-  },
-  userItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  userAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  userDetails: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  userEmail: {
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  userAirport: {
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  userToken: {
-    fontSize: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  sendButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  sendButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  buttonIcon: {
-    marginRight: 8,
-  },
-  tokenContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  tokenText: {
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    flex: 1,
-  },
-  copyButton: {
-    padding: 8,
-    marginLeft: 8,
   },
 }); 

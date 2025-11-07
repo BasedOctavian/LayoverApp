@@ -13,7 +13,8 @@ import {
   StatusBar,
   Platform,
   TextInput,
-  Linking
+  Linking,
+  Share
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons, FontAwesome5 } from "@expo/vector-icons";
@@ -23,13 +24,15 @@ import usePings from "../../hooks/usePings";
 import useUsers from "../../hooks/useUsers";
 import useAuth from "../../hooks/auth";
 import useConnections from "../../hooks/useConnections";
-import { doc, updateDoc, getDoc, arrayUnion, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, updateDoc, getDoc, arrayUnion, serverTimestamp, collection, query, where, getDocs, addDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
 import { SafeAreaView } from "react-native-safe-area-context";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import UserAvatar from "../../components/UserAvatar";
+import { generatePingShareUrl, generateWebPingShareUrl } from "../../utils/externalRoutes";
+import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
 
@@ -62,6 +65,84 @@ const sendPushNotification = async (expoPushToken: string, activityTitle: string
     });
   } catch (error) {
     console.error('Error sending push notification:', error);
+  }
+};
+
+// Notify organizer when someone joins their ping (same style as open settings)
+const notifyPingOrganizer = async (organizerId: string, pingTitle: string, attendeeName: string, pingId: string) => {
+  try {
+    const organizerRef = doc(db, 'users', organizerId);
+    const organizerDoc = await getDoc(organizerRef);
+    
+    if (!organizerDoc.exists()) {
+      console.error('Organizer not found:', organizerId);
+      return;
+    }
+    
+    const organizerData = organizerDoc.data();
+    
+    // Create in-app notification
+    const joinNotification = {
+      id: Date.now().toString(),
+      title: "Someone Joined Your Activity! 🎉",
+      body: `${attendeeName} joined your activity "${pingTitle}"`,
+      data: {
+        type: "ping_join",
+        pingId: pingId,
+        pingTitle: pingTitle,
+        joinedUserId: attendeeName, // Store attendee name for display
+        joinedUserName: attendeeName,
+      },
+      timestamp: new Date().toISOString(),
+      read: false,
+    };
+    
+    // Add notification to organizer's notifications array
+    await updateDoc(organizerRef, {
+      notifications: arrayUnion(joinNotification),
+    });
+    
+    // Send push notification if organizer has token and notifications enabled
+    if (
+      organizerData?.expoPushToken &&
+      organizerData?.notificationPreferences?.notificationsEnabled &&
+      (organizerData?.notificationPreferences?.activities ||
+        organizerData?.notificationPreferences?.events)
+    ) {
+      const pushPayload = {
+        to: organizerData.expoPushToken,
+        title: "Someone Joined Your Activity! 🎉",
+        body: `${attendeeName} joined your activity "${pingTitle}"`,
+        sound: "default",
+        priority: "high",
+        data: {
+          type: "ping_join",
+          pingId: pingId,
+          pingTitle: pingTitle,
+          joinedUserName: attendeeName,
+        },
+      };
+      
+      try {
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Accept-encoding": "gzip, deflate",
+          },
+          body: JSON.stringify(pushPayload),
+        });
+        
+        if (!response.ok) {
+          console.error('Push notification failed:', response.status);
+        }
+      } catch (pushError) {
+        console.error('Error sending push notification:', pushError);
+      }
+    }
+  } catch (error) {
+    console.error('Error notifying ping organizer:', error);
   }
 };
 
@@ -99,7 +180,7 @@ const notifyPingParticipants = async (ping: Ping, updateType: string) => {
       // Send push notification if participant has token and notifications enabled
       if (participantData.expoPushToken && 
           participantData.notificationPreferences?.notificationsEnabled && 
-          participantData.notificationPreferences?.events) {
+          (participantData.notificationPreferences?.activities || participantData.notificationPreferences?.events)) {
         await sendPushNotification(
           participantData.expoPushToken,
           ping.title,
@@ -111,6 +192,87 @@ const notifyPingParticipants = async (ping: Ping, updateType: string) => {
     await Promise.all(notificationPromises);
   } catch (error) {
     console.error("Error notifying ping participants:", error);
+  }
+};
+
+const notifyPingCancellation = async (ping: Ping) => {
+  try {
+    if (!ping?.participants?.length) return;
+
+    // Get all participant documents
+    const participantDocs = await Promise.all(
+      ping.participants.map((participantId: string) => getDoc(doc(db, 'users', participantId)))
+    );
+
+    // Process each participant (excluding the creator)
+    const notificationPromises = participantDocs.map(async (participantDoc: any) => {
+      if (!participantDoc.exists()) return;
+
+      // Skip if this participant is the creator of the ping
+      if (participantDoc.id === ping.creatorId) return;
+
+      const participantData = participantDoc.data();
+      
+      // Create cancellation notification
+      const cancellationNotification = {
+        id: Date.now().toString(),
+        title: "Activity Cancelled",
+        body: `The activity "${ping.title}" has been cancelled`,
+        data: {
+          type: "ping_cancelled",
+          pingId: ping.id,
+          pingTitle: ping.title,
+        },
+        timestamp: new Date().toISOString(),
+        read: false,
+      };
+
+      // Add notification to participant's notifications array
+      await updateDoc(doc(db, 'users', participantDoc.id), {
+        notifications: arrayUnion(cancellationNotification)
+      });
+
+      // Send push notification if participant has token and notifications enabled
+      if (participantData.expoPushToken && 
+          participantData.notificationPreferences?.notificationsEnabled && 
+          (participantData.notificationPreferences?.activities || participantData.notificationPreferences?.events)) {
+        const pushPayload = {
+          to: participantData.expoPushToken,
+          title: "Activity Cancelled",
+          body: `The activity "${ping.title}" has been cancelled`,
+          sound: "default",
+          priority: "high",
+          data: {
+            type: "ping_cancelled",
+            pingId: ping.id,
+            pingTitle: ping.title,
+            timestamp: new Date().toISOString()
+          },
+        };
+        
+        try {
+          const response = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "Accept-encoding": "gzip, deflate",
+            },
+            body: JSON.stringify(pushPayload),
+          });
+          
+          if (!response.ok) {
+            console.error('Push notification failed:', response.status);
+          }
+        } catch (pushError) {
+          console.error('Error sending push notification:', pushError);
+        }
+      }
+    });
+
+    await Promise.all(notificationPromises);
+  } catch (error) {
+    console.error("Error notifying ping cancellation:", error);
   }
 };
 
@@ -192,6 +354,57 @@ export default function PingEvent() {
       try {
         const allPings = await getPings();
         const found = allPings.find((p: Ping) => p.id === pingId);
+        
+        // Access control check
+        if (found && user?.uid) {
+          const isCreator = found.creatorId === user.uid;
+          const isParticipant = found.participants?.includes(user.uid);
+          
+          // Check if user has permission to view this ping
+          if (found.pingType === 'invite-only') {
+            // Invite-only: only creator and participants can view
+            if (!isCreator && !isParticipant) {
+              Alert.alert(
+                'Access Denied',
+                'This is an invite-only activity. You need to be invited to view it.',
+                [{ text: 'OK', onPress: () => router.back() }]
+              );
+              setLoading(false);
+              return;
+            }
+          } else if (found.pingType === 'friends-only') {
+            // Friends-only: only creator and their connections can view
+            if (!isCreator && !isParticipant) {
+              // Check if user is connected to creator
+              try {
+                const connectionsRef = collection(db, 'connections');
+                const q = query(connectionsRef, where('participants', 'array-contains', user.uid));
+                const snapshot = await getDocs(q);
+                
+                let isConnected = false;
+                snapshot.docs.forEach(doc => {
+                  const data = doc.data();
+                  if (data.status === 'active' && data.participants.includes(found.creatorId)) {
+                    isConnected = true;
+                  }
+                });
+                
+                if (!isConnected) {
+                  Alert.alert(
+                    'Access Denied',
+                    'This is a friends-only activity. You need to be connected with the creator to view it.',
+                    [{ text: 'OK', onPress: () => router.back() }]
+                  );
+                  setLoading(false);
+                  return;
+                }
+              } catch (error) {
+                console.error('Error checking connection status:', error);
+              }
+            }
+          }
+        }
+        
         setPing(found || null);
         
         // If ping has coordinates, set map region
@@ -211,7 +424,7 @@ export default function PingEvent() {
     };
     
     if (pingId) fetchPing();
-  }, [pingId]);
+  }, [pingId, user?.uid]);
 
   useEffect(() => {
     const getCurrentLocation = async () => {
@@ -393,6 +606,16 @@ export default function PingEvent() {
           participantCount: updatedParticipants.length
         } : null);
         
+        // Notify organizer when someone joins (same style as open settings)
+        // Only notify if user is not the creator
+        if (ping.creatorId && ping.creatorId !== user.uid) {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userData = userDoc.data();
+          const attendeeName = userData?.name || user.displayName || 'Someone';
+          
+          await notifyPingOrganizer(ping.creatorId, ping.title, attendeeName, ping.id);
+        }
+        
         Alert.alert('Joined Activity', `You've joined "${ping.title}"!`);
       }
       
@@ -402,6 +625,80 @@ export default function PingEvent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle share ping
+  const handleSharePing = async () => {
+    if (!ping) return;
+    
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Generate shareable URL
+      const deepLinkUrl = generatePingShareUrl(ping.id);
+      
+      // Build share message
+      const shareMessage = `${ping.title} - Wingman\n${deepLinkUrl}`;
+      
+      await Share.share({
+        message: shareMessage,
+        title: `${ping.title} - Wingman`,
+        url: deepLinkUrl,
+      });
+    } catch (error) {
+      console.error('Error sharing ping:', error);
+      Alert.alert('Error', 'Failed to share activity. Please try again.');
+    }
+  };
+
+  // Handle delete ping
+  const handleDeletePing = async () => {
+    if (!ping || !user || user.uid !== ping.creatorId) return;
+
+    Alert.alert(
+      'Delete Activity',
+      `Are you sure you want to delete "${ping.title}"? This action cannot be undone and all participants will be notified.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+              // Notify all participants about cancellation
+              await notifyPingCancellation(ping);
+
+              // Delete all chat messages in the subcollection
+              try {
+                const messagesRef = collection(db, 'pings', ping.id, 'messages');
+                const messagesSnapshot = await getDocs(messagesRef);
+                const deleteMessagePromises = messagesSnapshot.docs.map((messageDoc) => 
+                  deleteDoc(doc(db, 'pings', ping.id, 'messages', messageDoc.id))
+                );
+                await Promise.all(deleteMessagePromises);
+              } catch (error) {
+                console.error('Error deleting messages:', error);
+                // Continue with ping deletion even if message deletion fails
+              }
+
+              // Delete the ping document
+              const pingRef = doc(db, 'pings', ping.id);
+              await deleteDoc(pingRef);
+
+              Alert.alert('Activity Deleted', `"${ping.title}" has been deleted and all participants have been notified.`);
+              router.back();
+            } catch (error) {
+              console.error('Error deleting ping:', error);
+              Alert.alert('Error', 'Failed to delete activity. Please try again.');
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const fetchCurrentUserData = async () => {
@@ -523,10 +820,58 @@ export default function PingEvent() {
     }
   };
 
-  const handleSelection = (selectedValue: string) => {
-    setEditValue(selectedValue);
+  const handleSelection = async (selectedValue: string) => {
+    if (!selectionType || !ping || !user) return;
+    
     setShowSelectionModal(false);
-    setShowEditModal(true);
+    setLoading(true);
+    
+    try {
+      const oldValue = ping[selectionType as keyof Ping];
+      
+      // Update the ping document in Firestore
+      const pingRef = doc(db, 'pings', ping.id);
+      await updateDoc(pingRef, {
+        [selectionType]: selectedValue,
+        updatedAt: new Date()
+      });
+      
+      // Update local state
+      setPing(prev => prev ? { ...prev, [selectionType]: selectedValue } : null);
+      
+      // Post system message to chat
+      const fieldName = getFieldDisplayName(selectionType);
+      await postSystemMessage(`${fieldName} updated: "${oldValue}" → "${selectedValue}"`);
+      
+      // Notify participants about the update
+      await notifyPingParticipants(ping, selectionType);
+      
+      setSelectionType('');
+      setSelectionOptions([]);
+      
+    } catch (error) {
+      console.error('Error updating ping:', error);
+      Alert.alert('Error', 'Failed to update field. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const postSystemMessage = async (updateMessage: string) => {
+    if (!ping) return;
+    
+    try {
+      const messagesRef = collection(db, 'pings', ping.id, 'messages');
+      await addDoc(messagesRef, {
+        text: updateMessage,
+        userId: 'SYSTEM',
+        userName: 'System',
+        timestamp: new Date(),
+        isSystemMessage: true
+      });
+    } catch (error) {
+      console.error('Error posting system message:', error);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -534,6 +879,8 @@ export default function PingEvent() {
     
     setLoading(true);
     try {
+      const oldValue = ping[editingField as keyof Ping];
+      
       // Update the ping document in Firestore
       const pingRef = doc(db, 'pings', ping.id);
       await updateDoc(pingRef, {
@@ -543,6 +890,10 @@ export default function PingEvent() {
       
       // Update local state
       setPing(prev => prev ? { ...prev, [editingField]: editValue } : null);
+      
+      // Post system message to chat
+      const fieldName = getFieldDisplayName(editingField);
+      await postSystemMessage(`${fieldName} updated: "${oldValue}" → "${editValue}"`);
       
       // Notify participants about the update
       await notifyPingParticipants(ping, editingField);
@@ -564,6 +915,8 @@ export default function PingEvent() {
     
     setLoading(true);
     try {
+      const oldType = getPrivacyTypeLabel(ping.pingType);
+      
       const pingRef = doc(db, 'pings', ping.id);
       await updateDoc(pingRef, {
         pingType: newPrivacyType,
@@ -573,11 +926,15 @@ export default function PingEvent() {
       // Update local state
       setPing(prev => prev ? { ...prev, pingType: newPrivacyType } : null);
       
+      // Post system message to chat
+      const newType = getPrivacyTypeLabel(newPrivacyType);
+      await postSystemMessage(`Privacy updated: Activity is now ${newType}`);
+      
       // Notify participants about the privacy change
       await notifyPingParticipants(ping, 'privacy');
       
       setShowPrivacyModal(false);
-      Alert.alert('Privacy Updated', `Activity is now ${getPrivacyTypeLabel(newPrivacyType)}`);
+      Alert.alert('Privacy Updated', `Activity is now ${newType}`);
       
     } catch (error) {
       console.error('Error updating privacy setting:', error);
@@ -674,7 +1031,7 @@ export default function PingEvent() {
       // Create invitation notification
       const notification = {
         id: Date.now().toString(),
-        title: `Activity Invitation`,
+        title: `Ping Invitation`,
         body: `${currentUserData?.name || 'Someone'} invited you to join "${ping.title}"`,
         data: {
           type: 'ping_invitation',
@@ -703,19 +1060,19 @@ export default function PingEvent() {
         hasPushToken: !!connectionUserData.expoPushToken,
         pushToken: connectionUserData.expoPushToken,
         notificationsEnabled: connectionUserData.notificationPreferences?.notificationsEnabled,
-        eventsEnabled: connectionUserData.notificationPreferences?.events,
+        activitiesEnabled: connectionUserData.notificationPreferences?.activities || connectionUserData.notificationPreferences?.events,
         fullPreferences: connectionUserData.notificationPreferences
       });
       
       if (connectionUserData.expoPushToken && 
           connectionUserData.notificationPreferences?.notificationsEnabled && 
-          connectionUserData.notificationPreferences?.events) {
+          (connectionUserData.notificationPreferences?.activities || connectionUserData.notificationPreferences?.events)) {
         
         console.log('✅ All conditions met, sending push notification');
         
         const pushPayload = {
           to: connectionUserData.expoPushToken,
-          title: `Activity Invitation`,
+          title: `Ping Invitation`,
           body: `${currentUserData?.name || 'Someone'} invited you to join "${ping.title}"`,
           sound: 'default',
           priority: 'high',
@@ -770,7 +1127,7 @@ export default function PingEvent() {
         console.log('❌ Push notification not sent because:', {
           hasToken: !!connectionUserData.expoPushToken,
           notificationsEnabled: connectionUserData.notificationPreferences?.notificationsEnabled,
-          eventsEnabled: connectionUserData.notificationPreferences?.events,
+          activitiesEnabled: connectionUserData.notificationPreferences?.activities || connectionUserData.notificationPreferences?.events,
           receiverId: connectionUserId
         });
       }
@@ -1022,14 +1379,23 @@ export default function PingEvent() {
                     {ping.category}
                   </Text>
                 </View>
-                {isOrganizer && (
+                <View style={styles.titleActions}>
                   <TouchableOpacity 
-                    style={styles.editButton}
-                    onPress={() => handleEditField('title', ping.title)}
+                    style={styles.shareButton}
+                    onPress={handleSharePing}
+                    activeOpacity={0.7}
                   >
-                    <Feather name="edit-2" size={16} color="#37a4c8" />
+                    <Ionicons name="share-outline" size={18} color="#37a4c8" />
                   </TouchableOpacity>
-                )}
+                  {isOrganizer && (
+                    <TouchableOpacity 
+                      style={styles.editButton}
+                      onPress={() => handleEditField('title', ping.title)}
+                    >
+                      <Feather name="edit-2" size={16} color="#37a4c8" />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
               
               {/* Status badge */}
@@ -1347,6 +1713,28 @@ export default function PingEvent() {
                       { color: theme === "light" ? "#0F172A" : "#e4fbfe" }
                     ]}>
                       Get Directions
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {/* Cancel Activity Container - Only for Organizers */}
+              {isOrganizer && (
+                <TouchableOpacity 
+                  style={styles.directionsButton}
+                  onPress={handleDeletePing}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.directionsButtonGradient,
+                    { backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }
+                  ]}>
+                    <MaterialIcons name="cancel" size={20} color="#ef4444" />
+                    <Text style={[
+                      styles.directionsButtonText,
+                      { color: "#ef4444" }
+                    ]}>
+                      Cancel Activity
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -2163,6 +2551,16 @@ const styles = StyleSheet.create({
   titleContent: {
     flex: 1,
   },
+  titleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shareButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(55, 164, 200, 0.1)',
+  },
   title: {
     fontSize: 24,
     fontWeight: "700",
@@ -2467,6 +2865,27 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: 'rgba(55, 164, 200, 0.1)',
     marginLeft: 8,
+  },
+  cancelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 12,
+    shadowColor: "#ef4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   sectionHeader: {
     flexDirection: 'row',

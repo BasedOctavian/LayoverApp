@@ -17,6 +17,7 @@ import {
   Easing,
   Dimensions,
   FlatList,
+  Modal,
 } from "react-native";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import useUsers from "../../hooks/useUsers";
@@ -24,17 +25,24 @@ import useChats from "../../hooks/useChats";
 import useAuth from "../../hooks/auth";
 import { router, useLocalSearchParams, useRouter } from "expo-router";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, db } from "../../../config/firebaseConfig";
+import { auth, db, storage } from "../../../config/firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
+import * as MediaLibrary from "expo-media-library";
+import * as Haptics from "expo-haptics";
+import ImageViewing from "react-native-image-viewing";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { ThemeContext } from "../../context/ThemeContext";
 import { containsFilteredContent, getFilteredContentCategory } from "../../utils/contentFilter";
 import LoadingElement from "../../components/LoadingElement";
 import UserAvatar from "../../components/UserAvatar";
+import useNotificationCount from "../../hooks/useNotificationCount";
 
 interface Chat {
   id: string; 
@@ -64,6 +72,7 @@ interface Message {
   sender: string;
   receiver: string;
   status?: 'sent' | 'delivered' | 'read';
+  imageUrl?: string;
 }
 
 interface Partner {
@@ -130,6 +139,41 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme, i
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const bubbleAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [imageViewVisible, setImageViewVisible] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
+
+  // Get image dimensions when imageUrl changes
+  useEffect(() => {
+    if (item.imageUrl) {
+      setImageLoading(true);
+      setImageError(false);
+      Image.getSize(
+        item.imageUrl,
+        (width, height) => {
+          const maxWidth = 250;
+          const maxHeight = 300;
+          const aspectRatio = width / height;
+          
+          let finalWidth = maxWidth;
+          let finalHeight = maxWidth / aspectRatio;
+          
+          if (finalHeight > maxHeight) {
+            finalHeight = maxHeight;
+            finalWidth = maxHeight * aspectRatio;
+          }
+          
+          setImageDimensions({ width: finalWidth, height: finalHeight });
+        },
+        (error) => {
+          console.error('Error getting image size:', error);
+          setImageDimensions({ width: 250, height: 200 });
+        }
+      );
+    }
+  }, [item.imageUrl]);
 
   // Add loading progress animation with pulse
   useEffect(() => {
@@ -234,6 +278,53 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme, i
     };
     fetchUserProfile();
   }, [item.sender, isCurrentUser]);
+
+  const handleImagePress = () => {
+    if (item.imageUrl && !imageError) {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      setImageViewVisible(true);
+    }
+  };
+
+  const handleSaveImage = async () => {
+    if (!item.imageUrl) return;
+    
+    try {
+      setSavingImage(true);
+      
+      // Request permissions
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant permission to save photos');
+        setSavingImage(false);
+        return;
+      }
+      
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      
+      // Download the image
+      const fileUri = `${FileSystem.documentDirectory}${item.id || Date.now()}.jpg`;
+      const downloadResult = await FileSystem.downloadAsync(item.imageUrl, fileUri);
+      
+      // Save to media library
+      await MediaLibrary.saveToLibraryAsync(downloadResult.uri);
+      
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      
+      Alert.alert('Success', 'Image saved to your photos');
+    } catch (error) {
+      console.error('Error saving image:', error);
+      Alert.alert('Error', 'Failed to save image');
+    } finally {
+      setSavingImage(false);
+    }
+  };
 
   return (
     <Animated.View style={[
@@ -341,15 +432,90 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme, i
           </View>
         )}
         
-        <Text style={[styles.messageText, { 
-          color: isCurrentUser 
-            ? theme === "light" ? "#000000" : "#ffffff"
-            : theme === "light" ? "#1a1a1a" : "#ffffff",
-          fontWeight: isCurrentUser ? "500" : "400",
-          lineHeight: 20
-        }]}>
-          {item.text}
-        </Text>
+        {item.imageUrl && (
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={handleImagePress}
+            disabled={imageError || imageLoading}
+          >
+            <View style={styles.imageContainer}>
+              {imageLoading && !imageError && (
+                <View style={[
+                  styles.imageLoadingContainer, 
+                  {
+                    backgroundColor: theme === "light" ? "#f0f0f0" : "#1a1a1a",
+                    width: imageDimensions?.width || 250,
+                    height: imageDimensions?.height || 200,
+                  }
+                ]}>
+                  <ActivityIndicator 
+                    size="small" 
+                    color={theme === "light" ? "#37a4c8" : "#4db8d4"} 
+                  />
+                </View>
+              )}
+              {imageError ? (
+                <View style={[
+                  styles.imageErrorContainer, 
+                  {
+                    backgroundColor: theme === "light" ? "#f0f0f0" : "#1a1a1a",
+                    width: imageDimensions?.width || 250,
+                    height: imageDimensions?.height || 200,
+                  }
+                ]}>
+                  <Ionicons 
+                    name="image-outline" 
+                    size={32} 
+                    color={theme === "light" ? "#999999" : "#666666"} 
+                  />
+                  <Text style={[styles.imageErrorText, {
+                    color: theme === "light" ? "#999999" : "#666666",
+                  }]}>
+                    Failed to load image
+                  </Text>
+                </View>
+              ) : (
+                <Image
+                  source={{ uri: item.imageUrl }}
+                  style={[
+                    styles.messageImage,
+                    imageDimensions ? {
+                      width: imageDimensions.width,
+                      height: imageDimensions.height,
+                    } : {
+                      width: 250,
+                      height: 200,
+                    }
+                  ]}
+                  resizeMode="contain"
+                  onLoadStart={() => {
+                    setImageLoading(true);
+                    setImageError(false);
+                  }}
+                  onLoad={() => {
+                    setImageLoading(false);
+                  }}
+                  onError={() => {
+                    setImageLoading(false);
+                    setImageError(true);
+                  }}
+                />
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
+        {item.text && (
+          <Text style={[styles.messageText, { 
+            color: isCurrentUser 
+              ? theme === "light" ? "#000000" : "#ffffff"
+              : theme === "light" ? "#1a1a1a" : "#ffffff",
+            fontWeight: isCurrentUser ? "500" : "400",
+            lineHeight: 20,
+            marginTop: item.imageUrl ? 8 : 0
+          }]}>
+            {item.text}
+          </Text>
+        )}
         
         <View style={styles.messageFooter}>
           <Text style={[styles.messageTimestamp, { 
@@ -388,6 +554,52 @@ const MessageItem: React.FC<MessageItemProps> = ({ item, isCurrentUser, theme, i
           )}
         </View>
       </View>
+      
+      {/* Image Viewer Modal */}
+      {item.imageUrl && (
+        <ImageViewing
+          images={[{ uri: item.imageUrl }]}
+          imageIndex={0}
+          visible={imageViewVisible}
+          onRequestClose={() => setImageViewVisible(false)}
+          swipeToCloseEnabled={true}
+          doubleTapToZoomEnabled={true}
+          HeaderComponent={({ imageIndex }) => (
+            <View style={[styles.imageViewerHeader, {
+              backgroundColor: theme === "light" ? "rgba(255, 255, 255, 0.9)" : "rgba(0, 0, 0, 0.7)",
+            }]}>
+              <TouchableOpacity
+                onPress={() => setImageViewVisible(false)}
+                style={styles.imageViewerCloseButton}
+              >
+                <Ionicons 
+                  name="close" 
+                  size={28} 
+                  color={theme === "light" ? "#000000" : "#ffffff"} 
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveImage}
+                disabled={savingImage}
+                style={styles.imageViewerSaveButton}
+              >
+                {savingImage ? (
+                  <ActivityIndicator 
+                    size="small" 
+                    color={theme === "light" ? "#000000" : "#ffffff"} 
+                  />
+                ) : (
+                  <Ionicons 
+                    name="download-outline" 
+                    size={24} 
+                    color={theme === "light" ? "#000000" : "#ffffff"} 
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+      )}
     </Animated.View>
   );
 };
@@ -414,11 +626,14 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const marginAnim = useRef(new Animated.Value(50)).current;
   const flatListRef = useRef<FlatList<any>>(null);
   const isInitialScrollDone = useRef(false);
   const [messageError, setMessageError] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardAnimatedValue = useRef(new Animated.Value(0)).current;
+  const inputContainerAnim = useRef(new Animated.Value(0)).current;
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const insets = useSafeAreaInsets();
   const globalTopBarHeight = 50 + insets.top;
@@ -426,6 +641,9 @@ export default function Chat() {
 
   // Access ThemeContext
   const { theme } = React.useContext(ThemeContext);
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(authUser?.uid || null);
 
   // Group messages by sender and time proximity
   const groupMessages = useCallback((messages: Message[]) => {
@@ -433,21 +651,22 @@ export default function Chat() {
     
     for (let i = 0; i < messages.length; i++) {
       const currentMessage = messages[i];
-      const prevMessage = messages[i - 1];
-      const nextMessage = messages[i + 1];
+      const prevMessage = messages[i - 1]; // Newer message (in inverted list)
+      const nextMessage = messages[i + 1]; // Older message (in inverted list)
       
-      // Check if this is the first message in a group
-      const isFirstInGroup = !prevMessage || 
-        prevMessage.sender !== currentMessage.sender ||
-        shouldShowDateSeparator(prevMessage.date, currentMessage.date);
-      
-      // Check if this is the last message in a group
-      const isLastInGroup = !nextMessage || 
+      // Check if this is the first message in a group (going backwards in time)
+      const isFirstInGroup = !nextMessage || 
         nextMessage.sender !== currentMessage.sender ||
         shouldShowDateSeparator(currentMessage.date, nextMessage.date);
       
-      // Check if we should show a date separator
-      const showDate = isFirstInGroup && shouldShowDateSeparator(prevMessage?.date, currentMessage.date);
+      // Check if this is the last message in a group (going backwards in time)
+      const isLastInGroup = !prevMessage || 
+        prevMessage.sender !== currentMessage.sender ||
+        shouldShowDateSeparator(prevMessage.date, currentMessage.date);
+      
+      // Show date separator before this message group (above when displayed)
+      // Since list is inverted, show date when transitioning to older messages
+      const showDate = !nextMessage || shouldShowDateSeparator(currentMessage.date, nextMessage.date);
       
       grouped.push({
         ...currentMessage,
@@ -461,14 +680,14 @@ export default function Chat() {
   }, []);
 
   // Helper function to determine if we should show a date separator
-  const shouldShowDateSeparator = (prevDate?: any, currentDate?: any) => {
-    if (!prevDate || !currentDate) return true;
+  const shouldShowDateSeparator = (date1?: any, date2?: any) => {
+    if (!date1 || !date2) return true;
     
-    const prev = 'seconds' in prevDate ? new Date(prevDate.seconds * 1000) : new Date(prevDate);
-    const current = 'seconds' in currentDate ? new Date(currentDate.seconds * 1000) : new Date(currentDate);
+    const d1 = 'seconds' in date1 ? new Date(date1.seconds * 1000) : new Date(date1);
+    const d2 = 'seconds' in date2 ? new Date(date2.seconds * 1000) : new Date(date2);
     
-    const diffInHours = (current.getTime() - prev.getTime()) / (1000 * 60 * 60);
-    return diffInHours >= 1; // Show separator if messages are more than 1 hour apart
+    // Check if messages are on different days
+    return d1.toDateString() !== d2.toDateString();
   };
 
   // Get chat document and partner details on mount
@@ -478,20 +697,43 @@ export default function Chat() {
 
       try {
         setIsInitialLoading(true);
+        
+        // Load chat and partner data
         const fetchedChat = await getChat(chatId);
         if (fetchedChat && 'participants' in fetchedChat) {
           const chatData = fetchedChat as Chat;
-          setChat(chatData);
-
+          
           const otherUserId = chatData.participants.find(
             (participant: string) => participant !== authUser.uid
           );
+          
           if (otherUserId) {
+            // Wait for partner data to be loaded before setting chat
             const fetchedPartner = await getUser(otherUserId);
             if (fetchedPartner) {
+              // Preload partner's profile picture if available
+              if (fetchedPartner.profilePicture) {
+                console.log('🖼️ Preloading partner profile picture');
+                try {
+                  await Image.prefetch(fetchedPartner.profilePicture);
+                  console.log('✅ Profile picture preloaded');
+                } catch (error) {
+                  console.warn('Error preloading profile picture:', error);
+                  // Continue anyway - we don't want to block on image loading failures
+                }
+              }
+              
+              // Set partner first, then chat - ensures partner is always available
               setPartner(fetchedPartner as Partner);
+              setChat(chatData);
+            } else {
+              console.error("Failed to load partner data for user:", otherUserId);
             }
+          } else {
+            console.error("No other user found in chat participants");
           }
+        } else {
+          console.error("Chat not found or invalid:", chatId);
         }
       } catch (error) {
         console.error("Error loading initial chat data:", error);
@@ -507,21 +749,18 @@ export default function Chat() {
   useEffect(() => {
     if (chatId) {
       const unsubscribeMessages = subscribeToMessages(chatId, (msgs: Message[]) => {
-        // Sort messages from oldest to newest
+        // Sort messages from newest to oldest for inverted list
         const sorted = msgs.sort(
           (a: Message, b: Message) => {
             const dateA = a.date instanceof Date ? a.date.getTime() : a.date.seconds * 1000;
             const dateB = b.date instanceof Date ? b.date.getTime() : b.date.seconds * 1000;
-            return dateA - dateB;
+            return dateB - dateA; // Descending order for inverted list
           }
         );
         setMessages(sorted);
         
-        // If the last message is from the partner, scroll to bottom
-        const lastMessage = sorted[sorted.length - 1];
-        if (lastMessage && lastMessage.sender === partner?.id) {
-          scrollToBottom();
-        }
+        // Auto-scroll to bottom when new messages arrive
+        setTimeout(() => scrollToBottom(true), 200);
       });
       return () => unsubscribeMessages();
     }
@@ -540,7 +779,8 @@ export default function Chat() {
   // Function to scroll to bottom
   const scrollToBottom = (animated = true) => {
     if (flatListRef.current && messages.length > 0) {
-      flatListRef.current.scrollToEnd({ animated });
+      // Scroll to offset 0 since list is inverted
+      flatListRef.current.scrollToOffset({ offset: 0, animated });
     }
   };
 
@@ -552,30 +792,55 @@ export default function Chat() {
     }
   }, [messages]);
 
-  // Scroll to bottom when keyboard appears
+  // Smooth keyboard animations
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => {
-        Animated.timing(marginAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: false,
-        }).start();
-        setKeyboardVisible(true);
-        // Add a small delay to ensure the keyboard is fully shown
-        setTimeout(() => scrollToBottom(), 100);
+      (e) => {
+        const duration = Platform.OS === 'ios' ? e.duration || 250 : 250;
+        setKeyboardHeight(e.endCoordinates.height);
+        
+        Animated.parallel([
+          Animated.timing(keyboardAnimatedValue, {
+            toValue: 1,
+            duration: duration,
+            useNativeDriver: false,
+            easing: Easing.out(Easing.cubic),
+          }),
+          Animated.spring(inputContainerAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 80,
+            useNativeDriver: true,
+          })
+        ]).start();
+        
+        // Scroll to bottom smoothly
+        setTimeout(() => scrollToBottom(true), duration / 2);
       }
     );
+    
     const keyboardWillHideListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        Animated.timing(marginAnim, {
-          toValue: 50,
-          duration: 150,
-          useNativeDriver: false,
-        }).start();
-        setKeyboardVisible(false);
+      (e) => {
+        const duration = Platform.OS === 'ios' ? e.duration || 250 : 250;
+        
+        Animated.parallel([
+          Animated.timing(keyboardAnimatedValue, {
+            toValue: 0,
+            duration: duration,
+            useNativeDriver: false,
+            easing: Easing.out(Easing.cubic),
+          }),
+          Animated.spring(inputContainerAnim, {
+            toValue: 0,
+            friction: 8,
+            tension: 80,
+            useNativeDriver: true,
+          })
+        ]).start(() => {
+          setKeyboardHeight(0);
+        });
       }
     );
 
@@ -585,11 +850,45 @@ export default function Chat() {
     };
   }, []);
 
+  const handlePickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'We need camera roll permissions to select an image');
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets[0]) {
+        setSelectedImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const uploadImage = async (uri: string): Promise<string> => {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const filename = `chat_images/${chatId}/${Date.now()}.jpg`;
+    const storageRef = ref(storage, filename);
+    await uploadBytes(storageRef, blob);
+    return await getDownloadURL(storageRef);
+  };
+
   const handleSendMessage = async () => {
-    if (newMessage.trim() === "" || !authUser || !partner) return;
+    if ((newMessage.trim() === "" && !selectedImage) || !authUser || !partner) return;
     
-    // Check for inappropriate content
-    if (containsFilteredContent(newMessage)) {
+    // Check for inappropriate content in text
+    if (newMessage.trim() && containsFilteredContent(newMessage)) {
       setMessageError(true);
       Alert.alert(
         "Inappropriate Content",
@@ -600,29 +899,54 @@ export default function Chat() {
     }
     
     setMessageError(false);
-    const messageData = {
-      text: newMessage,
-      date: new Date(),
-      sender: authUser.uid,
-      receiver: partner.id,
-      status: 'sent' as const
-    };
+    const messageText = newMessage.trim();
+    const imageUri = selectedImage;
+    
+    // Clear input immediately for better UX
+    setNewMessage("");
+    setSelectedImage(null);
+    
+    // Dismiss keyboard
+    Keyboard.dismiss();
+    
+    setUploadingImage(true);
     
     try {
+      let imageUrl: string | undefined;
+      
+      // Upload image if selected
+      if (imageUri) {
+        imageUrl = await uploadImage(imageUri);
+      }
+      
+      const messageData = {
+        text: messageText || (imageUrl ? '📷' : ''),
+        date: new Date(),
+        sender: authUser.uid,
+        receiver: partner.id,
+        status: 'sent' as const,
+        ...(imageUrl && { imageUrl })
+      };
+      
       await addMessage(chatId, messageData);
 
       // Update the chat document with the last message info
       const chatRef = doc(db, 'chats', chatId);
       await updateDoc(chatRef, {
-        lastMessage: newMessage,
+        lastMessage: messageText || (imageUrl ? '📷 Photo' : ''),
         lastMessageStatus: 'sent',
         lastMessageTime: new Date()
       });
+      
+      setUploadingImage(false);
+
+      // Scroll to bottom after message is added
+      setTimeout(() => scrollToBottom(true), 200);
 
       // Get sender's data for the notification
       const senderDoc = await getDoc(doc(db, 'users', authUser.uid));
       const senderData = senderDoc.exists() ? senderDoc.data() : null;
-      const senderName = senderData?.name || 'Unknown User';
+      const senderName = senderData?.name || partner.name;
 
       // Get receiver's data to check notification preferences and push token
       const receiverDoc = await getDoc(doc(db, 'users', partner.id));
@@ -646,7 +970,7 @@ export default function Chat() {
         console.log('✅ All conditions met, sending push notification to:', {
           token: receiverData.expoPushToken,
           name: senderName,
-          message: newMessage
+          message: messageText
         });
 
         // Send push notification
@@ -661,7 +985,7 @@ export default function Chat() {
             body: JSON.stringify({
               to: receiverData.expoPushToken,
               title: `Message from ${senderName}`,
-              body: newMessage,
+              body: messageText,
               sound: 'default',
               priority: 'high',
               data: { 
@@ -704,7 +1028,7 @@ export default function Chat() {
       const notification = {
         id: Date.now().toString(),
         title: `Message from ${senderName}`,
-        body: newMessage,
+        body: messageText,
         data: {
           type: 'chat',
           chatId: chatId,
@@ -722,11 +1046,14 @@ export default function Chat() {
           notifications: [...notifications, notification]
         });
       }
-
-      setNewMessage("");
-      scrollToBottom();
     } catch (error) {
       console.error("Error sending message:", error);
+      setUploadingImage(false);
+      // Restore message if send fails
+      setNewMessage(messageText);
+      if (imageUri) {
+        setSelectedImage(imageUri);
+      }
       Alert.alert("Error", "Failed to send message. Please try again.");
     }
   };
@@ -791,7 +1118,8 @@ export default function Chat() {
     );
   };
 
-  if (isInitialLoading) {
+  // Show loading screen until all required data is loaded
+  if (isInitialLoading || !partner || !chat || !authUser) {
     return (
       <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
@@ -800,6 +1128,7 @@ export default function Chat() {
     );
   }
 
+  // Show error if there's an error loading data
   if (usersError || chatError) {
     return (
       <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
@@ -817,38 +1146,26 @@ export default function Chat() {
     );
   }
 
-  if (!chat || !partner || !authUser) {
-    return (
-      <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
-        <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
-        <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>Chat not found</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={() => router.replace("/chat/chatInbox")}
-          >
-            <Text style={styles.retryButtonText}>Return to Inbox</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-    );
-  }
-
   const groupedMessages = groupMessages(messages);
 
   return (
-    <SafeAreaView style={[styles.flex, { backgroundColor: theme === "light" ? "#ffffff" : "#000000" }]} edges={["bottom"]}>
+    <View style={[styles.flex, { backgroundColor: theme === "light" ? "#F8FAFC" : "#000000" }]}>
       <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
           showBackButton={true}
-          showNotifications={true}
+          title=""
           onProfilePress={() => router.push(`/profile/${authUser.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
         />
 
         {/* Chat Header Top Bar */}
         <View style={[styles.chatHeader, { 
           backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+          borderBottomWidth: 1,
+          borderBottomColor: theme === "light" ? "#f0f0f0" : "#2a2a2a",
         }]}>
           <TouchableOpacity 
             onPress={() => router.push(`/profile/${partner.id}`)}
@@ -873,7 +1190,7 @@ export default function Chat() {
                 <Text style={[styles.partnerName, { 
                   color: theme === "light" ? "#1a1a1a" : "#ffffff",
                 }]}>
-                  {partner.name || "Unknown User"}
+                  {partner.name}
                 </Text>
                 {partner.age && (
                   <Text style={[styles.ageText, { 
@@ -913,84 +1230,162 @@ export default function Chat() {
           </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.inner}>
-              {/* Chat Messages */}
-              <FlatList
-                ref={flatListRef}
-                data={groupedMessages}
-                keyExtractor={(item) => item.id}
-                renderItem={renderMessageItem}
-                contentContainerStyle={styles.messagesContent}
-                onContentSizeChange={() => scrollToBottom()}
-                onLayout={() => scrollToBottom()}
-                showsVerticalScrollIndicator={false}
-                inverted
-                style={styles.messagesContainer}
-                removeClippedSubviews={false}
-                maxToRenderPerBatch={10}
-                windowSize={10}
-                initialNumToRender={20}
-              />
+        <View style={styles.chatContainer}>
+          {/* Chat Messages */}
+          <FlatList
+            ref={flatListRef}
+            data={groupedMessages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessageItem}
+            contentContainerStyle={[styles.messagesContent, { 
+              paddingBottom: 20,
+              paddingTop: 16,
+            }]}
+            onContentSizeChange={() => scrollToBottom()}
+            onLayout={() => scrollToBottom()}
+            showsVerticalScrollIndicator={false}
+            inverted
+            style={styles.messagesContainer}
+            removeClippedSubviews={false}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            initialNumToRender={20}
+            maintainVisibleContentPosition={{
+              minIndexForVisible: 0,
+            }}
+          />
 
-              {/* Chat Input Area */}
-              <Animated.View style={[styles.inputContainer, { 
-                backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-                borderTopColor: theme === "light" ? "#e0e0e0" : "#2a2a2a",
-                marginBottom: marginAnim,
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 10,
-              }]}> 
-                <TextInput
-                  style={[styles.input, { 
-                    backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
-                    color: theme === "light" ? "#1a1a1a" : "#ffffff",
-                    borderColor: messageError ? "#ff4444" : theme === "light" ? "#e0e0e0" : "#3a3a3a"
-                  }]}
-                  placeholder={messageError ? "Inappropriate content detected" : "Type your message..."}
-                  placeholderTextColor={messageError ? "#ff4444" : theme === "light" ? "#666666" : "#a0a0a0"}
-                  value={newMessage}
-                  onChangeText={(text) => {
-                    setNewMessage(text);
-                    if (messageError && !containsFilteredContent(text)) {
-                      setMessageError(false);
-                    }
-                  }}
-                  multiline
-                  maxLength={1000}
-                  keyboardAppearance={theme === "light" ? "light" : "dark"}
-                  returnKeyType="send"
-                  onSubmitEditing={handleSendMessage}
-                />
-                <TouchableOpacity
-                  style={[styles.sendButton, messageError && styles.sendButtonDisabled]}
-                  onPress={handleSendMessage}
-                  disabled={messageError}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="send" size={22} color={messageError ? "#666666" : "#fff"} />
-                </TouchableOpacity>
-              </Animated.View>
-            </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
+          {/* Chat Input Area */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? globalTopBarHeight + chatHeaderHeight - insets.bottom : 20}
+          >
+            <Animated.View
+              style={{
+                transform: [{
+                  translateY: inputContainerAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -5]
+                  })
+                }],
+                opacity: inputContainerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 1]
+                })
+              }}
+            >
+              <SafeAreaView 
+                edges={["bottom"]} 
+                style={[styles.inputSafeArea, { 
+                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                }]}
+              >
+                  <View 
+                    style={[styles.inputContainer, { 
+                      backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                    }]}
+                  >
+                    {/* Image Preview */}
+                    {selectedImage && (
+                      <View style={styles.imagePreview}>
+                        <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+                        <TouchableOpacity
+                          style={styles.removeImageButton}
+                          onPress={() => setSelectedImage(null)}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#ffffff" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    
+                    <View style={styles.inputRow}>
+                      <TouchableOpacity
+                        style={styles.mediaButton}
+                        onPress={handlePickImage}
+                        disabled={uploadingImage}
+                      >
+                        <Ionicons 
+                          name="image-outline" 
+                          size={24} 
+                          color={theme === "light" ? "#37a4c8" : "#4db8d4"} 
+                        />
+                      </TouchableOpacity>
+                      
+                      <Animated.View style={[styles.inputWrapper, {
+                        transform: [{
+                          scale: inputContainerAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.01]
+                          })
+                        }]
+                      }]}>
+                        <TextInput
+                          style={[styles.input, { 
+                            backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                            color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                            borderColor: messageError ? "#ff4444" : theme === "light" ? "#e8e9ea" : "#3a3a3a"
+                          }]}
+                          placeholder={messageError ? "Inappropriate content detected" : "Type your message..."}
+                          placeholderTextColor={messageError ? "#ff4444" : theme === "light" ? "#666666" : "#a0a0a0"}
+                          value={newMessage}
+                          onChangeText={(text) => {
+                            setNewMessage(text);
+                            if (messageError && !containsFilteredContent(text)) {
+                              setMessageError(false);
+                            }
+                          }}
+                          multiline
+                          maxLength={1000}
+                          keyboardAppearance={theme === "light" ? "light" : "dark"}
+                          returnKeyType="send"
+                          onSubmitEditing={(e) => {
+                            e.preventDefault();
+                            if ((newMessage.trim() !== "" || selectedImage) && !messageError) {
+                              handleSendMessage();
+                            }
+                          }}
+                          blurOnSubmit={false}
+                          enablesReturnKeyAutomatically={true}
+                          autoCorrect={true}
+                          spellCheck={true}
+                        />
+                      </Animated.View>
+                      
+                      {uploadingImage ? (
+                        <View style={styles.sendButton}>
+                          <ActivityIndicator size="small" color="#fff" />
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.sendButton, 
+                            (messageError || (newMessage.trim() === "" && !selectedImage)) && styles.sendButtonDisabled
+                          ]}
+                          onPress={handleSendMessage}
+                          disabled={messageError || (newMessage.trim() === "" && !selectedImage)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons 
+                            name="send" 
+                            size={22} 
+                            color={(messageError || (newMessage.trim() === "" && !selectedImage)) ? "#999999" : "#fff"} 
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+            </SafeAreaView>
+            </Animated.View>
+          </KeyboardAvoidingView>
+        </View>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    marginBottom: -20,
   },
   centerContainer: {
     flex: 1,
@@ -998,17 +1393,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
+  chatContainer: {
+    flex: 1,
+  },
   chatHeader: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginBottom: 8,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   avatar: {
     width: 40,
@@ -1022,46 +1419,42 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     marginBottom: 2,
   },
-  inner: {
-    flex: 1,
-  },
   messagesContainer: {
     flex: 1,
     paddingHorizontal: 16,
   },
   messagesContent: {
-    paddingVertical: 16,
     flexGrow: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
   },
   messageBubble: {
     padding: 12,
-    borderRadius: 20,
-    maxWidth: '80%',
+    borderRadius: 18,
+    maxWidth: '75%',
     minWidth: '30%',
     borderWidth: 1,
     shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  currentUserBubble: {
+    borderTopRightRadius: 4,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    borderTopLeftRadius: 18,
+    shadowColor: "#37a4c8",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
   },
-  currentUserBubble: {
-    borderTopRightRadius: 4,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    borderTopLeftRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 5,
-  },
   otherUserBubble: {
     borderTopLeftRadius: 4,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    borderTopRightRadius: 20,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    borderTopRightRadius: 18,
   },
   firstInGroup: {
     borderTopLeftRadius: 20,
@@ -1087,37 +1480,133 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     fontWeight: "500",
   },
+  inputSafeArea: {
+    backgroundColor: "transparent",
+  },
   inputContainer: {
-    flexDirection: "row",
-    padding: 12,
-    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingTop: 8,
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  mediaButton: {
+    padding: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imagePreview: {
+    position: 'relative',
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  previewImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 12,
+    padding: 2,
+  },
+  inputWrapper: {
+    flex: 1,
   },
   input: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 24,
+    borderRadius: 22,
     fontSize: 15,
-    marginRight: 10,
     borderWidth: 1,
     letterSpacing: 0.2,
     maxHeight: 100,
+    minHeight: 44,
+  },
+  imageContainer: {
+    marginBottom: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    maxWidth: 250,
+    position: 'relative',
+  },
+  messageImage: {
+    maxWidth: 250,
+    maxHeight: 300,
+    borderRadius: 12,
+    minWidth: 150,
+    minHeight: 150,
+  },
+  imageLoadingContainer: {
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  imageErrorContainer: {
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageErrorText: {
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  imageViewerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingBottom: 16,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1,
+  },
+  imageViewerCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerSaveButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sendButton: {
     backgroundColor: "#37a4c8",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
-    shadowColor: "#000",
+    alignItems: "center",
+    shadowColor: "#37a4c8",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-    minWidth: 70,
-    alignItems: 'center',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sendButtonText: {
     color: "#ffffff",
@@ -1233,7 +1722,7 @@ const styles = StyleSheet.create({
   messageContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginVertical: 2,
+    marginVertical: 3,
     paddingHorizontal: 4,
   },
   currentUserContainer: {
@@ -1292,21 +1781,21 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   dateSeparatorContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
+    marginVertical: 20,
     paddingHorizontal: 8,
   },
   dateSeparator: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e8e9ea',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
   dateSeparatorText: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginHorizontal: 12,
+    fontSize: 11,
+    fontWeight: '600',
     textAlign: 'center',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   messageTouchable: {
     flex: 1,

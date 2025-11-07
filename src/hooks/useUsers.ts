@@ -1,22 +1,75 @@
-import { useEffect, useState, useCallback } from "react";
-import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { collection, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, query, where, limit, orderBy } from "firebase/firestore";
 import { db } from "../../config/firebaseConfig";
+
+// Cache configuration
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const MAX_USERS_FETCH = 200; // Limit to prevent massive queries
+
+interface CachedData<T> {
+  data: T;
+  timestamp: number;
+}
 
 const useUsers = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Cache for users data
+  const usersCache = useRef<CachedData<any[]> | null>(null);
 
-  // Get all users
-  const getUsers = useCallback(async () => {
+  // Get all users with caching and limit
+  const getUsers = useCallback(async (forceRefresh = false) => {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && usersCache.current) {
+      const cacheAge = Date.now() - usersCache.current.timestamp;
+      if (cacheAge < CACHE_DURATION) {
+        console.log('✅ [useUsers] Returning cached users data (age:', Math.round(cacheAge / 1000), 'seconds)');
+        return usersCache.current.data;
+      }
+    }
+
     setLoading(true);
     try {
+      console.log('🔄 [useUsers] Fetching users from Firestore (max:', MAX_USERS_FETCH, ')');
       const usersCollection = collection(db, "users");
-      const snapshot = await getDocs(usersCollection);
+      
+      let snapshot;
+      try {
+        // Try to order by lastLogin to get most recent active users first
+        const q = query(
+          usersCollection, 
+          orderBy("lastLogin", "desc"),
+          limit(MAX_USERS_FETCH)
+        );
+        snapshot = await getDocs(q);
+      } catch (orderByError) {
+        // If orderBy fails (e.g., some users don't have lastLogin), fall back to getting all users
+        console.warn('[useUsers] orderBy lastLogin failed, fetching all users:', orderByError);
+        const q = query(usersCollection, limit(MAX_USERS_FETCH));
+        snapshot = await getDocs(q);
+      }
+      
       const users = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      
+      // Sort users in memory: those with lastLogin first, then by lastLogin date
+      users.sort((a, b) => {
+        const aLastLogin = a.lastLogin?.toDate?.() || new Date(0);
+        const bLastLogin = b.lastLogin?.toDate?.() || new Date(0);
+        return bLastLogin.getTime() - aLastLogin.getTime();
+      });
+      
+      // Update cache
+      usersCache.current = {
+        data: users,
+        timestamp: Date.now()
+      };
+      
+      console.log('✅ [useUsers] Fetched', users.length, 'users');
       return users;
     } catch (error) {
       setError("Failed to fetch users.");
-      console.error(error);
+      console.error('[useUsers] Error fetching users:', error);
       return [];
     } finally {
       setLoading(false);
@@ -126,6 +179,12 @@ const useUsers = () => {
     }
   }, []);
 
+  // Clear cache function
+  const clearUsersCache = useCallback(() => {
+    usersCache.current = null;
+    console.log('🗑️ [useUsers] Cache cleared');
+  }, []);
+
   return { 
     getUsers, 
     getUser, 
@@ -134,6 +193,7 @@ const useUsers = () => {
     deleteUser, 
     updateUserLocationAndLogin,
     getNearbyUsers, // Add the new function to the returned object
+    clearUsersCache,
     loading, 
     error 
   };

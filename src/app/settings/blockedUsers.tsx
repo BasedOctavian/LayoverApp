@@ -12,6 +12,7 @@ import {
   Easing,
   RefreshControl,
   ScrollView,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, Feather } from "@expo/vector-icons";
@@ -23,6 +24,8 @@ import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
 import { doc, getDoc, updateDoc, arrayRemove } from "firebase/firestore";
 import { db } from "../../../config/firebaseConfig";
+import useNotificationCount from "../../hooks/useNotificationCount";
+import * as Haptics from 'expo-haptics';
 
 interface BlockedUser {
   id: string;
@@ -51,6 +54,17 @@ export default function BlockedUsers() {
   const USERS_PER_PAGE = 10;
   const INITIAL_USERS = 5;
   const [animatingUsers, setAnimatingUsers] = useState<Set<string>>(new Set());
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
+  // Handle back button press
+  const handleBack = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.back();
+  };
 
   const fetchBlockedUsers = async () => {
     try {
@@ -399,11 +413,17 @@ export default function BlockedUsers() {
 
   return (
     <LinearGradient colors={theme === "light" ? ["#f8f9fa", "#ffffff"] : ["#000000", "#1a1a1a"]} style={{ flex: 1 }}>
-      <TopBar 
-        showBackButton={true}
-      />
       <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          showBackButton={true}
+          title=""
+          onBackPress={handleBack}
+          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
+        />
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
           <ScrollView 
             contentContainerStyle={styles.container}

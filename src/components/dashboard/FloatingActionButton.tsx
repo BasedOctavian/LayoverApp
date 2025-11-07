@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useContext } from 'react';
+import React, { useRef, useCallback, useContext, memo } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -18,13 +18,18 @@ interface FloatingActionButtonProps {
   sheetAnim: Animated.Value;
 }
 
-export default function FloatingActionButton({
+/**
+ * Floating Action Button Component
+ * Expandable FAB with event and ping options
+ * Memoized for performance optimization
+ */
+const FloatingActionButton = memo(({
   expanded,
   onToggle,
   onEventPress,
   onPingPress,
   sheetAnim,
-}: FloatingActionButtonProps) {
+}: FloatingActionButtonProps) => {
   const { theme } = useContext(ThemeContext);
   const router = useRouter();
 
@@ -146,6 +151,10 @@ export default function FloatingActionButton({
           }]}
           activeOpacity={0.8}
           onPress={handleEventPress}
+          accessible={true}
+          accessibilityLabel="Create event"
+          accessibilityRole="button"
+          accessibilityHint="Double tap to create a new event"
         >
           <MaterialIcons 
             name="event" 
@@ -192,6 +201,10 @@ export default function FloatingActionButton({
           }]}
           activeOpacity={0.8}
           onPress={handlePingPress}
+          accessible={true}
+          accessibilityLabel="Create ping"
+          accessibilityRole="button"
+          accessibilityHint="Double tap to create a new ping"
         >
           <MaterialIcons 
             name="send" 
@@ -232,6 +245,10 @@ export default function FloatingActionButton({
         <TouchableOpacity 
           onPress={onToggle}
           activeOpacity={0.8}
+          accessible={true}
+          accessibilityLabel={expanded ? "Close menu" : "Open menu"}
+          accessibilityRole="button"
+          accessibilityHint="Double tap to toggle action menu"
         >
           <MaterialIcons 
             name="add" 
@@ -242,7 +259,11 @@ export default function FloatingActionButton({
       </Animated.View>
     </View>
   );
-}
+});
+
+FloatingActionButton.displayName = 'FloatingActionButton';
+
+export default FloatingActionButton;
 
 const styles = StyleSheet.create({
   fabContainer: {

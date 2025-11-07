@@ -8,6 +8,7 @@ import { useGetProfilePicUrl } from "../hooks/useSupabase";
 import LoadingScreen from "../components/LoadingScreen";
 import TopBar from "../components/TopBar";
 import useUsers from "../hooks/useUsers";
+import Logger from "../utils/logger";
 import * as ExpoNotifications from 'expo-notifications';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebaseConfig';
@@ -73,7 +74,7 @@ export default function MainScreen() {
       if (existingStatus !== 'granted') {
         const { status } = await ExpoNotifications.requestPermissionsAsync();
         if (status !== 'granted') {
-          console.log('Notification permission not granted');
+          Logger.info('Notification permission not granted');
           return;
         }
       }
@@ -113,7 +114,7 @@ export default function MainScreen() {
             announcements: true,
             chats: true,
             connections: true,
-            events: true,
+            activities: true,
             notificationsEnabled: true
           };
         }
@@ -121,11 +122,11 @@ export default function MainScreen() {
         // Only update if there are changes to make
         if (Object.keys(updateData).length > 0) {
           await updateDoc(userRef, updateData);
-          console.log('Updated user document with:', updateData);
+          Logger.debug('Updated user document with notification token');
         }
       }
     } catch (error) {
-      console.error('Error handling notification token:', error);
+      Logger.error('Error handling notification token', error);
     }
   };
 
@@ -147,7 +148,7 @@ export default function MainScreen() {
           setProfileLoaded(true);
         }
       } catch (error) {
-        console.error("Error loading user data:", error);
+        Logger.error("Error loading user data", error);
         // Even if there's an error, we should stop loading
         setProfileLoaded(true);
       } finally {
@@ -175,6 +176,7 @@ export default function MainScreen() {
   if (user && userData) {
     const profileComplete = isProfileComplete(userData);
     if (profileComplete) {
+      // Keep the main flow through dashboard, which has the bottom navigation
       return <Redirect href="/home/dashboard" />;
     } else {
       return <Redirect href="/profileComplete" />;

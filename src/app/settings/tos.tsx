@@ -7,17 +7,35 @@ import {
   StatusBar,
   Animated,
   Easing,
+  Platform,
 } from "react-native";
+import { scaleFontSize, scaleHeight, scaleWidth, moderateScale, spacing, borderRadius } from "../../utils/responsive";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemeContext } from "../../context/ThemeContext";
 import TopBar from "../../components/TopBar";
 import LoadingScreen from "../../components/LoadingScreen";
+import { router } from "expo-router";
+import useAuth from "../../hooks/auth";
+import useNotificationCount from "../../hooks/useNotificationCount";
+import * as Haptics from 'expo-haptics';
 
 export default function TOS() {
   const { theme } = React.useContext(ThemeContext);
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
+  
+  // Handle back button press
+  const handleBack = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.back();
+  };
   
   // Animation values
   const contentBounceAnim = useRef(new Animated.Value(0)).current;
@@ -73,9 +91,17 @@ export default function TOS() {
       locations={[0, 0.5, 1]}
       style={styles.container}
     >
-      <TopBar showBackButton={true} />
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
+        <TopBar 
+          showBackButton={true}
+          title=""
+          onBackPress={handleBack}
+          onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
+        />
         <ScrollView 
           style={styles.container}
           contentContainerStyle={styles.scrollContent}
@@ -96,7 +122,7 @@ export default function TOS() {
             </Text>
             <Text style={[styles.date, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
               Effective Date: 6/17/2025{'\n'}
-              Last Updated: June 17, 2025
+              Last Updated: October 21, 2025
             </Text>
           </Animated.View>
 
@@ -231,50 +257,50 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    padding: spacing.xl,
   },
   header: {
-    marginBottom: 30,
+    marginBottom: scaleHeight(30),
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: scaleFontSize(24),
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     textAlign: "center",
     letterSpacing: 0.3,
   },
   date: {
-    fontSize: 14,
-    marginBottom: 24,
+    fontSize: scaleFontSize(14),
+    marginBottom: scaleHeight(24),
     textAlign: "center",
     fontWeight: "500",
     letterSpacing: 0.2,
   },
   content: {
     flex: 1,
-    gap: 20,
+    gap: spacing.xl,
   },
   section: {
-    marginBottom: 20,
-    borderRadius: 16,
+    marginBottom: spacing.xl,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    padding: 20,
+    padding: spacing.xl,
     elevation: 4,
     shadowColor: "#38a5c9",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: moderateScale(4) },
     shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowRadius: moderateScale(12),
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: "600",
-    marginBottom: 12,
+    marginBottom: spacing.md,
     letterSpacing: 0.3,
   },
   sectionContent: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: scaleFontSize(16),
+    lineHeight: scaleFontSize(24),
     letterSpacing: 0.2,
   },
 }); 

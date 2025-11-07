@@ -3,10 +3,11 @@ import * as ExpoLinking from 'expo-linking';
 import { router } from 'expo-router';
 
 // Types for external route handling
-export interface ExternalRouteParams {
-  type: 'profile';
-  userId: string;
-}
+export type ExternalRouteParams =
+  | { type: 'profile'; userId: string }
+  | { type: 'event'; eventId: string }
+  | { type: 'ping'; pingId: string }
+  | { type: 'group'; groupId: string };
 
 export interface ParsedUrl {
   path: string;
@@ -136,11 +137,71 @@ export class ExternalRoutesHandler {
       }
     }
 
-    // Handle query parameter based profile routes
+    // Handle event routes
+    if (path.startsWith('/event/') || path.startsWith('event/')) {
+      const pathParts = path.split('/');
+      const eventId = pathParts[pathParts.length - 1];
+      
+      if (eventId && eventId !== 'event' && eventId !== 'eventChat') {
+        return {
+          type: 'event',
+          eventId: eventId
+        };
+      }
+    }
+
+    // Handle ping routes
+    if (path.startsWith('/ping/') || path.startsWith('ping/')) {
+      const pathParts = path.split('/');
+      const pingId = pathParts[pathParts.length - 1];
+      
+      if (pingId && pingId !== 'ping' && pingId !== 'pingChat') {
+        return {
+          type: 'ping',
+          pingId: pingId
+        };
+      }
+    }
+
+    // Handle group routes
+    if (path.startsWith('/group/') || path.startsWith('group/')) {
+      const pathParts = path.split('/');
+      const groupId = pathParts[pathParts.length - 1];
+      
+      if (groupId && groupId !== 'group' && groupId !== 'chat' && groupId !== 'create' && groupId !== 'explore' && groupId !== 'index') {
+        return {
+          type: 'group',
+          groupId: groupId
+        };
+      }
+    }
+
+    // Handle query parameter based routes
     if (params.userId) {
       return {
         type: 'profile',
         userId: params.userId
+      };
+    }
+    
+    if (params.eventId) {
+      return {
+        type: 'event',
+        eventId: params.eventId
+      };
+    }
+    
+    if (params.pingId) {
+      return {
+        type: 'ping',
+        pingId: params.pingId
+      };
+    }
+    
+    if (params.groupId) {
+      return {
+        type: 'group',
+        groupId: params.groupId
       };
     }
 
@@ -156,8 +217,17 @@ export class ExternalRoutesHandler {
         case 'profile':
           this.navigateToProfile(routeParams.userId);
           break;
+        case 'event':
+          this.navigateToEvent(routeParams.eventId);
+          break;
+        case 'ping':
+          this.navigateToPing(routeParams.pingId);
+          break;
+        case 'group':
+          this.navigateToGroup(routeParams.groupId);
+          break;
         default:
-          console.warn('Unknown route type:', routeParams.type);
+          console.warn('Unknown route type');
       }
     } catch (error) {
       console.error('Error navigating to route:', error);
@@ -173,6 +243,42 @@ export class ExternalRoutesHandler {
       router.push(`/profile/${userId}`);
     } catch (error) {
       console.error('Error navigating to profile:', error);
+    }
+  }
+
+  /**
+   * Navigate to event
+   */
+  private navigateToEvent(eventId: string): void {
+    try {
+      console.log('Navigating to event:', eventId);
+      router.push(`/event/${eventId}`);
+    } catch (error) {
+      console.error('Error navigating to event:', error);
+    }
+  }
+
+  /**
+   * Navigate to ping
+   */
+  private navigateToPing(pingId: string): void {
+    try {
+      console.log('Navigating to ping:', pingId);
+      router.push(`/ping/${pingId}`);
+    } catch (error) {
+      console.error('Error navigating to ping:', error);
+    }
+  }
+
+  /**
+   * Navigate to group
+   */
+  private navigateToGroup(groupId: string): void {
+    try {
+      console.log('Navigating to group:', groupId);
+      router.push(`/group/${groupId}`);
+    } catch (error) {
+      console.error('Error navigating to group:', error);
     }
   }
 
@@ -201,6 +307,84 @@ export class ExternalRoutesHandler {
       return `${webDomain}/profile/${userId}`;
     } catch (error) {
       console.error('Error generating web profile share URL:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Generate a shareable URL for an event
+   */
+  public generateEventShareUrl(eventId: string): string {
+    try {
+      const scheme = 'mylayover';
+      return `${scheme}://event/${eventId}`;
+    } catch (error) {
+      console.error('Error generating event share URL:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Generate a web-compatible shareable URL for an event
+   */
+  public generateWebEventShareUrl(eventId: string): string {
+    try {
+      const webDomain = 'https://wingman.app';
+      return `${webDomain}/event/${eventId}`;
+    } catch (error) {
+      console.error('Error generating web event share URL:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Generate a shareable URL for a ping
+   */
+  public generatePingShareUrl(pingId: string): string {
+    try {
+      const scheme = 'mylayover';
+      return `${scheme}://ping/${pingId}`;
+    } catch (error) {
+      console.error('Error generating ping share URL:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Generate a web-compatible shareable URL for a ping
+   */
+  public generateWebPingShareUrl(pingId: string): string {
+    try {
+      const webDomain = 'https://wingman.app';
+      return `${webDomain}/ping/${pingId}`;
+    } catch (error) {
+      console.error('Error generating web ping share URL:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Generate a shareable URL for a group
+   */
+  public generateGroupShareUrl(groupId: string): string {
+    try {
+      const scheme = 'mylayover';
+      return `${scheme}://group/${groupId}`;
+    } catch (error) {
+      console.error('Error generating group share URL:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Generate a web-compatible shareable URL for a group
+   */
+  public generateWebGroupShareUrl(groupId: string): string {
+    try {
+      const webDomain = 'https://wingman.app';
+      return `${webDomain}/group/${groupId}`;
+    } catch (error) {
+      console.error('Error generating web group share URL:', error);
       return '';
     }
   }
@@ -236,6 +420,8 @@ export class ExternalRoutesHandler {
 export const externalRoutesHandler = ExternalRoutesHandler.getInstance();
 
 // Export utility functions for easy access
+
+// Profile URLs
 export const generateProfileShareUrl = (userId: string): string => {
   return externalRoutesHandler.generateProfileShareUrl(userId);
 };
@@ -244,6 +430,34 @@ export const generateWebProfileShareUrl = (userId: string): string => {
   return externalRoutesHandler.generateWebProfileShareUrl(userId);
 };
 
+// Event URLs
+export const generateEventShareUrl = (eventId: string): string => {
+  return externalRoutesHandler.generateEventShareUrl(eventId);
+};
+
+export const generateWebEventShareUrl = (eventId: string): string => {
+  return externalRoutesHandler.generateWebEventShareUrl(eventId);
+};
+
+// Ping URLs
+export const generatePingShareUrl = (pingId: string): string => {
+  return externalRoutesHandler.generatePingShareUrl(pingId);
+};
+
+export const generateWebPingShareUrl = (pingId: string): string => {
+  return externalRoutesHandler.generateWebPingShareUrl(pingId);
+};
+
+// Group URLs
+export const generateGroupShareUrl = (groupId: string): string => {
+  return externalRoutesHandler.generateGroupShareUrl(groupId);
+};
+
+export const generateWebGroupShareUrl = (groupId: string): string => {
+  return externalRoutesHandler.generateWebGroupShareUrl(groupId);
+};
+
+// Initialization
 export const initializeExternalRoutes = async (): Promise<void> => {
   return externalRoutesHandler.initialize();
 };

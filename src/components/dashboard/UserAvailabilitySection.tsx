@@ -64,7 +64,7 @@ export default function UserAvailabilitySection({
   const handleUserPress = (user: NearbyUser) => {
     if (user.isInviteCard) {
       const appStoreLink = 'https://apps.apple.com/us/app/wingman-connect-on-layovers/id6743148488';
-      const message = `Join me on Wingman! Connect with travelers during layovers: ${appStoreLink}`;
+      const message = `Join me on Wingman! Connect with people around you: ${appStoreLink}`;
       Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
     } else if (user.isViewMoreCard) {
       router.push('/explore');
@@ -199,7 +199,7 @@ export default function UserAvailabilitySection({
         View More
       </Text>
       <Text style={[styles.viewMoreSubtitle, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
-        See all travelers
+        See all nearby
       </Text>
       <View style={[styles.inviteButton, { 
         backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.12)" : "rgba(56, 165, 201, 0.12)"
@@ -241,7 +241,7 @@ export default function UserAvailabilitySection({
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
           <Text style={[styles.loadingText, { color: theme === "light" ? "#000000" : "#64748B" }]}>
-            Finding available travelers...
+            Finding available people...
           </Text>
         </View>
       ) : users.length > 0 ? (
@@ -269,7 +269,7 @@ export default function UserAvailabilitySection({
         />
       ) : (
         <Text style={[styles.noDataText, { color: theme === "light" ? "#000000" : "#64748B" }]}>
-          No travelers available now.
+          No one available nearby.
         </Text>
       )}
     </View>

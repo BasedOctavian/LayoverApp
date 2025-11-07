@@ -26,6 +26,10 @@ export default function MoodStatusBar({
       activeOpacity={0.9}
       onPress={onPress}
       style={styles.defaultSearchContainer}
+      accessible={true}
+      accessibilityLabel={displayText}
+      accessibilityHint="Double tap to update your mood status"
+      accessibilityRole="button"
     >
       <View style={[styles.searchContainer, { 
         backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",

@@ -14,6 +14,7 @@ import { ThemeContext } from '../../../context/ThemeContext';
 import * as ExpoNotifications from 'expo-notifications';
 import { containsFilteredContent, getFilteredContentCategory } from '../../../utils/contentFilter';
 import UserAvatar from '../../../components/UserAvatar';
+import useNotificationCount from '../../../hooks/useNotificationCount';
 
 interface Message {
   id: string;
@@ -21,6 +22,7 @@ interface Message {
   userId: string;
   userName: string;
   timestamp: Timestamp;
+  isSystemMessage?: boolean;
 }
 
 const formatTimestamp = (timestamp: Timestamp): string => {
@@ -39,6 +41,19 @@ const MessageItem = ({ item, isCurrentUser, theme }: { item: Message; isCurrentU
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const [isLoading, setIsLoading] = useState(!userProfileCache.has(item.userId));
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Render system messages differently
+  if (item.isSystemMessage || item.userId === 'SYSTEM') {
+    return (
+      <View style={styles.systemMessageContainer}>
+        <Text style={[styles.systemMessageText, { 
+          color: theme === "light" ? "#64748B" : "#94A3B8"
+        }]}>
+          {item.text}
+        </Text>
+      </View>
+    );
+  }
 
   // Add loading progress animation with pulse
   useEffect(() => {
@@ -246,12 +261,16 @@ export default function EventChat() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const insets = useSafeAreaInsets();
   const topBarHeight = 50 + insets.top;
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const marginAnim = useRef(new Animated.Value(50)).current;
   const flatListRef = useRef<FlatList>(null);
   const { theme } = React.useContext(ThemeContext);
   const [messageError, setMessageError] = useState(false);
   const [eventDetails, setEventDetails] = useState<any>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardAnimatedValue = useRef(new Animated.Value(0)).current;
+  const inputContainerAnim = useRef(new Animated.Value(0)).current;
+  
+  // Get notification count
+  const notificationCount = useNotificationCount(user?.uid || null);
 
   useEffect(() => {
     const fetchEventDetails = async () => {
@@ -277,33 +296,59 @@ export default function EventChat() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Smooth keyboard animations
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => {
-        Animated.timing(marginAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: false,
-        }).start();
-        setKeyboardVisible(true);
-        // Add a small delay to ensure the keyboard is fully shown
+      (e) => {
+        const duration = Platform.OS === 'ios' ? e.duration || 250 : 250;
+        setKeyboardHeight(e.endCoordinates.height);
+        
+        Animated.parallel([
+          Animated.timing(keyboardAnimatedValue, {
+            toValue: 1,
+            duration: duration,
+            useNativeDriver: false,
+            easing: Easing.out(Easing.cubic),
+          }),
+          Animated.spring(inputContainerAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 80,
+            useNativeDriver: true,
+          })
+        ]).start();
+        
+        // Scroll to bottom smoothly
         setTimeout(() => {
           if (messages.length > 0) {
             flatListRef.current?.scrollToEnd({ animated: true });
           }
-        }, 100);
+        }, duration / 2);
       }
     );
+    
     const keyboardWillHideListener = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        Animated.timing(marginAnim, {
-          toValue: 50,
-          duration: 150,
-          useNativeDriver: false,
-        }).start();
-        setKeyboardVisible(false);
+      (e) => {
+        const duration = Platform.OS === 'ios' ? e.duration || 250 : 250;
+        
+        Animated.parallel([
+          Animated.timing(keyboardAnimatedValue, {
+            toValue: 0,
+            duration: duration,
+            useNativeDriver: false,
+            easing: Easing.out(Easing.cubic),
+          }),
+          Animated.spring(inputContainerAnim, {
+            toValue: 0,
+            friction: 8,
+            tension: 80,
+            useNativeDriver: true,
+          })
+        ]).start(() => {
+          setKeyboardHeight(0);
+        });
       }
     );
 
@@ -337,7 +382,7 @@ export default function EventChat() {
       // Check if receiver has notifications enabled and has a push token
       if (receiverData?.expoPushToken && 
           receiverData?.notificationPreferences?.notificationsEnabled && 
-          receiverData?.notificationPreferences?.events &&
+          (receiverData?.notificationPreferences?.activities || receiverData?.notificationPreferences?.events) &&
           receiverData?.notificationPreferences?.chats) {
         
         console.log('Sending push notification to:', {
@@ -395,7 +440,7 @@ export default function EventChat() {
         console.log('Push notification not sent because:', {
           hasToken: !!receiverData?.expoPushToken,
           notificationsEnabled: receiverData?.notificationPreferences?.notificationsEnabled,
-          eventsEnabled: receiverData?.notificationPreferences?.events,
+          activitiesEnabled: receiverData?.notificationPreferences?.activities || receiverData?.notificationPreferences?.events,
           chatsEnabled: receiverData?.notificationPreferences?.chats,
           receiverId: receiverId
         });
@@ -445,6 +490,13 @@ export default function EventChat() {
     }
     
     setMessageError(false);
+    const messageText = newMessage.trim();
+    
+    // Clear input immediately for better UX
+    setNewMessage('');
+    
+    // Dismiss keyboard
+    Keyboard.dismiss();
 
     // Get sender's data to get their name
     const senderDoc = await getDoc(doc(db, 'users', user.uid));
@@ -452,13 +504,16 @@ export default function EventChat() {
     const senderName = senderData?.name || senderData?.displayName || 'Anonymous';
 
     const messageData = {
-      text: newMessage,
+      text: messageText,
       userId: user.uid,
       userName: senderName,
     };
     
     try {
       await sendMessage(messageData);
+      
+      // Scroll to bottom after message is added
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
       
       // Get event document to access attendees
       const eventDoc = await getDoc(doc(db, 'events', id as string));
@@ -475,14 +530,13 @@ export default function EventChat() {
         participants
           .filter((participantId: string) => participantId !== user.uid) // Exclude sender
           .map((participantId: string) => 
-            sendPushNotification(participantId, newMessage, id as string)
+            sendPushNotification(participantId, messageText, id as string)
           )
       );
-      
-      setNewMessage('');
-      flatListRef.current?.scrollToEnd({ animated: true });
     } catch (error) {
       console.error('Error sending message:', error);
+      // Restore message if send fails
+      setNewMessage(messageText);
       Alert.alert('Error', 'Failed to send message. Please try again.');
     }
   };
@@ -509,13 +563,16 @@ export default function EventChat() {
   }
 
   return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+    <View style={[styles.flex, { backgroundColor: theme === "light" ? "#F8FAFC" : "#000000" }]}>
       <LinearGradient colors={theme === "light" ? ["#F8FAFC", "#FFFFFF"] : ["#000000", "#1a1a1a"]} style={styles.flex}>
         <StatusBar translucent backgroundColor="transparent" barStyle={theme === "light" ? "dark-content" : "light-content"} />
         <TopBar 
           showBackButton={true}
-          showNotifications={true}
+          title=""
           onProfilePress={() => router.push(`/profile/${user?.uid}`)}
+          notificationCount={notificationCount}
+          showLogo={true}
+          centerLogo={true}
         />
 
         {/* Event Header */}
@@ -574,70 +631,125 @@ export default function EventChat() {
             </TouchableOpacity>
           </View>
         ) : (
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+          <View style={styles.chatContainer}>
             <FlatList
               data={messages}
               renderItem={renderMessage}
               keyExtractor={item => item.id}
               style={styles.messageList}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.messageListContent}
+              contentContainerStyle={[styles.messageListContent, { paddingBottom: 20 }]}
               onContentSizeChange={() => {
                 if (messages.length > 0) {
                   flatListRef.current?.scrollToEnd({ animated: true });
                 }
               }}
               ref={flatListRef}
+              maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+              }}
             />
-            <Animated.View style={[styles.inputContainer, { 
-              marginBottom: marginAnim,
-              backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
-              borderTopColor: theme === "light" ? "#e0e0e0" : "#2a2a2a"
-            }]}>
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
-                  color: theme === "light" ? "#1a1a1a" : "#ffffff",
-                  borderColor: messageError ? "#ff4444" : theme === "light" ? "#e0e0e0" : "#3a3a3a"
-                }]}
-                value={newMessage}
-                onChangeText={(text) => {
-                  setNewMessage(text);
-                  if (messageError && !containsFilteredContent(text)) {
-                    setMessageError(false);
-                  }
+            
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              keyboardVerticalOffset={Platform.OS === "ios" ? topBarHeight + 70 - insets.bottom : 20}
+            >
+              <Animated.View
+                style={{
+                  transform: [{
+                    translateY: inputContainerAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -5]
+                    })
+                  }]
                 }}
-                placeholder={messageError ? "Inappropriate content detected" : "Type a message..."}
-                placeholderTextColor={messageError ? "#ff4444" : theme === "light" ? "#666666" : "#a0a0a0"}
-                multiline
-                maxLength={1000}
-                keyboardAppearance={theme === "light" ? "light" : "dark"}
-              />
-              <TouchableOpacity
-                onPress={handleSendMessage}
-                style={[styles.sendButton, { backgroundColor: "#37a4c8" }, messageError && styles.sendButtonDisabled]}
-                disabled={messageError}
               >
-                <Feather name="send" size={24} color={messageError ? "#666666" : "#ffffff"} />
-              </TouchableOpacity>
-            </Animated.View>
-          </KeyboardAvoidingView>
+                <SafeAreaView 
+                  edges={["bottom"]} 
+                  style={{ backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a" }}
+                >
+                  <View style={[styles.inputContainer, { 
+                    backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                    borderTopColor: theme === "light" ? "#e8e9ea" : "#2a2a2a"
+                  }]}>
+                    <Animated.View style={[styles.inputWrapper, {
+                      transform: [{
+                        scale: inputContainerAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [1, 1.01]
+                        })
+                      }]
+                    }]}>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: theme === "light" ? "#f5f5f5" : "#2a2a2a",
+                          color: theme === "light" ? "#1a1a1a" : "#ffffff",
+                          borderColor: messageError ? "#ff4444" : theme === "light" ? "#e8e9ea" : "#3a3a3a"
+                        }]}
+                        value={newMessage}
+                        onChangeText={(text) => {
+                          setNewMessage(text);
+                          if (messageError && !containsFilteredContent(text)) {
+                            setMessageError(false);
+                          }
+                        }}
+                        placeholder={messageError ? "Inappropriate content detected" : "Type a message..."}
+                        placeholderTextColor={messageError ? "#ff4444" : theme === "light" ? "#666666" : "#a0a0a0"}
+                        multiline
+                        maxLength={1000}
+                        keyboardAppearance={theme === "light" ? "light" : "dark"}
+                        returnKeyType="send"
+                        onSubmitEditing={(e) => {
+                          e.preventDefault();
+                          if (newMessage.trim() !== "" && !messageError) {
+                            handleSendMessage();
+                          }
+                        }}
+                        blurOnSubmit={false}
+                        enablesReturnKeyAutomatically={true}
+                        autoCorrect={true}
+                        spellCheck={true}
+                      />
+                    </Animated.View>
+                    <TouchableOpacity
+                      onPress={handleSendMessage}
+                      style={[
+                        styles.sendButton, 
+                        { backgroundColor: "#37a4c8" }, 
+                        (messageError || newMessage.trim() === "") && styles.sendButtonDisabled
+                      ]}
+                      disabled={messageError || newMessage.trim() === ""}
+                      activeOpacity={0.7}
+                    >
+                      <Feather 
+                        name="send" 
+                        size={22} 
+                        color={(messageError || newMessage.trim() === "") ? "#999999" : "#ffffff"} 
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </SafeAreaView>
+              </Animated.View>
+            </KeyboardAvoidingView>
+          </View>
         )}
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { 
-    flex: 1, 
-    marginBottom: -20 
+    flex: 1,
   },
   centerContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+  },
+  chatContainer: {
+    flex: 1,
   },
   messageList: { 
     flex: 1,
@@ -677,27 +789,32 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     padding: 12,
-    borderRadius: 20,
-    maxWidth: '80%',
+    borderRadius: 18,
+    maxWidth: '75%',
     minWidth: '30%',
     borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   currentUserBubble: {
     borderTopRightRadius: 4,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    borderTopLeftRadius: 18,
+    shadowColor: "#37a4c8",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   otherUserBubble: {
     borderTopLeftRadius: 4,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    borderTopRightRadius: 20,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    borderTopRightRadius: 18,
   },
   messageText: {
     fontSize: 15,
@@ -717,35 +834,38 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderTopWidth: 1,
+    alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+  inputWrapper: {
+    flex: 1,
   },
   input: {
-    flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 24,
+    borderRadius: 22,
     fontSize: 15,
-    marginRight: 10,
+    marginRight: 8,
     borderWidth: 1,
     letterSpacing: 0.2,
     maxHeight: 100,
+    minHeight: 44,
   },
   sendButton: {
-    padding: 12,
-    borderRadius: 24,
+    backgroundColor: "#37a4c8",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
-    shadowColor: "#000",
+    alignItems: "center",
+    shadowColor: "#37a4c8",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-    minWidth: 48,
-    height: 48,
-    alignItems: 'center',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   errorText: {
     fontSize: 16,
@@ -796,12 +916,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginBottom: 8,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
     borderBottomWidth: 1,
   },
   headerTextContainer: {
@@ -836,5 +955,20 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 13,
     fontWeight: "500",
+  },
+  systemMessageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 24,
+    width: '100%',
+  },
+  systemMessageText: {
+    fontSize: 12,
+    fontWeight: '400',
+    textAlign: 'center',
+    lineHeight: 16,
+    opacity: 0.65,
+    maxWidth: '85%',
   },
 });

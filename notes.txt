@@ -1,0 +1,22 @@
+
+
+
+
+GROUPSCREEN
+- Do the middle logo like on chat EXPLORE
+- Polish the colors with gradient 
+- Ensure privacy settings work when group is clicked on 
+- Test posts, comment notifications
+- Test proposals
+
+SETTINGS
+- Test every screen
+
+AUTHSCREENS
+- Test create account, expo dimensions
+- Test update account, expo dimensions
+
+FINAL: 
+UI/UX finalization (gradients, spacing, expo-dimensions)
+
+Cloud functions

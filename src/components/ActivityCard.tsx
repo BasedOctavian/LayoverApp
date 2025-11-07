@@ -3,12 +3,14 @@ import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, FlatList, D
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { MaterialIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { ThemeContext } from '../context/ThemeContext';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot, getDocs, doc } from 'firebase/firestore';
 import { db } from '../../config/firebaseConfig';
 import { useRouter } from 'expo-router';
 import { haversineDistance } from '../utils/haversineDistance';
 import PingEventModal from './PingEventModal';
 import { LinearGradient } from 'expo-linear-gradient';
+import useAuth from '../hooks/auth';
+import useDashboardActivity from '../hooks/useDashboardActivity';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -28,6 +30,7 @@ interface PingActivity {
   duration: string;
   maxParticipants: string;
   participantCount: number;
+  participants?: string[];
   pingType: string;
   status: string;
   createdAt: any;
@@ -49,6 +52,8 @@ interface EventActivity {
   creatorId: string;
   startTime: any;
   participantCount: number;
+  participants?: string[];
+  pingType?: string;
   maxParticipants?: string;
   status: string;
   createdAt: any;
@@ -61,6 +66,49 @@ interface ActivityCardProps {
   userId: string | null;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+}
+
+interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  data: {
+    type:
+      | "chat"
+      | "eventChat"
+      | "match"
+      | "ping_invitation"
+      | "ping_event"
+      | "join_request"
+      | "member_joined"
+      | "join_request_approved"
+      | "join_request_rejected"
+      | "group_invite"
+      | "promoted_to_organizer"
+      | "new_post"
+      | "new_proposal"
+      | "proposal_confirmed";
+    chatId?: string;
+    eventId?: string;
+    matchedUserId?: string;
+    matchedUserName?: string;
+    pingId?: string;
+    pingTitle?: string;
+    inviterId?: string;
+    inviterName?: string;
+    pingLocation?: string;
+    pingCategory?: string;
+    creatorName?: string;
+    pingDescription?: string;
+    distanceMiles?: number;
+    groupId?: string;
+    actorId?: string;
+    invitedBy?: string;
+    postId?: string;
+    proposalId?: string;
+  };
+  timestamp: any;
+  read: boolean;
 }
 
 const getCategoryIcon = (category: string) => {
@@ -140,6 +188,24 @@ const formatTimeAgo = (timestamp: any): string => {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return created.toLocaleDateString();
+};
+
+const formatNotificationTime = (timestamp: any): string => {
+  try {
+    if (!timestamp) return "Just now";
+
+    // Handle Firestore timestamp
+    if (timestamp.seconds) {
+      const date = new Date(timestamp.seconds * 1000);
+      return formatTimeAgo(timestamp);
+    }
+
+    // Handle regular Date object or other formats
+    return formatTimeAgo(timestamp);
+  } catch (error) {
+    console.warn("Error formatting notification timestamp:", error);
+    return "Just now";
+  }
 };
 
 // Helper to calculate ping end time from createdAt and duration
@@ -237,6 +303,7 @@ const ModernLoadingDot = ({ color }: { color: string }) => {
 
 export default function ActivityCard({ userLocation, userId, isCollapsed, onToggleCollapse }: ActivityCardProps) {
   const { theme } = React.useContext(ThemeContext);
+  const { user } = useAuth();
   const router = useRouter();
   const [pings, setPings] = useState<PingActivity[]>([]);
   const [events, setEvents] = useState<EventActivity[]>([]);
@@ -245,13 +312,63 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showPingModal, setShowPingModal] = useState(false);
+  const [userConnections, setUserConnections] = useState<Set<string>>(new Set());
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const autoScrollRef = useRef<NodeJS.Timeout | null>(null);
   const panRef = useRef(null);
   const translateX = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(1)).current;
   const cardOpacity = useRef(new Animated.Value(1)).current;
 
-  // Fetch pings
+  // Fetch dashboard activity counts
+  const { activity: dashboardActivity, loading: activityLoading } = useDashboardActivity(userId, userLocation);
+
+  // Fetch user connections for filtering friends-only content (with caching)
+  useEffect(() => {
+    let mounted = true;
+    
+    const fetchUserConnections = async () => {
+      if (!user?.uid) return;
+      
+      try {
+        const connectedUserIds = new Set<string>();
+        
+        // Query connections where user is a participant with a limit
+        const connectionsRef = collection(db, 'connections');
+        const q = query(
+          connectionsRef, 
+          where('participants', 'array-contains', user.uid),
+          limit(100) // Limit to prevent massive queries
+        );
+        const snapshot = await getDocs(q);
+        
+        if (!mounted) return;
+        
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.status === 'active') {
+            // Add the other user ID (not the current user)
+            const otherUserId = data.participants.find((id: string) => id !== user.uid);
+            if (otherUserId) {
+              connectedUserIds.add(otherUserId);
+            }
+          }
+        });
+        
+        setUserConnections(connectedUserIds);
+      } catch (error) {
+        console.error('Error fetching user connections:', error);
+      }
+    };
+    
+    fetchUserConnections();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [user?.uid]);
+
+  // Fetch pings (optimized with smaller limit for faster initial load)
   useEffect(() => {
     if (!userLocation) {
       setLoading(false);
@@ -262,7 +379,7 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
         collection(db, 'pings'),
         where('status', '==', 'active'),
         orderBy('createdAt', 'desc'),
-        limit(10)
+        limit(5) // Reduced from 10 to 5 for faster loading
       ),
       (snapshot) => {
         try {
@@ -271,10 +388,29 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
             ...doc.data(),
             type: 'ping',
           })) as PingActivity[];
-          // Filter by distance and time
+          // Filter by distance, time, and privacy settings
           const now = new Date();
           const filtered = pingsData.filter(activity => {
             if (!activity.coordinates) return false;
+            
+            // Filter by privacy settings
+            if (activity.pingType === 'friends-only') {
+              // Friends-only: Only show to creator, their active connections, or existing participants
+              // Non-connected users will not see these pings at all
+              if (!user?.uid) return false; // Hide if no user ID
+              const isCreator = user.uid === activity.creatorId;
+              const isConnected = userConnections.has(activity.creatorId); // Check if user has active connection with creator
+              const isParticipant = activity.participants?.includes(user.uid);
+              if (!isCreator && !isConnected && !isParticipant) {
+                return false; // Hide from non-connected, non-participant users
+              }
+            } else if (activity.pingType === 'invite-only') {
+              // Invite-only: Only show to creator or participants (no connection check needed)
+              if (!user?.uid) return false; // Hide if no user ID
+              if (user.uid !== activity.creatorId && !activity.participants?.includes(user.uid)) {
+                return false;
+              }
+            }
             
             // Check distance
             const distanceKm = haversineDistance(
@@ -296,9 +432,24 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
             
             if (!isStillActive) {
               console.log('[ActivityCard] Ping expired:', activity.title, 'End time:', endTime, 'Now:', now);
+              return false;
             }
             
-            return isStillActive;
+            // Filter out full pings (unless user is already a participant or creator)
+            if (activity.maxParticipants && !activity.maxParticipants.toLowerCase().includes('unlimited')) {
+              const maxNum = parseInt(activity.maxParticipants.replace(/\D/g, ''));
+              if (!isNaN(maxNum)) {
+                const currentCount = activity.participantCount || activity.participants?.length || 0;
+                const isFull = currentCount >= maxNum;
+                
+                // Still show if user is creator or already participating
+                if (isFull && user?.uid && user.uid !== activity.creatorId && !activity.participants?.includes(user.uid)) {
+                  return false; // Hide full pings from non-participants
+                }
+              }
+            }
+            
+            return true;
           });
           setPings(filtered);
         } catch (err) {
@@ -310,9 +461,9 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
       }
     );
     return () => unsubscribe();
-  }, [userLocation]);
+  }, [userLocation, user?.uid, userConnections]);
 
-  // Fetch events
+  // Fetch events (optimized with smaller limit for faster initial load)
   useEffect(() => {
     if (!userLocation) return;
     const unsubscribe = onSnapshot(
@@ -320,7 +471,7 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
         collection(db, 'events'),
         where('status', '==', 'active'),
         orderBy('createdAt', 'desc'),
-        limit(10)
+        limit(5) // Reduced from 10 to 5 for faster loading
       ),
       (snapshot) => {
         try {
@@ -339,6 +490,8 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
               creatorId: data.organizer || data.creatorId || '',
               startTime: data.startTime,
               participantCount: Array.isArray(data.attendees) ? data.attendees.length : (data.participantCount || 0),
+              participants: Array.isArray(data.attendees) ? data.attendees : (data.participants || []),
+              pingType: data.pingType || 'open',
               maxParticipants: data.maxParticipants || '',
               status: data.status || '',
               createdAt: data.createdAt,
@@ -346,13 +499,36 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
               type: 'event',
             } as EventActivity;
           });
-          // Filter by distance and time
+          // Filter by distance, time, and privacy settings
           const now = new Date();
           const filtered = eventsData.filter(event => {
             if (!event.coordinates) {
               console.log('[ActivityCard] Event missing coordinates:', event);
               return false;
             }
+            
+            // Filter by privacy settings
+            const pingType = (event as any).pingType || 'open';
+            if (pingType === 'friends-only') {
+              // Friends-only: Only show to creator, their active connections, or existing participants
+              // Non-connected users will not see these events at all
+              if (!user?.uid) return false; // Hide if no user ID
+              const isCreator = user.uid === event.creatorId;
+              const isConnected = userConnections.has(event.creatorId); // Check if user has active connection with creator
+              const participants = (event as any).participants || [];
+              const isParticipant = participants.includes(user.uid);
+              if (!isCreator && !isConnected && !isParticipant) {
+                return false; // Hide from non-connected, non-participant users
+              }
+            } else if (pingType === 'invite-only') {
+              // Invite-only: Only show to creator or participants (no connection check needed)
+              if (!user?.uid) return false; // Hide if no user ID
+              const participants = (event as any).participants || [];
+              if (user.uid !== event.creatorId && !participants.includes(user.uid)) {
+                return false;
+              }
+            }
+            
             const distanceKm = haversineDistance(
               userLocation.lat,
               userLocation.long,
@@ -386,7 +562,56 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
       }
     );
     return () => unsubscribe();
-  }, [userLocation]);
+  }, [userLocation, user?.uid, userConnections]);
+
+  // Fetch notifications
+  useEffect(() => {
+    if (!userId) {
+      setNotifications([]);
+      return;
+    }
+
+    const userRef = doc(db, 'users', userId);
+    const unsubscribe = onSnapshot(userRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        try {
+          const userData = docSnapshot.data();
+          const notificationList = userData.notifications || [];
+          
+          // Filter and validate notifications
+          const validNotifications = notificationList
+            .filter((n: any) => n && n.id && n.title && n.body && n.data && n.timestamp)
+            .map((n: any, index: number) => ({
+              id: n.id || `notification-${index}`,
+              title: n.title || '',
+              body: n.body || '',
+              data: n.data || { type: 'chat' },
+              timestamp: n.timestamp,
+              read: n.read !== undefined ? n.read : false,
+            } as Notification));
+
+          // Sort by timestamp (newest first)
+          const sortedNotifications = [...validNotifications].sort((a, b) => {
+            try {
+              const timeA = a.timestamp?.seconds || (a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0);
+              const timeB = b.timestamp?.seconds || (b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0);
+              return timeB - timeA;
+            } catch {
+              return 0;
+            }
+          });
+
+          // Keep only the most recent 3 notifications
+          setNotifications(sortedNotifications.slice(0, 3));
+        } catch (error) {
+          console.error('Error processing notifications:', error);
+          setNotifications([]);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
 
   // Merge and sort activities
   useEffect(() => {
@@ -689,6 +914,61 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
       backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
       borderColor: theme === "light" ? "#37a4c8" : "#38a5c9"
     }]}> 
+      {/* Compact Activity Summary */}
+      <View style={[styles.summaryRow, {
+        backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.06)" : "rgba(56, 165, 201, 0.06)"
+      }]}>
+        <TouchableOpacity
+          style={styles.summaryItemCompact}
+          onPress={() => router.push('/chat/chatInbox')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="people-outline" size={16} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+          <Text style={[styles.summaryCountCompact, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+            {dashboardActivity.pendingConnectionsCount}
+          </Text>
+          <Text style={[styles.summaryLabelCompact, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+            Pending
+          </Text>
+        </TouchableOpacity>
+
+        <View style={[styles.summaryDividerVertical, {
+          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(56, 165, 201, 0.15)"
+        }]} />
+
+        <TouchableOpacity
+          style={styles.summaryItemCompact}
+          onPress={() => router.push('/chat/chatInbox')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chatbubble-outline" size={16} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+          <Text style={[styles.summaryCountCompact, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+            {dashboardActivity.unreadMessagesCount}
+          </Text>
+          <Text style={[styles.summaryLabelCompact, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+            Unread
+          </Text>
+        </TouchableOpacity>
+
+        <View style={[styles.summaryDividerVertical, {
+          backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.15)" : "rgba(56, 165, 201, 0.15)"
+        }]} />
+
+        <TouchableOpacity
+          style={styles.summaryItemCompact}
+          onPress={() => router.push('/explore')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="location-outline" size={16} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
+          <Text style={[styles.summaryCountCompact, { color: theme === "light" ? "#37a4c8" : "#38a5c9" }]}>
+            {pings.length + events.length}
+          </Text>
+          <Text style={[styles.summaryLabelCompact, { color: theme === "light" ? "#64748B" : "#94A3B8" }]}>
+            Nearby
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {activities.length > 0 ? (
         <View style={styles.activityContainer}>
           {/* Swipeable Activity Content */}
@@ -778,6 +1058,200 @@ export default function ActivityCard({ userLocation, userId, isCollapsed, onTogg
               ))}
             </View>
           )}
+        </View>
+      ) : notifications.length > 0 ? (
+        <View style={styles.notificationsContainer}>
+          <View style={styles.notificationsHeader}>
+            <Ionicons 
+              name="notifications-outline" 
+              size={16} 
+              color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+            />
+            <Text style={[styles.notificationsHeaderText, { color: theme === "light" ? "#000000" : "#e4fbfe" }]}>
+              Recent Notifications
+            </Text>
+          </View>
+          {notifications.map((notification, index) => {
+            const getNotificationIcon = () => {
+              switch (notification.data.type) {
+                case "chat":
+                  return "chatbubble-ellipses";
+                case "eventChat":
+                  return "calendar";
+                case "match":
+                  return "heart";
+                case "ping_invitation":
+                  return "people";
+                case "ping_event":
+                  return "calendar";
+                case "join_request":
+                  return "person-add";
+                case "member_joined":
+                  return "people";
+                case "join_request_approved":
+                  return "checkmark-circle";
+                case "join_request_rejected":
+                  return "close-circle";
+                case "group_invite":
+                  return "mail";
+                case "promoted_to_organizer":
+                  return "star";
+                case "new_post":
+                  return "document-text";
+                case "new_proposal":
+                  return "calendar";
+                case "proposal_confirmed":
+                  return "checkmark-done-circle";
+                default:
+                  return "notifications";
+              }
+            };
+
+            const getNotificationColor = () => {
+              switch (notification.data.type) {
+                case "chat":
+                  return "#37a4c8";
+                case "eventChat":
+                  return "#4CAF50";
+                case "match":
+                  return "#FF6B6B";
+                case "ping_invitation":
+                  return "#FFA726";
+                case "ping_event":
+                  return "#4CAF50";
+                case "join_request":
+                  return "#9C27B0";
+                case "member_joined":
+                  return "#4CAF50";
+                case "join_request_approved":
+                  return "#4CAF50";
+                case "join_request_rejected":
+                  return "#FF6B6B";
+                case "group_invite":
+                  return "#2196F3";
+                case "promoted_to_organizer":
+                  return "#FFD700";
+                case "new_post":
+                  return "#37a4c8";
+                case "new_proposal":
+                  return "#9C27B0";
+                case "proposal_confirmed":
+                  return "#4CAF50";
+                default:
+                  return "#37a4c8";
+              }
+            };
+
+            const handleNotificationPress = () => {
+              // Navigate based on notification type (matching notifications.tsx logic)
+              if (notification.data.type === "chat" && notification.data.chatId) {
+                router.push(`/chat/${notification.data.chatId}`);
+              } else if (notification.data.type === "eventChat" && notification.data.eventId) {
+                router.push(`/event/eventChat/${notification.data.eventId}`);
+              } else if (notification.data.type === "match") {
+                router.push("/chat/chatInbox");
+              } else if (
+                (notification.data.type === "ping_invitation" || notification.data.type === "ping_event") &&
+                notification.data.pingId
+              ) {
+                router.push(`/ping/${notification.data.pingId}`);
+              } else if (
+                notification.data.type === "proposal_comment" &&
+                notification.data.groupId &&
+                notification.data.proposalId
+              ) {
+                router.push(`/group/proposal/${notification.data.proposalId}?groupId=${notification.data.groupId}`);
+              } else if (
+                (notification.data.type === "join_request" ||
+                  notification.data.type === "member_joined" ||
+                  notification.data.type === "join_request_approved" ||
+                  notification.data.type === "join_request_rejected" ||
+                  notification.data.type === "group_invite" ||
+                  notification.data.type === "promoted_to_organizer" ||
+                  notification.data.type === "new_post" ||
+                  notification.data.type === "new_proposal" ||
+                  notification.data.type === "proposal_confirmed") &&
+                notification.data.groupId
+              ) {
+                router.push(`/group/${notification.data.groupId}`);
+              } else if (notification.data.matchedUserId) {
+                router.push(`/profile/${notification.data.matchedUserId}`);
+              } else {
+                router.push('/notifications/notifications');
+              }
+            };
+
+            const iconName = getNotificationIcon();
+            const iconColor = getNotificationColor();
+
+            return (
+              <TouchableOpacity
+                key={notification.id || index}
+                style={[styles.notificationItem, {
+                  backgroundColor: theme === "light" ? "#ffffff" : "#1a1a1a",
+                  borderColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)",
+                  shadowColor: theme === "light" ? "#000" : "#000",
+                }]}
+                onPress={handleNotificationPress}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.notificationIconWrapper]}>
+                  <View style={[styles.notificationIconContainer, {
+                    backgroundColor: `${iconColor}20`
+                  }]}>
+                    <Ionicons name={iconName} size={14} color={iconColor} />
+                  </View>
+                </View>
+                <View style={styles.notificationContent}>
+                  <Text 
+                    style={[styles.notificationTitle, { 
+                      color: theme === "light" ? "#0F172A" : "#e4fbfe",
+                      fontWeight: notification.read ? "500" : "600"
+                    }]}
+                    numberOfLines={1}
+                  >
+                    {notification.title}
+                  </Text>
+                  <Text 
+                    style={[styles.notificationBody, { 
+                      color: theme === "light" ? "#666666" : "#a0a0a0"
+                    }]}
+                    numberOfLines={1}
+                  >
+                    {notification.body}
+                  </Text>
+                  <Text style={[styles.notificationTime, { 
+                    color: theme === "light" ? "#999999" : "#666666"
+                  }]}>
+                    {formatNotificationTime(notification.timestamp)}
+                  </Text>
+                </View>
+                {!notification.read && (
+                  <View style={[styles.unreadDot, {
+                    backgroundColor: iconColor
+                  }]} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity
+            style={[styles.viewAllButton, {
+              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.08)" : "rgba(56, 165, 201, 0.08)"
+            }]}
+            onPress={() => router.push('/notifications/notifications')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.viewAllButtonText, {
+              color: theme === "light" ? "#37a4c8" : "#38a5c9"
+            }]}>
+              View All
+            </Text>
+            <Ionicons 
+              name="chevron-forward" 
+              size={12} 
+              color={theme === "light" ? "#37a4c8" : "#38a5c9"} 
+            />
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.emptyContainer}>
@@ -1201,5 +1675,129 @@ const styles = StyleSheet.create({
   },
   infiniteIcon: {
     marginLeft: 2,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    marginBottom: 16,
+    elevation: 1,
+    shadowColor: "#38a5c9",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+  },
+  summaryItemCompact: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  summaryCountCompact: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  summaryLabelCompact: {
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  summaryDividerVertical: {
+    width: 1,
+    height: 24,
+    marginHorizontal: 4,
+  },
+  notificationsContainer: {
+    paddingVertical: 2,
+  },
+  notificationsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  notificationsHeaderText: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    lineHeight: 20,
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 6,
+    borderWidth: 0,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  notificationIconWrapper: {
+    marginRight: 10,
+    marginTop: 1,
+  },
+  notificationIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  notificationContent: {
+    flex: 1,
+    paddingRight: 4,
+  },
+  notificationTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    lineHeight: 16,
+    marginBottom: 3,
+  },
+  notificationBody: {
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.1,
+    marginBottom: 4,
+    opacity: 0.7,
+  },
+  notificationTime: {
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.1,
+    opacity: 0.5,
+  },
+  unreadDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 3,
+    flexShrink: 0,
+    marginLeft: 4,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginTop: 2,
+    gap: 5,
+  },
+  viewAllButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
 }); 

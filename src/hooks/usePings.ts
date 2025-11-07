@@ -36,10 +36,313 @@ interface Ping {
   participantCount: number;
 }
 
+// Mood Profile Definitions for Dynamic Matching
+interface MoodProfile {
+  category: 'seeking' | 'neutral' | 'selective' | 'unavailable';
+  radiusMultiplier: number;      // Adjust search radius
+  notificationWeight: number;    // Priority in queue (0-10)
+  requireInterestMatch: boolean; // Must have interest overlap
+  minMatchThreshold: number;     // Minimum match quality (0-5)
+  description: string;           // Human-readable description
+}
+
+interface UserMatch {
+  user: any;
+  moodProfile: MoodProfile;
+  distanceMiles: number;
+  interestMatches: number;
+  effectiveRadius: number;
+  weight: number;
+  moodStatus: string | undefined;
+}
+
+// Define mood profiles with dynamic properties
+const moodProfiles: Record<string, MoodProfile> = {
+  // SEEKING MOODS - Cast wider net, high priority notifications
+  "Available": { 
+    category: 'seeking', 
+    radiusMultiplier: 1.5,
+    notificationWeight: 10,
+    requireInterestMatch: false,
+    minMatchThreshold: 0,
+    description: "Actively seeking activities"
+  },
+  "Looking for Company": { 
+    category: 'seeking', 
+    radiusMultiplier: 2.0,    // Search 2x further
+    notificationWeight: 10,
+    requireInterestMatch: false,
+    minMatchThreshold: 0,
+    description: "Eager to connect"
+  },
+  "Free to Chat": { 
+    category: 'seeking', 
+    radiusMultiplier: 1.5,
+    notificationWeight: 9,
+    requireInterestMatch: false,
+    minMatchThreshold: 0,
+    description: "Open to conversations"
+  },
+  "Down to Chat": { 
+    category: 'seeking', 
+    radiusMultiplier: 1.5,
+    notificationWeight: 9,
+    requireInterestMatch: false,
+    minMatchThreshold: 0,
+    description: "Ready to socialize"
+  },
+  "Group Activities": { 
+    category: 'seeking', 
+    radiusMultiplier: 1.8,
+    notificationWeight: 9,
+    requireInterestMatch: false,
+    minMatchThreshold: 0,
+    description: "Looking for group fun"
+  },
+  "Food & Drinks?": { 
+    category: 'seeking', 
+    radiusMultiplier: 1.5,
+    notificationWeight: 9,
+    requireInterestMatch: false,
+    minMatchThreshold: 0,
+    description: "Ready for food/drinks"
+  },
+  "Sharing Stories": { 
+    category: 'seeking', 
+    radiusMultiplier: 1.3,
+    notificationWeight: 8,
+    requireInterestMatch: false,
+    minMatchThreshold: 0,
+    description: "Open to conversations"
+  },
+  "Networking": { 
+    category: 'seeking', 
+    radiusMultiplier: 1.5,
+    notificationWeight: 8,
+    requireInterestMatch: true,
+    minMatchThreshold: 1,
+    description: "Professional connections"
+  },
+  
+  // NEUTRAL MOODS - Normal radius, moderate requirements
+  "Exploring": { 
+    category: 'neutral', 
+    radiusMultiplier: 1.0,
+    notificationWeight: 6,
+    requireInterestMatch: true,
+    minMatchThreshold: 1,
+    description: "Open to suggestions"
+  },
+  "Sightseeing": { 
+    category: 'neutral', 
+    radiusMultiplier: 1.0,
+    notificationWeight: 6,
+    requireInterestMatch: true,
+    minMatchThreshold: 1,
+    description: "Exploring the area"
+  },
+  "Airport Tour": { 
+    category: 'neutral', 
+    radiusMultiplier: 0.8,    // Stay closer to airport
+    notificationWeight: 5,
+    requireInterestMatch: true,
+    minMatchThreshold: 1,
+    description: "Exploring airport area"
+  },
+  "Language Exchange": { 
+    category: 'neutral', 
+    radiusMultiplier: 1.2,
+    notificationWeight: 6,
+    requireInterestMatch: true,
+    minMatchThreshold: 2,
+    description: "Seeking language practice"
+  },
+  "Restaurant Hunting": { 
+    category: 'neutral', 
+    radiusMultiplier: 1.0,
+    notificationWeight: 6,
+    requireInterestMatch: true,
+    minMatchThreshold: 1,
+    description: "Looking for food"
+  },
+  "Remote Work": { 
+    category: 'neutral', 
+    radiusMultiplier: 1.0,
+    notificationWeight: 4,
+    requireInterestMatch: true,
+    minMatchThreshold: 2,
+    description: "Working but flexible"
+  },
+  "Food Tour": { 
+    category: 'neutral', 
+    radiusMultiplier: 1.2,
+    notificationWeight: 6,
+    requireInterestMatch: true,
+    minMatchThreshold: 1,
+    description: "Food adventure"
+  },
+  
+  // SELECTIVE MOODS - Smaller radius, higher requirements
+  "Coffee Break": { 
+    category: 'selective', 
+    radiusMultiplier: 0.7,    // Only nearby
+    notificationWeight: 5,
+    requireInterestMatch: true,
+    minMatchThreshold: 2,
+    description: "Quick coffee only"
+  },
+  "Away": { 
+    category: 'selective', 
+    radiusMultiplier: 0.5,
+    notificationWeight: 3,
+    requireInterestMatch: true,
+    minMatchThreshold: 3,
+    description: "Limited availability"
+  },
+  "Snack Time": { 
+    category: 'selective', 
+    radiusMultiplier: 0.7,
+    notificationWeight: 5,
+    requireInterestMatch: true,
+    minMatchThreshold: 2,
+    description: "Quick snack only"
+  },
+  "Local Cuisine": { 
+    category: 'selective', 
+    radiusMultiplier: 0.9,
+    notificationWeight: 5,
+    requireInterestMatch: true,
+    minMatchThreshold: 2,
+    description: "Specific food interest"
+  },
+  "Duty Free": { 
+    category: 'selective', 
+    radiusMultiplier: 0.5,
+    notificationWeight: 3,
+    requireInterestMatch: true,
+    minMatchThreshold: 3,
+    description: "Shopping focused"
+  },
+  "Lounge Access": { 
+    category: 'selective', 
+    radiusMultiplier: 0.5,
+    notificationWeight: 3,
+    requireInterestMatch: true,
+    minMatchThreshold: 3,
+    description: "In lounge"
+  },
+  "Gate Change": { 
+    category: 'selective', 
+    radiusMultiplier: 0.3,
+    notificationWeight: 2,
+    requireInterestMatch: true,
+    minMatchThreshold: 4,
+    description: "Travel disruption"
+  },
+  
+  // UNAVAILABLE MOODS - No notifications
+  "Busy": { 
+    category: 'unavailable', 
+    radiusMultiplier: 0,
+    notificationWeight: 0,
+    requireInterestMatch: true,
+    minMatchThreshold: 999,
+    description: "Not available"
+  },
+  "Do Not Disturb": { 
+    category: 'unavailable', 
+    radiusMultiplier: 0,
+    notificationWeight: 0,
+    requireInterestMatch: true,
+    minMatchThreshold: 999,
+    description: "Do not contact"
+  },
+  "Work Mode": { 
+    category: 'unavailable', 
+    radiusMultiplier: 0,
+    notificationWeight: 0,
+    requireInterestMatch: true,
+    minMatchThreshold: 999,
+    description: "Deep work mode"
+  },
+  "In a Meeting": { 
+    category: 'unavailable', 
+    radiusMultiplier: 0,
+    notificationWeight: 0,
+    requireInterestMatch: true,
+    minMatchThreshold: 999,
+    description: "Currently busy"
+  },
+  "Conference Call": { 
+    category: 'unavailable', 
+    radiusMultiplier: 0,
+    notificationWeight: 0,
+    requireInterestMatch: true,
+    minMatchThreshold: 999,
+    description: "On a call"
+  },
+  "Project Deadline": { 
+    category: 'unavailable', 
+    radiusMultiplier: 0,
+    notificationWeight: 0,
+    requireInterestMatch: true,
+    minMatchThreshold: 999,
+    description: "Deadline pressure"
+  },
+  "Business Trip": { 
+    category: 'unavailable', 
+    radiusMultiplier: 0,
+    notificationWeight: 0,
+    requireInterestMatch: true,
+    minMatchThreshold: 999,
+    description: "Business focused"
+  },
+};
+
+// Get default profile for unknown moods
+const getDefaultMoodProfile = (): MoodProfile => ({
+  category: 'neutral',
+  radiusMultiplier: 1.0,
+  notificationWeight: 5,
+  requireInterestMatch: true,
+  minMatchThreshold: 1,
+  description: "Standard availability"
+});
+
 const usePings = ({ user }: UsePingsProps) => {
   const { getUsers } = useUsers();
   const { getUserConnections } = useConnections();
   const [isCreatingPing, setIsCreatingPing] = useState(false);
+
+  // Helper function to get mood profile for a user
+  const getMoodProfile = (moodStatus: string | undefined): MoodProfile => {
+    if (!moodStatus) return getDefaultMoodProfile();
+    return moodProfiles[moodStatus] || getDefaultMoodProfile();
+  };
+
+  // Helper function to calculate interest matches
+  const calculateInterestMatches = (user: any, pingFormData: PingFormData): number => {
+    const userConnectionIntents = user.connectionIntents || [];
+    const userEventPreferences = user.eventPreferences || {};
+    
+    // Count matching connection intents
+    const intentMatches = pingFormData.connectionIntents.filter(intent => 
+      userConnectionIntents.some((userIntent: string) => 
+        userIntent.toLowerCase() === intent.toLowerCase()
+      )
+    ).length;
+    
+    // Count matching event preferences
+    const pingTruePreferences = Object.entries(pingFormData.eventPreferences)
+      .filter(([key, value]) => value === true);
+    
+    const preferenceMatches = pingTruePreferences.filter(([key, value]) => 
+      userEventPreferences[key] === true
+    ).length;
+    
+    // Total matches (intents are worth more)
+    return intentMatches * 2 + preferenceMatches;
+  };
 
   // Get all pings
   const getPings = async (): Promise<Ping[]> => {
@@ -141,7 +444,7 @@ const usePings = ({ user }: UsePingsProps) => {
     }
   };
 
-  // Function to find users who match the ping criteria
+  // Function to find users who match the ping criteria with MOOD-BASED DYNAMIC MATCHING
   const findMatchingUsers = async (
     pingFormData: PingFormData,
     selectedMapLocation: {
@@ -153,6 +456,11 @@ const usePings = ({ user }: UsePingsProps) => {
   ) => {
     try {
       let allUsers;
+      const baseRadiusValue = parseInt(pingFormData.visibilityRadius.split(' ')[0]);
+      
+      console.log('\n=== MOOD-BASED PING MATCHING STARTED ===');
+      console.log(`Base radius: ${baseRadiusValue} miles`);
+      console.log(`Ping category: ${pingFormData.category}`);
       
       // If ping type is "friends-only", only get connections
       if (pingFormData.pingType === 'friends-only') {
@@ -161,11 +469,9 @@ const usePings = ({ user }: UsePingsProps) => {
           return [];
         }
         
-        // Get user's connections
         const connections = await getUserConnections(user.uid);
         const activeConnections = connections.filter(conn => conn.status === 'active');
         
-        // Get the other user IDs from connections
         const connectedUserIds = activeConnections.map(conn => {
           const otherUserId = conn.participants.find(id => id !== user.uid);
           return otherUserId;
@@ -176,7 +482,6 @@ const usePings = ({ user }: UsePingsProps) => {
           return [];
         }
         
-        // Get user data for each connection
         const connectedUsers = await Promise.all(
           connectedUserIds.map(async (userId) => {
             try {
@@ -195,116 +500,50 @@ const usePings = ({ user }: UsePingsProps) => {
         allUsers = connectedUsers.filter(Boolean);
         console.log(`Found ${allUsers.length} connected users for friends-only ping`);
       } else {
-        // For other ping types, get all users
         allUsers = await getUsers();
       }
       
-      // Filter users based on ping criteria (intents, preferences, and availability)
-      const matchingUsers = allUsers.filter((userDoc: any) => {
-        const user = userDoc as any;
+      // Process each user with mood-based matching
+      const userMatches: UserMatch[] = [];
+      
+      for (const userDoc of allUsers) {
+        const targetUser = userDoc as any;
         
-        // Detailed logging for friends-only pings
-        if (pingFormData.pingType === 'friends-only') {
-          console.log(`\n=== Checking friend: ${user.name || 'Unknown'} (${user.id}) ===`);
-          
-          // Skip users without a name
-          if (!user.name) {
-            console.log(`❌ FAILED: No name found`);
-            return false;
-          }
-          console.log(`✅ PASSED: Has name (${user.name})`);
-          
-          // Check if user is currently available based on their schedule
-          const userSchedule = user.availabilitySchedule;
-          const isCurrentlyAvailable = isUserCurrentlyAvailable(userSchedule);
-          
-          console.log(`📅 Availability Schedule:`, userSchedule);
-          
-          // Add detailed time debugging
-          if (userSchedule && userSchedule.tuesday) {
-            const now = new Date();
-            const currentTime = now.toLocaleTimeString('en-US', { 
-              hour12: false, 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            });
-            const startTime = userSchedule.tuesday.start;
-            const endTime = userSchedule.tuesday.end;
-            const isOvernight = endTime < startTime;
-            
-            console.log(`🕐 Current time: ${currentTime}`);
-            console.log(`🌅 Start time: ${startTime}`);
-            console.log(`🌙 End time: ${endTime}`);
-            console.log(`🌃 Overnight schedule: ${isOvernight}`);
-            console.log(`⏰ Is Currently Available: ${isCurrentlyAvailable}`);
-          }
-          
-          if (!isCurrentlyAvailable) {
-            console.log(`❌ FAILED: Not currently available`);
-            return false;
-          }
-          console.log(`✅ PASSED: Currently available`);
-          
-          // For friends-only pings, we only need to check availability
-          console.log(`✅ PASSED: All availability checks passed for friends-only ping`);
-          return true;
+        // Skip users without a name
+        if (!targetUser.name) continue;
+        
+        // Get user's mood profile
+        const moodProfile = getMoodProfile(targetUser.moodStatus);
+        
+        console.log(`\n--- Checking user: ${targetUser.name} ---`);
+        console.log(`Mood: ${targetUser.moodStatus || 'None'} (${moodProfile.category})`);
+        console.log(`Radius multiplier: ${moodProfile.radiusMultiplier}x`);
+        console.log(`Notification weight: ${moodProfile.notificationWeight}/10`);
+        
+        // Skip unavailable users
+        if (moodProfile.category === 'unavailable') {
+          console.log(`❌ SKIPPED: User in unavailable mood`);
+          continue;
         }
         
-        // For other ping types, check connection intents and preferences
-        // Check if user has any of the connection intents
-        const userConnectionIntents = user.connectionIntents || [];
+        // Check availability schedule
+        const isAvailable = isUserCurrentlyAvailable(targetUser.availabilitySchedule);
+        if (!isAvailable) {
+          console.log(`❌ SKIPPED: Not in availability window`);
+          continue;
+        }
+        console.log(`✅ Available according to schedule`);
         
-        // Check if user has any matching connection intents
-        const matchingIntents = pingFormData.connectionIntents.filter(intent => 
-          userConnectionIntents.some((userIntent: string) => userIntent.toLowerCase() === intent.toLowerCase())
-        );
-        const hasMatchingIntent = matchingIntents.length > 0;
+        // Calculate adjusted radius for this user based on their mood
+        const adjustedRadius = baseRadiusValue * moodProfile.radiusMultiplier;
+        console.log(`Adjusted radius: ${adjustedRadius.toFixed(1)} miles`);
         
-        // Check event preferences (use explicit preferences only)
-        const userExplicitPreferences = user.eventPreferences || {};
-        const userPreferences = {
-          likesBars: userExplicitPreferences.likesBars ?? false,
-          prefersSmallGroups: userExplicitPreferences.prefersSmallGroups ?? false,
-          prefersWeekendEvents: userExplicitPreferences.prefersWeekendEvents ?? false,
-          prefersEveningEvents: userExplicitPreferences.prefersEveningEvents ?? false,
-          prefersIndoorVenues: userExplicitPreferences.prefersIndoorVenues ?? false,
-          prefersStructuredActivities: userExplicitPreferences.prefersStructuredActivities ?? false,
-          prefersSpontaneousPlans: userExplicitPreferences.prefersSpontaneousPlans ?? false,
-          prefersLocalMeetups: userExplicitPreferences.prefersLocalMeetups ?? false,
-          prefersTravelEvents: userExplicitPreferences.prefersTravelEvents ?? false,
-          prefersQuietEnvironments: userExplicitPreferences.prefersQuietEnvironments ?? false,
-          prefersActiveLifestyles: userExplicitPreferences.prefersActiveLifestyles ?? false,
-          prefersIntellectualDiscussions: userExplicitPreferences.prefersIntellectualDiscussions ?? false,
-        };
+        // Check location and distance
+        const userCoordinates = targetUser.lastKnownCoordinates;
+        let distanceMiles = 0;
         
-        // Check if user preferences match ping preferences
-        const pingTruePreferences = Object.entries(pingFormData.eventPreferences)
-          .filter(([key, value]) => value === true);
-        
-        const matchingPreferences = pingTruePreferences.filter(([key, value]) => 
-          userPreferences[key as keyof typeof userPreferences] === true
-        );
-        const hasMatchingPreferences = matchingPreferences.length > 0;
-        
-        // User matches if they have matching intents (preferences are optional)
-        const isMatch = hasMatchingIntent;
-        
-        return isMatch;
-      });
-      
-      // Get users who pass all filters (availability and within range)
-      const finalMatches = matchingUsers.filter((userDoc: any) => {
-        const user = userDoc as any;
-        const isAvailable = isUserCurrentlyAvailable(user.availabilitySchedule);
-        const userCoordinates = user.lastKnownCoordinates;
-        
-        if (!isAvailable) return false;
-        
-        // For friends-only pings, be more lenient about location requirements
         if (pingFormData.pingType === 'friends-only') {
-          console.log(`\n=== Location check for friend: ${user.name || 'Unknown'} (${user.id}) ===`);
-          
-          // If user has coordinates, check distance; otherwise, include them anyway
+          // For friends, be lenient with location
           if (selectedMapLocation && userCoordinates?.latitude && userCoordinates?.longitude) {
             const distanceKm = haversineDistance(
               selectedMapLocation.latitude,
@@ -312,93 +551,83 @@ const usePings = ({ user }: UsePingsProps) => {
               userCoordinates.latitude,
               userCoordinates.longitude
             );
-            const distanceMiles = distanceKm * 0.621371; // Convert km to miles
+            distanceMiles = distanceKm * 0.621371;
             
-            // Extract the numeric value from the visibility radius (e.g., "10 miles" -> 10)
-            const radiusValue = parseInt(pingFormData.visibilityRadius.split(' ')[0]);
-            
-            console.log(`📍 User coordinates: ${userCoordinates.latitude}, ${userCoordinates.longitude}`);
-            console.log(`🎯 Ping location: ${selectedMapLocation.latitude}, ${selectedMapLocation.longitude}`);
-            console.log(`📏 Distance: ${distanceMiles.toFixed(2)} miles`);
-            console.log(`🔍 Visibility radius: ${radiusValue} miles`);
-            
-            const withinRadius = distanceMiles <= radiusValue;
-            console.log(`✅ PASSED: Within radius (${withinRadius})`);
-            return withinRadius;
+            if (distanceMiles > adjustedRadius) {
+              console.log(`❌ SKIPPED: ${distanceMiles.toFixed(1)} miles > ${adjustedRadius.toFixed(1)} miles`);
+              continue;
+            }
+            console.log(`✅ Within radius: ${distanceMiles.toFixed(1)} miles`);
           } else {
-            // For friends without location data, include them anyway
-            console.log(`📍 User coordinates: ${userCoordinates ? 'Has coordinates but missing lat/lng' : 'No coordinates'}`);
-            console.log(`✅ PASSED: No location data, but including friend anyway`);
-            return true;
+            console.log(`✅ Friend without location - including anyway`);
           }
         } else {
-          // For other ping types, require location data
-          if (selectedMapLocation && userCoordinates?.latitude && userCoordinates?.longitude) {
-            const distanceKm = haversineDistance(
-              selectedMapLocation.latitude,
-              selectedMapLocation.longitude,
-              userCoordinates.latitude,
-              userCoordinates.longitude
-            );
-            const distanceMiles = distanceKm * 0.621371; // Convert km to miles
-            
-            // Extract the numeric value from the visibility radius (e.g., "10 miles" -> 10)
-            const radiusValue = parseInt(pingFormData.visibilityRadius.split(' ')[0]);
-            return distanceMiles <= radiusValue;
+          // For open pings, require location data
+          if (!selectedMapLocation || !userCoordinates?.latitude || !userCoordinates?.longitude) {
+            console.log(`❌ SKIPPED: Missing location data`);
+            continue;
           }
           
-          return false;
+          const distanceKm = haversineDistance(
+            selectedMapLocation.latitude,
+            selectedMapLocation.longitude,
+            userCoordinates.latitude,
+            userCoordinates.longitude
+          );
+          distanceMiles = distanceKm * 0.621371;
+          
+          if (distanceMiles > adjustedRadius) {
+            console.log(`❌ SKIPPED: ${distanceMiles.toFixed(1)} miles > ${adjustedRadius.toFixed(1)} miles`);
+            continue;
+          }
+          console.log(`✅ Within radius: ${distanceMiles.toFixed(1)} miles`);
         }
-      });
-      
-      // Log detailed information about the filtering process
-      if (pingFormData.pingType === 'friends-only') {
-        console.log(`\n=== FRIENDS-ONLY PING SUMMARY ===`);
-        console.log(`👥 Initial connected users: ${allUsers.length}`);
-        console.log(`✅ After availability filter: ${matchingUsers.length}`);
-        console.log(`🎯 After location filter: ${finalMatches.length}`);
         
-        if (finalMatches.length > 0) {
-          console.log('\n🎉 FINAL MATCHING FRIENDS:');
-          finalMatches.forEach((userDoc: any) => {
-            const user = userDoc as any;
-            console.log(`  ✅ ${user.name || 'Unknown'} (${user.id})`);
-          });
-        } else {
-          console.log('\n❌ NO MATCHING FRIENDS FOUND');
-          // Log why users were filtered out
-          matchingUsers.forEach((userDoc: any) => {
-            const user = userDoc as any;
-            const userCoordinates = user.lastKnownCoordinates;
-            const hasLocation = userCoordinates?.latitude && userCoordinates?.longitude;
-            console.log(`  ❌ Filtered out: ${user.name || 'Unknown'} (${user.id}) - Has location: ${hasLocation}`);
-          });
-        }
-        console.log(`=== END FRIENDS-ONLY PING SUMMARY ===\n`);
-      } else {
-        console.log(`Initial users: ${allUsers.length}`);
-        console.log(`After availability filter: ${matchingUsers.length}`);
-        console.log(`After location filter: ${finalMatches.length}`);
+        // Calculate interest matches
+        const interestMatches = calculateInterestMatches(targetUser, pingFormData);
+        console.log(`Interest match score: ${interestMatches}`);
         
-        if (finalMatches.length > 0) {
-          console.log('Matching users:');
-          finalMatches.forEach((userDoc: any) => {
-            const user = userDoc as any;
-            console.log(`${user.name || 'Unknown'} (${user.id})`);
-          });
-        } else {
-          console.log('No matching users found');
-          // Log why users were filtered out
-          matchingUsers.forEach((userDoc: any) => {
-            const user = userDoc as any;
-            const userCoordinates = user.lastKnownCoordinates;
-            const hasLocation = userCoordinates?.latitude && userCoordinates?.longitude;
-            console.log(`Filtered out: ${user.name || 'Unknown'} (${user.id}) - Has location: ${hasLocation}`);
-          });
+        // Check if user meets minimum match threshold
+        if (moodProfile.requireInterestMatch && interestMatches < moodProfile.minMatchThreshold) {
+          console.log(`❌ SKIPPED: ${interestMatches} matches < ${moodProfile.minMatchThreshold} required`);
+          continue;
         }
+        
+        // User passed all checks!
+        console.log(`✅ MATCH! Adding to notification queue`);
+        
+        userMatches.push({
+          user: targetUser,
+          moodProfile: moodProfile,
+          distanceMiles: distanceMiles,
+          interestMatches: interestMatches,
+          effectiveRadius: adjustedRadius,
+          weight: moodProfile.notificationWeight,
+          moodStatus: targetUser.moodStatus
+        });
       }
       
-      return finalMatches;
+      // Sort by notification weight (higher weight = more eager users get notified first)
+      userMatches.sort((a, b) => b.weight - a.weight);
+      
+      // Log summary
+      console.log(`\n=== MATCHING SUMMARY ===`);
+      console.log(`Total users checked: ${allUsers.length}`);
+      console.log(`Final matches: ${userMatches.length}`);
+      
+      if (userMatches.length > 0) {
+        console.log('\n🎉 MATCHED USERS (sorted by eagerness):');
+        userMatches.forEach((match, index) => {
+          console.log(`  ${index + 1}. ${match.user.name} - Mood: ${match.moodStatus || 'None'}`);
+          console.log(`     Weight: ${match.weight}/10, Distance: ${match.distanceMiles.toFixed(1)}mi, Interests: ${match.interestMatches}`);
+        });
+      } else {
+        console.log('❌ No matching users found');
+      }
+      console.log('=== END MATCHING ===\n');
+      
+      // Return the matched users (not the full UserMatch objects)
+      return userMatches.map(match => match.user);
       
     } catch (error) {
       console.error('Error finding matching users:', error);
@@ -461,42 +690,68 @@ const usePings = ({ user }: UsePingsProps) => {
       const pingRef = await addDoc(collection(db, 'pings'), pingData);
       console.log('Ping created with ID:', pingRef.id);
       
-      // Send push notifications to matching users
-      if (matchingUsers.length > 0) {
+      // Send mood-aware push notifications to matching users
+      // Skip notifications for invite-only pings - users must be invited manually
+      if (pingFormData.pingType !== 'invite-only' && matchingUsers.length > 0) {
         const notificationPromises = matchingUsers.map(async (userDoc: any) => {
-          const user = userDoc as any;
+          const targetUser = userDoc as any;
           
           // Skip if user doesn't have a push token or notifications are disabled
-          if (!user.expoPushToken || 
-              !user.notificationPreferences?.notificationsEnabled || 
-              !user.notificationPreferences?.events) {
+          if (!targetUser.expoPushToken || 
+              !targetUser.notificationPreferences?.notificationsEnabled || 
+              (!targetUser.notificationPreferences?.activities && !targetUser.notificationPreferences?.events)) {
             return;
           }
           
           // Skip if this is the organizer/authUser
-          if (user.id === organizerUid) {
+          if (targetUser.id === organizerUid) {
             return;
           }
           
+          // Get user's mood profile
+          const moodProfile = getMoodProfile(targetUser.moodStatus);
+          
           // Calculate distance from user to ping location
           let distanceMiles = 0;
-          if (selectedMapLocation && user.lastKnownCoordinates) {
+          if (selectedMapLocation && targetUser.lastKnownCoordinates) {
             const distanceKm = haversineDistance(
               selectedMapLocation.latitude,
               selectedMapLocation.longitude,
-              user.lastKnownCoordinates.latitude,
-              user.lastKnownCoordinates.longitude
+              targetUser.lastKnownCoordinates.latitude,
+              targetUser.lastKnownCoordinates.longitude
             );
             distanceMiles = distanceKm * 0.621371; // Convert km to miles
           }
           
-          // Create notification title with emoji and distance
-          const notificationTitle = `🎯 ${pingFormData.title} - ${distanceMiles.toFixed(1)} miles away`;
+          // Create mood-aware notification title with context
+          let notificationTitle = `🎯 ${pingFormData.title}`;
+          if (distanceMiles > 0) {
+            notificationTitle += ` - ${distanceMiles.toFixed(1)} miles away`;
+          }
           
-          // Use description as notification body with creator name, fallback to creator info if no description
-          const notificationBody = pingFormData.description && pingFormData.description.trim() 
-            ? `${creatorName}: ${pingFormData.description}` 
-            : `${creatorName} created a new ping event`;
+          // Create mood-aware notification body
+          let notificationBody = '';
+          if (moodProfile.category === 'seeking') {
+            // Enthusiastic message for seeking users
+            notificationBody = pingFormData.description && pingFormData.description.trim()
+              ? `Perfect match! ${creatorName}: ${pingFormData.description}`
+              : `Great opportunity from ${creatorName}! Join this ${pingFormData.category} activity.`;
+          } else if (moodProfile.category === 'selective') {
+            // More casual message for selective users
+            notificationBody = pingFormData.description && pingFormData.description.trim()
+              ? `${creatorName}: ${pingFormData.description}`
+              : `${creatorName} invited you to a ${pingFormData.category} activity nearby.`;
+          } else {
+            // Neutral message for other users
+            notificationBody = pingFormData.description && pingFormData.description.trim()
+              ? `${creatorName}: ${pingFormData.description}`
+              : `${creatorName} created a new ping event`;
+          }
+          
+          // Determine notification priority based on mood category
+          const notificationPriority = moodProfile.category === 'seeking' ? 'high' : 
+                                       moodProfile.category === 'selective' ? 'normal' : 'high';
+          const notificationSound = moodProfile.category === 'selective' ? null : 'default';
           
           // Create notification object for in-app notification
           const notification = {
@@ -509,7 +764,10 @@ const usePings = ({ user }: UsePingsProps) => {
               creatorName: creatorName,
               pingTitle: pingFormData.title,
               pingDescription: pingFormData.description,
-              distanceMiles: distanceMiles
+              distanceMiles: distanceMiles,
+              yourMoodCategory: moodProfile.category,
+              notificationWeight: moodProfile.notificationWeight,
+              moodDescription: moodProfile.description
             },
             timestamp: new Date(),
             read: false
@@ -517,24 +775,47 @@ const usePings = ({ user }: UsePingsProps) => {
           
           try {
             // Add in-app notification to user's document first
-            const userNotifications = user.notifications || [];
+            const userNotifications = targetUser.notifications || [];
             
-            await updateDoc(doc(db, 'users', user.id), {
+            await updateDoc(doc(db, 'users', targetUser.id), {
               notifications: [...userNotifications, notification]
             });
             
-            // Send push notification
-            await sendPushNotification(
-              user.expoPushToken,
-              pingFormData.title,
-              pingFormData.description,
-              creatorName,
-              pingRef.id,
-              distanceMiles
-            );
+            // Send mood-aware push notification
+            const pushPayload = {
+              to: targetUser.expoPushToken,
+              title: notificationTitle,
+              body: notificationBody,
+              sound: notificationSound,
+              priority: notificationPriority,
+              data: {
+                type: 'ping_event',
+                pingId: pingRef.id,
+                creatorName: creatorName,
+                pingTitle: pingFormData.title,
+                pingDescription: pingFormData.description,
+                distanceMiles: distanceMiles,
+                timestamp: new Date().toISOString(),
+                moodCategory: moodProfile.category
+              },
+            };
+
+            const response = await fetch('https://exp.host/--/api/v2/push/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Accept-encoding': 'gzip, deflate',
+              },
+              body: JSON.stringify(pushPayload),
+            });
+
+            if (!response.ok) {
+              console.error('Push notification failed:', response.status);
+            }
             
           } catch (error) {
-            console.error('Error processing notification for user:', user.name, error);
+            console.error('Error processing notification for user:', targetUser.name, error);
           }
         });
         

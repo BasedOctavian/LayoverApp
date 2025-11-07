@@ -18,7 +18,10 @@ import {
   FlatList,
   KeyboardAvoidingView,
   StatusBar,
+  Dimensions,
 } from "react-native";
+import { validateEmail, normalizeEmail, isDisposableEmail } from "../utils/emailValidation";
+import { validatePassword, PasswordStrength } from "../utils/passwordValidation";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -34,6 +37,7 @@ import { containsFilteredContent, getFilteredContentCategory, sanitizeText } fro
 import { fetchSignInMethodsForEmail } from "firebase/auth";
 import { auth } from "../../config/firebaseConfig";
 import * as ExpoNotifications from 'expo-notifications';
+import * as Location from 'expo-location';
 import useUsers from "../hooks/useUsers";
 import TopBar from "../components/TopBar";
 import SafeAreaWrapper from "../components/SafeAreaWrapper";
@@ -41,10 +45,27 @@ import { ThemeContext } from "../context/ThemeContext";
 import LoadingElement from "../components/LoadingElement";
 import useNotificationCount from "../hooks/useNotificationCount";
 import UserAvatar from "../components/UserAvatar";
+import AvailabilityScheduleStep from "../components/onboarding/AvailabilityScheduleStep";
+import EventPreferencesStep from "../components/onboarding/EventPreferencesStep";
 
-const avatarSize = 100;
+// Get screen dimensions
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-type StepKey = "email" | "profile" | "travel" | "social" | "eula";
+// Responsive sizing utilities
+const scaleSize = (size: number) => (SCREEN_WIDTH / 375) * size; // Base on iPhone X width
+const scaleFont = (size: number) => {
+  const scale = SCREEN_WIDTH / 375;
+  return Math.round(size * scale);
+};
+const verticalScale = (size: number) => (SCREEN_HEIGHT / 812) * size; // Base on iPhone X height
+
+// Responsive sizes
+const avatarSize = scaleSize(100);
+const isSmallDevice = SCREEN_WIDTH < 375; // iPhone SE
+const isMediumDevice = SCREEN_WIDTH >= 375 && SCREEN_WIDTH < 414; // iPhone X/11 Pro
+const isLargeDevice = SCREEN_WIDTH >= 414; // iPhone 11/12/13/14 Pro Max
+
+type StepKey = "email" | "profile" | "connectionTemplate" | "connection" | "personalityTemplate" | "personality" | "schedule" | "availability" | "preferences" | "eula";
 
 interface Step {
   key: StepKey;
@@ -58,7 +79,7 @@ interface Field {
   label: string;
   icon: IconName;
   placeholder: string;
-  type?: "text" | "password" | "image" | "tags" | "date" | "eula";
+  type?: "text" | "password" | "image" | "tags" | "date" | "eula" | "schedule" | "radius" | "preferences" | "connectionTemplate" | "personalityTemplate" | "radiusTemplate";
   keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
   secure?: boolean;
   autoComplete?: "email" | "password" | "name" | "off";
@@ -79,7 +100,37 @@ type IconName =
   | "calendar"
   | "file-text"
   | "shield"
-  | "users";
+  | "users"
+  | "target"
+  | "tag"
+  | "clock"
+  | "settings"
+  | "list";
+
+interface AvailabilitySchedule {
+  monday: { start: string; end: string };
+  tuesday: { start: string; end: string };
+  wednesday: { start: string; end: string };
+  thursday: { start: string; end: string };
+  friday: { start: string; end: string };
+  saturday: { start: string; end: string };
+  sunday: { start: string; end: string };
+}
+
+interface EventPreferences {
+  likesBars: boolean;
+  prefersSmallGroups: boolean;
+  prefersWeekendEvents: boolean;
+  prefersEveningEvents: boolean;
+  prefersIndoorVenues: boolean;
+  prefersStructuredActivities: boolean;
+  prefersSpontaneousPlans: boolean;
+  prefersLocalMeetups: boolean;
+  prefersTravelEvents: boolean;
+  prefersQuietEnvironments: boolean;
+  prefersActiveLifestyles: boolean;
+  prefersIntellectualDiscussions: boolean;
+}
 
 interface UserData {
   email?: string;
@@ -88,44 +139,90 @@ interface UserData {
   dateOfBirth?: Date;
   bio?: string;
   profilePicture?: string;
-  travelHistory?: string;
-  goals?: string;
-  interests?: string;
+  connectionIntents?: string;
+  personalTags?: string;
   languages?: string;
+  availabilitySchedule?: AvailabilitySchedule;
+  preferredMeetupRadius?: number;
+  eventPreferences?: EventPreferences;
   acceptedEula?: boolean;
-  [key: string]: string | Date | boolean | undefined;
+  [key: string]: string | Date | boolean | number | AvailabilitySchedule | EventPreferences | undefined;
 }
 
-const COUNTRIES = [
-  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
-  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
-  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
-  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
-  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
-  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon",
-  "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
-  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
-  "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kosovo",
-  "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania",
-  "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius",
-  "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia",
-  "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman",
-  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
-  "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe",
-  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
-  "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
-  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
-  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
-  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+const CONNECTION_INTENTS = [
+  "Bar Hopping & Nightlife",
+  "Sports & Athletics", 
+  "Outdoor Adventures",
+  "Networking & Business",
+  "Creative Projects",
+  "Deep Discussions",
+  "Food & Dining",
+  "Music & Concerts",
+  "Travel & Exploration",
+  "Gaming & Entertainment",
+  "Fitness & Wellness",
+  "Art & Culture",
+  "Technology & Innovation",
+  "Volunteering & Community",
+  "Learning & Education",
+  "Photography & Media",
+  "Dancing & Social Events",
+  "Board Games & Strategy",
+  "Coffee & Casual Meetups",
+  "Festivals & Events"
 ].sort();
 
-const TRAVEL_INTERESTS = [
-  "Adventure", "Backpacking", "Beach", "Camping", "City Breaks", "Cultural", "Ecotourism",
-  "Food & Wine", "Hiking", "Historical", "Island Hopping", "Luxury", "Mountain Climbing",
-  "Museums", "Nature", "Photography", "Road Trips", "Safari", "Sailing", "Skiing",
-  "Solo Travel", "Spiritual", "Sports", "Theme Parks", "Volunteering", "Wildlife",
-  "Yoga & Wellness", "Art & Architecture", "Music Festivals", "Nightlife", "Shopping",
-  "Spa & Relaxation", "Surfing", "Trekking", "Water Sports", "Wine Tasting"
+const PERSONAL_TAGS = [
+  "Christian",
+  "Night Owl",
+  "Straight Edge",
+  "Introverted",
+  "Extroverted",
+  "Early Bird",
+  "Coffee Addict",
+  "Tea Enthusiast",
+  "Bookworm",
+  "Gym Rat",
+  "Yoga Practitioner",
+  "Meditation",
+  "Vegan",
+  "Vegetarian",
+  "Foodie",
+  "Adventure Seeker",
+  "Homebody",
+  "Minimalist",
+  "Creative",
+  "Analytical",
+  "Empathetic",
+  "Leader",
+  "Team Player",
+  "Independent",
+  "Family-Oriented",
+  "Career-Focused",
+  "Student",
+  "Entrepreneur",
+  "Artist",
+  "Musician",
+  "Writer",
+  "Photographer",
+  "Tech-Savvy",
+  "Old School",
+  "Fashion-Forward",
+  "Casual Style",
+  "Pet Lover",
+  "Plant Parent",
+  "DIY Enthusiast",
+  "Thrift Shopper",
+  "Luxury Lover",
+  "Budget-Conscious",
+  "Spontaneous",
+  "Planner",
+  "Optimist",
+  "Realist",
+  "Sarcastic",
+  "Humor-Loving",
+  "Deep Thinker",
+  "Action-Oriented"
 ].sort();
 
 const LANGUAGES = [
@@ -139,9 +236,216 @@ const LANGUAGES = [
   "Telugu", "Thai", "Turkish", "Ukrainian", "Urdu", "Vietnamese", "Welsh"
 ].sort();
 
+const defaultAvailabilitySchedule: AvailabilitySchedule = {
+  monday: { start: "09:00", end: "17:00" },
+  tuesday: { start: "09:00", end: "17:00" },
+  wednesday: { start: "09:00", end: "17:00" },
+  thursday: { start: "09:00", end: "17:00" },
+  friday: { start: "09:00", end: "17:00" },
+  saturday: { start: "00:00", end: "00:00" },
+  sunday: { start: "00:00", end: "00:00" },
+};
+
+const defaultEventPreferences: EventPreferences = {
+  likesBars: false,
+  prefersSmallGroups: false,
+  prefersWeekendEvents: false,
+  prefersEveningEvents: false,
+  prefersIndoorVenues: false,
+  prefersStructuredActivities: false,
+  prefersSpontaneousPlans: false,
+  prefersLocalMeetups: false,
+  prefersTravelEvents: false,
+  prefersQuietEnvironments: false,
+  prefersActiveLifestyles: false,
+  prefersIntellectualDiscussions: false,
+};
+
+// Grouped categories for connection intents
+const CONNECTION_INTENT_CATEGORIES = [
+  {
+    label: "Social & Nightlife",
+    intents: [
+      "Bar Hopping & Nightlife",
+      "Dancing & Social Events",
+      "Coffee & Casual Meetups",
+      "Festivals & Events",
+      "Food & Dining",
+      "Music & Concerts",
+    ],
+  },
+  {
+    label: "Professional & Learning",
+    intents: [
+      "Networking & Business",
+      "Creative Projects",
+      "Learning & Education",
+      "Technology & Innovation",
+      "Volunteering & Community",
+    ],
+  },
+  {
+    label: "Activities & Hobbies",
+    intents: [
+      "Sports & Athletics",
+      "Outdoor Adventures",
+      "Gaming & Entertainment",
+      "Fitness & Wellness",
+      "Art & Culture",
+      "Photography & Media",
+      "Board Games & Strategy",
+    ],
+  },
+  {
+    label: "Personal Growth",
+    intents: [
+      "Deep Discussions",
+      "Travel & Exploration",
+    ],
+  },
+];
+
+// Personality Templates
+const PERSONALITY_TEMPLATES = [
+  {
+    name: "The Social Butterfly",
+    description: "You're outgoing, love meeting new people, and thrive in social settings.",
+    icon: "users" as IconName,
+    color: "#8b5cf6",
+    tags: [
+      "Extroverted", "Optimist", "Humor-Loving", "Spontaneous", "Creative", 
+      "Team Player", "Fashion-Forward", "Coffee Addict", "Foodie", "Pet Lover"
+    ]
+  },
+  {
+    name: "The Professional",
+    description: "You're career-focused, ambitious, and value meaningful professional connections.",
+    icon: "briefcase" as IconName,
+    color: "#3b82f6",
+    tags: [
+      "Analytical", "Leader", "Career-Focused", "Planner", "Tech-Savvy",
+      "Student", "Entrepreneur", "Early Bird", "Minimalist"
+    ]
+  },
+  {
+    name: "The Creative Soul",
+    description: "You're artistic, imaginative, and drawn to cultural experiences and self-expression.",
+    icon: "camera" as IconName,
+    color: "#ec4899",
+    tags: [
+      "Creative", "Deep Thinker", "Artist", "Musician", "Writer", "Photographer",
+      "Meditation", "Plant Parent", "DIY Enthusiast"
+    ]
+  },
+  {
+    name: "The Wellness Enthusiast",
+    description: "You prioritize health, mindfulness, and living a balanced, active lifestyle.",
+    icon: "heart" as IconName,
+    color: "#22c55e",
+    tags: [
+      "Gym Rat", "Yoga Practitioner", "Meditation", "Vegan", "Vegetarian",
+      "Early Bird", "Minimalist", "Pet Lover", "Plant Parent"
+    ]
+  },
+  {
+    name: "The Homebody",
+    description: "You enjoy quiet, comfortable environments and meaningful connections close to home.",
+    icon: "user" as IconName,
+    color: "#f59e0b",
+    tags: [
+      "Introverted", "Homebody", "Bookworm", "Tea Enthusiast", "Night Owl",
+      "Minimalist", "Family-Oriented", "Casual Style", "Pet Lover", "DIY Enthusiast"
+    ]
+  },
+  {
+    name: "The Adventurer",
+    description: "You're always seeking new experiences, travel, and outdoor adventures.",
+    icon: "map-pin" as IconName,
+    color: "#06b6d4",
+    tags: [
+      "Adventure Seeker", "Action-Oriented", "Spontaneous", "Photographer", 
+      "Thrift Shopper", "Budget-Conscious"
+    ]
+  }
+];
+
+// Grouped categories for personal tags
+const PERSONAL_TAG_CATEGORIES = [
+  {
+    label: "Personality & Lifestyle",
+    tags: [
+      "Introverted", "Extroverted", "Optimist", "Realist", "Sarcastic", "Humor-Loving", 
+      "Deep Thinker", "Action-Oriented", "Spontaneous", "Planner", "Minimalist", "Creative",
+      "Analytical", "Empathetic", "Leader", "Team Player", "Independent"
+    ],
+  },
+  {
+    label: "Daily Habits & Preferences",
+    tags: [
+      "Night Owl", "Early Bird", "Coffee Addict", "Tea Enthusiast", "Bookworm", "Gym Rat",
+      "Yoga Practitioner", "Meditation", "Vegan", "Vegetarian", "Foodie", "Pet Lover", 
+      "Plant Parent", "DIY Enthusiast"
+    ],
+  },
+  {
+    label: "Professional & Life Stage",
+    tags: [
+      "Student", "Entrepreneur", "Artist", "Musician", "Writer", "Photographer", 
+      "Tech-Savvy", "Career-Focused", "Family-Oriented"
+    ],
+  },
+  {
+    label: "Interests & Activities",
+    tags: [
+      "Adventure Seeker", "Homebody", "Thrift Shopper", "Luxury Lover", "Budget-Conscious",
+      "Old School", "Christian", "Straight Edge"
+    ],
+  },
+];
+
+// Meetup Radius Templates
+const MEETUP_RADIUS_TEMPLATES = [
+  {
+    name: "Local Explorer",
+    description: "You prefer to stay close to home and discover hidden gems in your neighborhood.",
+    icon: "user" as IconName,
+    color: "#22c55e",
+    radius: 5,
+    badge: "Local"
+  },
+  {
+    name: "City Adventurer",
+    description: "You're willing to explore your city and nearby areas for great connections.",
+    icon: "map-pin" as IconName,
+    color: "#3b82f6",
+    radius: 10,
+    badge: "Popular"
+  },
+  {
+    name: "Regional Traveler",
+    description: "You don't mind traveling further for meaningful connections and unique experiences.",
+    icon: "globe" as IconName,
+    color: "#8b5cf6",
+    radius: 25,
+    badge: "Regional"
+  },
+  {
+    name: "Long-Distance Seeker",
+    description: "You're open to traveling significant distances for exceptional connections.",
+    icon: "send" as IconName,
+    color: "#ec4899",
+    radius: 50,
+    badge: "Extended"
+  }
+];
+
 const UserOnboarding = () => {
   const [stepIndex, setStepIndex] = useState(0);
-  const [userData, setUserData] = useState<UserData>({});
+  const [userData, setUserData] = useState<UserData>({
+    preferredMeetupRadius: 10, // Default radius
+    availabilitySchedule: defaultAvailabilitySchedule,
+    eventPreferences: defaultEventPreferences,
+  });
   const { user, signup, loading } = useAuth();
   const router = useRouter();
   const [isAuthChecked, setIsAuthChecked] = useState(false);
@@ -155,15 +459,19 @@ const UserOnboarding = () => {
   const [currentField, setCurrentField] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOptions, setSelectedOptions] = useState<{ [key: string]: string[] }>({
-    travelHistory: [],
-    goals: [],
-    interests: [],
+    connectionIntents: [],
+    personalTags: [],
     languages: []
   });
   const [showFullEula, setShowFullEula] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: string | null }>({});
   const [fieldValidation, setFieldValidation] = useState<{ [key: string]: boolean }>({});
   const [validationAttempted, setValidationAttempted] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState<PasswordStrength | null>(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [selectedPersonalityTemplate, setSelectedPersonalityTemplate] = useState<string | null>(null);
 
   useEffect(() => {
     if (user !== undefined) {
@@ -172,22 +480,94 @@ const UserOnboarding = () => {
     }
   }, [user]);
 
+  // Listen for keyboard events
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardDidHideListener.remove();
+      keyboardDidShowListener.remove();
+    };
+  }, []);
+
+  // Fade animation when changing steps
+  const animateStepChange = (callback: () => void) => {
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    setTimeout(callback, 150);
+  };
+
   const validateCurrentStep = useCallback(() => {
     const currentStepFields = steps[stepIndex].fields;
     const validation: { [key: string]: boolean } = {};
     let isValid = true;
 
+    // Template steps are always valid (selecting a template is optional, can proceed with manual selection)
+    const currentStepKey = steps[stepIndex].key;
+    if (currentStepKey === "connectionTemplate" || 
+        currentStepKey === "personalityTemplate") {
+      currentStepFields.forEach(field => {
+        validation[field.key] = true;
+      });
+      return { validation, isValid: true };
+    }
+
     currentStepFields.forEach(field => {
       let fieldIsValid = true;
       
       if (field.type === "tags") {
-        fieldIsValid = (selectedOptions[field.key] || []).length > 0;
+        // Require at least 3 selections for connection intents and personal tags
+        const minSelections = (field.key === "connectionIntents" || field.key === "personalTags") ? 3 : 1;
+        fieldIsValid = (selectedOptions[field.key] || []).length >= minSelections;
       } else if (field.type === "eula") {
         fieldIsValid = !!userData.acceptedEula;
       } else if (field.type === "image") {
         fieldIsValid = !!userData.profilePicture;
       } else if (field.type === "date") {
         fieldIsValid = !!userData.dateOfBirth;
+      } else if (field.type === "connectionTemplate") {
+        // Template steps are optional - always valid
+        fieldIsValid = true;
+      } else if (field.type === "personalityTemplate") {
+        // Template steps are optional - always valid
+        fieldIsValid = true;
+      } else if (field.type === "radiusTemplate") {
+        // Has a default value, always valid
+        fieldIsValid = true;
+      } else if (field.type === "schedule") {
+        // At least one day with a valid time window
+        const schedule = userData.availabilitySchedule || defaultAvailabilitySchedule;
+        fieldIsValid = Object.values(schedule).some((d: any) => d.start !== d.end && d.end !== "00:00");
+      } else if (field.type === "preferences") {
+        // At least one selection from each category
+        const prefs = userData.eventPreferences || defaultEventPreferences;
+        const hasAnySocialEnv = prefs.likesBars || prefs.prefersSmallGroups || prefs.prefersQuietEnvironments || prefs.prefersIndoorVenues;
+        const hasAnyTiming = prefs.prefersWeekendEvents || prefs.prefersEveningEvents || prefs.prefersStructuredActivities || prefs.prefersSpontaneousPlans;
+        const hasAnyLocation = prefs.prefersLocalMeetups || prefs.prefersTravelEvents;
+        const hasAnyLifestyle = prefs.prefersActiveLifestyles || prefs.prefersIntellectualDiscussions;
+        fieldIsValid = hasAnySocialEnv && hasAnyTiming && hasAnyLocation && hasAnyLifestyle;
       } else {
         fieldIsValid = !!userData[field.key] && (userData[field.key] as string).trim().length > 0;
       }
@@ -205,22 +585,33 @@ const UserOnboarding = () => {
   }, [userData, selectedOptions, stepIndex, validateCurrentStep]);
 
   const handleInputChange = useCallback((key: string, value: string | Date | boolean) => {
-    if (key === "name" && typeof value === "string") {
+    if (key === "email" && typeof value === "string") {
+      const emailValidation = validateEmail(value);
+      setFieldErrors(prev => ({ ...prev, [key]: emailValidation.isValid ? null : emailValidation.message }));
+      if (emailValidation.isValid && isDisposableEmail(value)) {
+        setFieldErrors(prev => ({ ...prev, [key]: "Temporary or disposable email addresses are not allowed" }));
+      }
+      value = normalizeEmail(value);
+    } else if (key === "password" && typeof value === "string") {
+      const passwordValidation = validatePassword(value);
+      setPasswordStrength(passwordValidation);
+      setFieldErrors(prev => ({ ...prev, [key]: passwordValidation.isValid ? null : passwordValidation.feedback.join('. ') }));
+    } else if (key === "name" && typeof value === "string") {
       if (containsFilteredContent(value)) {
-        setFieldErrors(prev => ({ ...prev, [key]: true }));
+        setFieldErrors(prev => ({ ...prev, [key]: "Name contains inappropriate content" }));
         value = value
           .split(" ")
           .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
           .join(" ");
       } else {
-        setFieldErrors(prev => ({ ...prev, [key]: false }));
+        setFieldErrors(prev => ({ ...prev, [key]: null }));
       }
     } else if (key === "bio" && typeof value === "string") {
       if (containsFilteredContent(value)) {
-        setFieldErrors(prev => ({ ...prev, [key]: true }));
+        setFieldErrors(prev => ({ ...prev, [key]: "Bio contains inappropriate content" }));
         value = value.charAt(0).toUpperCase() + value.slice(1);
       } else {
-        setFieldErrors(prev => ({ ...prev, [key]: false }));
+        setFieldErrors(prev => ({ ...prev, [key]: null }));
       }
     }
     setUserData((prev: UserData) => ({ ...prev, [key]: value }));
@@ -384,22 +775,7 @@ const UserOnboarding = () => {
     setValidationAttempted(false);
 
     if (stepIndex < steps.length - 1) {
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-          easing: Easing.ease,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          speed: 50,
-          bounciness: 4,
-        }),
-      ]).start(() => {
-        setStepIndex((prev) => prev + 1);
-      });
+      animateStepChange(() => setStepIndex((prev) => prev + 1));
     } else {
       await handleSubmit();
     }
@@ -407,8 +783,32 @@ const UserOnboarding = () => {
 
   const handleSubmit = async () => {
     try {
+      // Reset all errors
+      setFieldErrors({});
+
+      // Validate required fields
       if (!userData.email || !userData.password) {
         Alert.alert("Error", "Email and password are required");
+        return;
+      }
+
+      // Validate email
+      const emailValidation = validateEmail(userData.email);
+      if (!emailValidation.isValid) {
+        Alert.alert("Invalid Email", emailValidation.message);
+        return;
+      }
+
+      // Check for disposable email
+      if (isDisposableEmail(userData.email)) {
+        Alert.alert("Invalid Email", "Temporary or disposable email addresses are not allowed");
+        return;
+      }
+
+      // Validate password strength
+      const passwordValidation = validatePassword(userData.password);
+      if (!passwordValidation.isValid) {
+        Alert.alert("Weak Password", passwordValidation.feedback.join('\n'));
         return;
       }
 
@@ -420,6 +820,35 @@ const UserOnboarding = () => {
       const age = userData.dateOfBirth 
         ? Math.floor((new Date().getTime() - (userData.dateOfBirth as Date).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
         : 0;
+
+      // Get location
+      let currentCity = null;
+      let lastKnownCoordinates = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const location = await Location.getCurrentPositionAsync({});
+          lastKnownCoordinates = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude
+          };
+          
+          // Get city from reverse geocoding
+          const reverseGeocode = await Location.reverseGeocodeAsync({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude
+          });
+          
+          if (reverseGeocode.length > 0) {
+            currentCity = reverseGeocode[0].city || reverseGeocode[0].subregion || reverseGeocode[0].region || 'Unknown';
+          }
+        }
+      } catch (error) {
+        console.error('Error getting location:', error);
+        // Set default values if location fails
+        currentCity = 'Unknown';
+        lastKnownCoordinates = { latitude: 0, longitude: 0 };
+      }
 
       // Get push token if permissions are granted
       let expoPushToken = null;
@@ -441,20 +870,28 @@ const UserOnboarding = () => {
         age: age,
         bio: userData.bio || "",
         profilePicture: "",
-        travelHistory: userData.travelHistory?.split(/,\s*/) || [],
-        goals: userData.goals?.split(/,\s*/) || [],
-        interests: userData.interests?.split(/,\s*/) || [],
-        languages: userData.languages?.split(/,\s*/) || [],
+        connectionIntents: userData.connectionIntents?.split(/,\s*/).filter(i => i.length > 0) || [],
+        personalTags: userData.personalTags?.split(/,\s*/).filter(t => t.length > 0) || [],
+        languages: userData.languages?.split(/,\s*/).filter(l => l.length > 0) || [],
+        availabilitySchedule: userData.availabilitySchedule || defaultAvailabilitySchedule,
+        preferredMeetupRadius: userData.preferredMeetupRadius || 10,
+        eventPreferences: userData.eventPreferences || defaultEventPreferences,
+        currentCity: currentCity || 'Unknown',
+        lastKnownCoordinates: lastKnownCoordinates || { latitude: 0, longitude: 0 },
+        availableNow: true,
+        groupAffiliations: [],
         isAnonymous: false,
         moodStatus: "neutral",
         acceptedEula: true,
         eulaAcceptedAt: serverTimestamp(),
+        lastLogin: serverTimestamp(), // Set lastLogin when user is created so they appear in swipe/swipe
         expoPushToken: expoPushToken,
+        notifications: [], // Initialize notifications array for new users
         notificationPreferences: {
           announcements: true,
           chats: true,
           connections: true,
-          events: true,
+          activities: true,
           notificationsEnabled: !!expoPushToken
         }
       };
@@ -517,11 +954,10 @@ const UserOnboarding = () => {
 
   const getOptionsForField = (field: string) => {
     switch (field) {
-      case "travelHistory":
-      case "goals":
-        return COUNTRIES;
-      case "interests":
-        return TRAVEL_INTERESTS;
+      case "connectionIntents":
+        return CONNECTION_INTENTS;
+      case "personalTags":
+        return PERSONAL_TAGS;
       case "languages":
         return LANGUAGES;
       default:
@@ -561,7 +997,7 @@ const UserOnboarding = () => {
                   style={styles.avatar}
                 />
                 <View style={styles.cameraBadge}>
-                  <Feather name="camera" size={16} color="#000000" />
+                  <Feather name="camera" size={scaleSize(16)} color="#000000" />
                 </View>
               </TouchableOpacity>
             ) : (
@@ -575,7 +1011,7 @@ const UserOnboarding = () => {
                 ]}>
                   <Feather 
                     name={field.icon} 
-                    size={20} 
+                    size={scaleSize(20)} 
                     color={hasError ? "#ff4444" : isFocused ? "#e4fbfe" : "#38a5c9"} 
                   />
                   <TextInput
@@ -606,7 +1042,7 @@ const UserOnboarding = () => {
               showValidation && styles.fieldInvalid
             ]}>
               <View style={styles.eulaHeader}>
-                <Feather name="file-text" size={24} color="#38a5c9" />
+                <Feather name="file-text" size={scaleSize(24)} color="#38a5c9" />
                 <Text style={styles.eulaSummaryTitle}>Terms & Conditions</Text>
               </View>
               <Text style={styles.eulaSummaryText}>
@@ -614,23 +1050,23 @@ const UserOnboarding = () => {
               </Text>
               <View style={styles.eulaSummaryPoints}>
                 <View style={styles.eulaSummaryPoint}>
-                  <Feather name="user" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Feather name="user" size={scaleSize(16)} color="#38a5c9" style={styles.eulaPointIcon} />
                   <Text style={styles.eulaPointText}>You must be 18 or older</Text>
                 </View>
                 <View style={styles.eulaSummaryPoint}>
-                  <Feather name="lock" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Feather name="lock" size={scaleSize(16)} color="#38a5c9" style={styles.eulaPointIcon} />
                   <Text style={styles.eulaPointText}>One account per person</Text>
                 </View>
                 <View style={styles.eulaSummaryPoint}>
-                  <Feather name="shield" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Feather name="shield" size={scaleSize(16)} color="#38a5c9" style={styles.eulaPointIcon} />
                   <Text style={styles.eulaPointText}>Zero tolerance for harassment</Text>
                 </View>
                 <View style={styles.eulaSummaryPoint}>
-                  <Feather name="map-pin" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Feather name="map-pin" size={scaleSize(16)} color="#38a5c9" style={styles.eulaPointIcon} />
                   <Text style={styles.eulaPointText}>Location services required</Text>
                 </View>
                 <View style={styles.eulaSummaryPoint}>
-                  <Feather name="users" size={16} color="#38a5c9" style={styles.eulaPointIcon} />
+                  <Feather name="users" size={scaleSize(16)} color="#38a5c9" style={styles.eulaPointIcon} />
                   <Text style={styles.eulaPointText}>Meet in public places</Text>
                 </View>
               </View>
@@ -640,7 +1076,7 @@ const UserOnboarding = () => {
                 activeOpacity={0.7}
               >
                 <Text style={styles.viewFullTermsText}>View Full Terms</Text>
-                <Feather name="chevron-right" size={20} color="#38a5c9" />
+                <Feather name="chevron-right" size={scaleSize(20)} color="#38a5c9" />
               </TouchableOpacity>
               <View style={styles.eulaAcceptanceContainer}>
                 <TouchableOpacity
@@ -652,7 +1088,7 @@ const UserOnboarding = () => {
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   {userData.acceptedEula && (
-                    <Feather name="check" size={20} color="#e4fbfe" />
+                    <Feather name="check" size={scaleSize(20)} color="#e4fbfe" />
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -675,7 +1111,7 @@ const UserOnboarding = () => {
                 <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.fullScreenGradient}>
                   <View style={styles.fullScreenHeader}>
                     <View style={styles.fullScreenTitleContainer}>
-                      <Feather name="file-text" size={24} color="#38a5c9" style={styles.fullScreenTitleIcon} />
+                      <Feather name="file-text" size={scaleSize(24)} color="#38a5c9" style={styles.fullScreenTitleIcon} />
                       <Text style={styles.fullScreenTitle}>Terms & Conditions</Text>
                     </View>
                     <TouchableOpacity
@@ -683,7 +1119,7 @@ const UserOnboarding = () => {
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       style={styles.fullScreenCloseButton}
                     >
-                      <Feather name="x" size={24} color="#e4fbfe" />
+                      <Feather name="x" size={scaleSize(24)} color="#e4fbfe" />
                     </TouchableOpacity>
                   </View>
                   <ScrollView 
@@ -782,7 +1218,7 @@ const UserOnboarding = () => {
               style={styles.avatar}
             />
             <View style={styles.cameraBadge}>
-              <Feather name="camera" size={16} color="#000000" />
+              <Feather name="camera" size={scaleSize(16)} color="#000000" />
             </View>
           </TouchableOpacity>
         );
@@ -801,7 +1237,7 @@ const UserOnboarding = () => {
             >
               <Feather 
                 name={field.icon} 
-                size={20} 
+                size={scaleSize(20)} 
                 color={isFocused ? "#e4fbfe" : "#38a5c9"} 
               />
               <Text style={[
@@ -858,6 +1294,8 @@ const UserOnboarding = () => {
         );
       case "tags":
         const fieldOptions = selectedOptions[field.key] || [];
+        const minRequired = (field.key === "connectionIntents" || field.key === "personalTags") ? 3 : 1;
+        const isComplete = fieldOptions.length >= minRequired;
         return (
           <View style={[
             styles.tagsContainer,
@@ -876,16 +1314,19 @@ const UserOnboarding = () => {
                   !fieldOptions.length && styles.tagsInputPlaceholder
                 ]}>
                   {fieldOptions.length 
-                    ? `${fieldOptions.length} ${field.key === "languages" ? "languages" : field.key === "interests" ? "interests" : "countries"} selected`
+                    ? `${fieldOptions.length} ${field.key === "languages" ? "languages" : field.key === "connectionIntents" ? "interests" : field.key === "personalTags" ? "tags" : "items"} selected`
                     : field.placeholder}
                 </Text>
-                {fieldOptions.length > 0 && (
-                  <Text style={[styles.tagsInputText, { fontSize: 12, opacity: 0.7, marginTop: 4 }]}>
-                    Tap to add more
-                  </Text>
-                )}
+                <Text style={[
+                  styles.tagsInputSubtext,
+                  isComplete && styles.tagsInputSubtextComplete
+                ]}>
+                  {isComplete 
+                    ? "✓ Complete - Tap to add more" 
+                    : `Required: ${fieldOptions.length}/${minRequired} minimum`}
+                </Text>
               </View>
-              <Feather name="chevron-right" size={20} color="#38a5c9" />
+              <Feather name="chevron-right" size={scaleSize(20)} color="#38a5c9" />
             </TouchableOpacity>
             {fieldOptions.length > 0 && (
               <View style={styles.tagsPreview}>
@@ -896,13 +1337,186 @@ const UserOnboarding = () => {
                       onPress={() => handleOptionRemove(option, field.key)}
                       hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                     >
-                      <Feather name="x" size={16} color="#e4fbfe" />
+                      <Feather name="x" size={scaleSize(16)} color="#e4fbfe" />
                     </TouchableOpacity>
                   </View>
                 ))}
               </View>
             )}
           </View>
+        );
+      case "schedule":
+        return (
+          <AvailabilityScheduleStep
+            availabilitySchedule={userData.availabilitySchedule || defaultAvailabilitySchedule}
+            onScheduleChange={(schedule) => {
+              setUserData(prev => ({ ...prev, availabilitySchedule: schedule }));
+            }}
+          />
+        );
+      case "connectionTemplate":
+        return (
+          <View style={styles.templateContainer}>
+            <Text style={styles.templateSubtitle}>
+              Tap any category to quickly select related interests. You can customize these on the next step.
+            </Text>
+            {CONNECTION_INTENT_CATEGORIES.map((category, index) => (
+              <View key={index} style={styles.categorySection}>
+                <View style={styles.categoryHeaderRow}>
+                  <Text style={styles.categoryLabel}>{category.label}</Text>
+                  <Text style={styles.categoryCount}>
+                    {category.intents.filter(i => selectedOptions.connectionIntents?.includes(i)).length}/{category.intents.length} selected
+                  </Text>
+                </View>
+                <View style={styles.intentChipsContainer}>
+                  {category.intents.map((intent) => {
+                    const isSelected = selectedOptions.connectionIntents?.includes(intent);
+                    return (
+                      <TouchableOpacity
+                        key={intent}
+                        style={[
+                          styles.intentChip,
+                          isSelected && styles.intentChipSelected
+                        ]}
+                        onPress={() => {
+                          const currentIntents = selectedOptions.connectionIntents || [];
+                          let newIntents;
+                          if (isSelected) {
+                            newIntents = currentIntents.filter(i => i !== intent);
+                          } else {
+                            newIntents = [...currentIntents, intent];
+                          }
+                          setSelectedOptions(prev => ({
+                            ...prev,
+                            connectionIntents: newIntents
+                          }));
+                          handleInputChange("connectionIntents", newIntents.join(", "));
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.intentChipText,
+                          isSelected && styles.intentChipTextSelected
+                        ]}>
+                          {intent}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </View>
+        );
+      case "personalityTemplate":
+        return (
+          <View style={styles.templateContainer}>
+            <Text style={styles.templateSubtitle}>
+              Select a personality type that best describes you. You can fine-tune your tags on the next step.
+            </Text>
+            <View style={styles.personalityTemplatesGrid}>
+              {PERSONALITY_TEMPLATES.map((template, index) => {
+                const isSelected = selectedPersonalityTemplate === template.name;
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.personalityTemplateCard,
+                      isSelected && styles.templateCardSelected
+                    ]}
+                    onPress={() => {
+                      // Set the tags from the template
+                      setSelectedPersonalityTemplate(template.name);
+                      setSelectedOptions(prev => ({
+                        ...prev,
+                        personalTags: template.tags
+                      }));
+                      handleInputChange("personalTags", template.tags.join(", "));
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.templateCardHeader, { backgroundColor: template.color + '20' }]}>
+                      <Feather name={template.icon} size={scaleSize(isSmallDevice ? 20 : 24)} color={template.color} />
+                    </View>
+                    <Text style={styles.templateCardTitle}>{template.name}</Text>
+                    <Text style={styles.templateCardDescription}>{template.description}</Text>
+                    {isSelected && (
+                      <View style={styles.templateSelectedBadge}>
+                        <Feather name="check-circle" size={scaleSize(20)} color="#22c55e" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        );
+      case "radiusTemplate":
+        return (
+          <View style={styles.templateContainer}>
+            <Text style={styles.templateSubtitle}>
+              Choose how far you're willing to travel for meetups and connections. You can change this anytime in settings.
+            </Text>
+            <View style={styles.radiusTemplatesContainer}>
+              {MEETUP_RADIUS_TEMPLATES.map((template, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.radiusTemplateCard,
+                    (userData.preferredMeetupRadius || 10) === template.radius && styles.radiusTemplateCardSelected
+                  ]}
+                  onPress={() => handleInputChange("preferredMeetupRadius", template.radius)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.radiusTemplateHeader, { backgroundColor: template.color + '20' }]}>
+                    <Feather name={template.icon} size={scaleSize(isSmallDevice ? 24 : 28)} color={template.color} />
+                    <View style={[styles.radiusBadge, { backgroundColor: template.color }]}>
+                      <Text style={styles.radiusBadgeText}>{template.badge}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.radiusTemplateTitle}>{template.name}</Text>
+                  <Text style={styles.radiusTemplateDescription}>{template.description}</Text>
+                  <View style={styles.radiusTemplateFooter}>
+                    <Text style={[styles.radiusTemplateValue, { color: template.color }]}>
+                      {template.radius} miles
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        );
+      case "radius":
+        return (
+          <View style={styles.radiusContainer}>
+            {[5, 10, 25, 50].map((radius) => (
+              <TouchableOpacity
+                key={radius}
+                style={[
+                  styles.radiusOption,
+                  (userData.preferredMeetupRadius || 10) === radius && styles.radiusOptionSelected
+                ]}
+                onPress={() => handleInputChange("preferredMeetupRadius", radius)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.radiusOptionText,
+                  (userData.preferredMeetupRadius || 10) === radius && styles.radiusOptionTextSelected
+                ]}>
+                  {radius} mi
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        );
+      case "preferences":
+        return (
+          <EventPreferencesStep
+            eventPreferences={userData.eventPreferences || defaultEventPreferences}
+            onPreferencesChange={(preferences) => {
+              setUserData(prev => ({ ...prev, eventPreferences: preferences }));
+            }}
+          />
         );
       default:
         return (
@@ -911,14 +1525,20 @@ const UserOnboarding = () => {
             isFocused && styles.inputContainerFocused,
             hasError && styles.inputContainerError,
             showValidation && styles.fieldInvalid,
+            field.key === "bio" && styles.bioInputContainer,
           ]}>
             <Feather 
               name={field.icon} 
-              size={20} 
+              size={scaleSize(20)} 
               color={hasError ? "#ff4444" : isFocused ? "#e4fbfe" : "#38a5c9"} 
+              style={field.key === "bio" && styles.bioIcon}
             />
             <TextInput
-              style={[styles.input, hasError && styles.inputError]}
+              style={[
+                styles.input, 
+                hasError && styles.inputError,
+                field.key === "bio" && styles.bioInput
+              ]}
               placeholder={field.placeholder}
               placeholderTextColor={hasError ? "#ff4444" : "#38a5c9"}
               secureTextEntry={field.secure}
@@ -968,14 +1588,14 @@ const UserOnboarding = () => {
   const steps: Step[] = [
     {
       key: "email",
-      title: "Let's Get You Boarded! ✈️",
+      title: "Let's Get You Started! 🚀",
       icon: "send",
       fields: [
         {
           key: "email",
           label: "Email",
           icon: "mail",
-          placeholder: "flyer@skyconnect.com",
+          placeholder: "your@email.com",
           keyboardType: "email-address",
           autoComplete: "email",
           textContentType: "emailAddress",
@@ -994,14 +1614,14 @@ const UserOnboarding = () => {
     },
     {
       key: "profile",
-      title: "Your Travel Persona 🌍",
+      title: "Tell Us About You 👤",
       icon: "user",
       fields: [
         {
           key: "name",
           label: "Full Name",
           icon: "user",
-          placeholder: "Alex Wanderlust",
+          placeholder: "Alex Johnson",
         },
         {
           key: "dateOfBirth",
@@ -1014,7 +1634,7 @@ const UserOnboarding = () => {
           key: "bio",
           label: "Short Bio",
           icon: "edit-3",
-          placeholder: "Digital nomad & coffee enthusiast...",
+          placeholder: "Tell us a bit about yourself...",
           type: "text",
         },
         {
@@ -1027,44 +1647,107 @@ const UserOnboarding = () => {
       ],
     },
     {
-      key: "travel",
-      title: "Share Your Travel Experience ✈️",
-      icon: "map-pin",
+      key: "connectionTemplate",
+      title: "Choose Your Connection Type 🎯",
+      icon: "users",
       fields: [
         {
-          key: "travelHistory",
-          label: "Travel History",
-          icon: "map-pin",
-          placeholder: "Countries visited, adventures experienced...",
-          type: "tags",
+          key: "connectionTemplate",
+          label: "Connection Categories",
+          icon: "target",
+          placeholder: "Select from categories...",
+          type: "connectionTemplate",
         },
+      ],
+    },
+    {
+      key: "connection",
+      title: "Fine-tune Your Interests ⚡",
+      icon: "target",
+      fields: [
         {
-          key: "goals",
-          label: "Travel Goals",
-          icon: "heart",
-          placeholder: "Your dream destinations, bucket-list goals...",
+          key: "connectionIntents",
+          label: "Connection Interests",
+          icon: "target",
+          placeholder: "Select what you're interested in...",
           type: "tags",
         },
       ],
     },
     {
-      key: "social",
-      title: "Connect Your Interests 🧳",
-      icon: "briefcase",
+      key: "personalityTemplate",
+      title: "What's Your Personality Type? 🌟",
+      icon: "heart",
       fields: [
         {
-          key: "interests",
-          label: "Travel Interests",
+          key: "personalityTemplate",
+          label: "Personality Template",
           icon: "heart",
-          placeholder: "Hiking, Local cuisine...",
+          placeholder: "Choose a template...",
+          type: "personalityTemplate",
+        },
+      ],
+    },
+    {
+      key: "personality",
+      title: "Fine-tune Your Personality 💫",
+      icon: "tag",
+      fields: [
+        {
+          key: "personalTags",
+          label: "Personal Tags",
+          icon: "tag",
+          placeholder: "Tags that describe you...",
           type: "tags",
         },
         {
           key: "languages",
           label: "Languages",
           icon: "globe",
-          placeholder: "English, Spanish...",
+          placeholder: "Languages you speak...",
           type: "tags",
+        },
+      ],
+    },
+    {
+      key: "schedule",
+      title: "When Are You Available? ⏰",
+      icon: "clock",
+      fields: [
+        {
+          key: "availabilitySchedule",
+          label: "Availability Schedule",
+          icon: "clock",
+          placeholder: "Set your weekly availability...",
+          type: "schedule",
+        },
+      ],
+    },
+    {
+      key: "availability",
+      title: "How Far Will You Travel? 📍",
+      icon: "map-pin",
+      fields: [
+        {
+          key: "preferredMeetupRadius",
+          label: "Meetup Radius",
+          icon: "map-pin",
+          placeholder: "How far will you travel?",
+          type: "radiusTemplate",
+        },
+      ],
+    },
+    {
+      key: "preferences",
+      title: "How Do You Like to Connect? 🎉",
+      icon: "settings",
+      fields: [
+        {
+          key: "eventPreferences",
+          label: "Event Preferences",
+          icon: "list",
+          placeholder: "Your preferences...",
+          type: "preferences",
         },
       ],
     },
@@ -1102,27 +1785,27 @@ const UserOnboarding = () => {
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>
                     {currentField === "languages" ? "Select Languages" :
-                     currentField === "interests" ? "Select Interests" :
-                     currentField === "goals" ? "Select Travel Goals" :
-                     "Select Countries Visited"}
+                     currentField === "connectionIntents" ? "Select Connection Interests" :
+                     currentField === "personalTags" ? "Select Personal Tags" :
+                     "Select Options"}
                   </Text>
                   <TouchableOpacity
                     onPress={() => setShowCountryModal(false)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     style={styles.closeButton}
                   >
-                    <Feather name="x" size={24} color="#e4fbfe" />
+                    <Feather name="x" size={scaleSize(24)} color="#e4fbfe" />
                   </TouchableOpacity>
                 </View>
                 
                 <View style={styles.searchContainer}>
-                  <Feather name="search" size={20} color="#38a5c9" />
+                  <Feather name="search" size={scaleSize(20)} color="#38a5c9" />
                   <TextInput
                     style={styles.searchInput}
                     placeholder={`Search ${currentField === "languages" ? "languages" : 
-                                              currentField === "interests" ? "interests" : 
-                                              currentField === "goals" ? "travel goals" :
-                                              "countries"}...`}
+                                              currentField === "connectionIntents" ? "connection interests" : 
+                                              currentField === "personalTags" ? "personal tags" :
+                                              "options"}...`}
                     placeholderTextColor="#38a5c9"
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -1148,7 +1831,7 @@ const UserOnboarding = () => {
                       activeOpacity={0.7}
                     >
                       <Text style={styles.countryItemText}>{item}</Text>
-                      <Feather name="plus" size={20} color="#38a5c9" style={styles.countryItemIcon} />
+                      <Feather name="plus" size={scaleSize(20)} color="#38a5c9" style={styles.countryItemIcon} />
                     </TouchableOpacity>
                   )}
                   style={styles.countryList}
@@ -1157,7 +1840,7 @@ const UserOnboarding = () => {
                   contentContainerStyle={styles.countryListContent}
                   ListEmptyComponent={
                     <View style={styles.emptyState}>
-                      <Feather name="search" size={24} color="#38a5c9" />
+                      <Feather name="search" size={scaleSize(24)} color="#38a5c9" />
                       <Text style={styles.emptyStateText}>No results found</Text>
                     </View>
                   }
@@ -1179,6 +1862,21 @@ const UserOnboarding = () => {
     return <LoadingScreen message="Checking authentication..." forceDarkMode={true} />;
   }
 
+  // Render progress indicator
+  const renderProgressIndicator = () => {
+    const progress = ((stepIndex + 1) / steps.length) * 100;
+    return (
+      <View style={styles.progressContainer}>
+        <View style={styles.progressBarContainer}>
+          <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+        </View>
+        <Text style={styles.progressText}>
+          Step {stepIndex + 1} of {steps.length} • {Math.round(progress)}% Complete
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <LinearGradient colors={["#000000", "#1a1a1a"]} style={styles.gradient}>
       <LinearGradient
@@ -1186,19 +1884,28 @@ const UserOnboarding = () => {
         style={styles.fadeOverlay}
         pointerEvents="none"
       />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        enabled={true}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <Animated.View 
-            style={[
-              styles.contentContainer,
-              { transform: [{ scale: scaleAnim }] }
-            ]}
-          >
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <Animated.View 
+              style={[
+                styles.contentContainer,
+                { opacity: fadeAnim }
+              ]}
+            >
+            {renderProgressIndicator()}
             <Text style={styles.title}>{steps[stepIndex].title}</Text>
             {steps[stepIndex].fields.map((field) => (
               <TouchableOpacity
@@ -1218,36 +1925,23 @@ const UserOnboarding = () => {
                 {renderField(field)}
               </TouchableOpacity>
             ))}
+
             <View style={styles.footer}>
               {stepIndex > 0 && (
                 <TouchableOpacity
                   style={styles.backButton}
-                  onPress={() => {
-                    Animated.sequence([
-                      Animated.timing(scaleAnim, {
-                        toValue: 0.95,
-                        duration: 100,
-                        useNativeDriver: true,
-                        easing: Easing.ease,
-                      }),
-                      Animated.spring(scaleAnim, {
-                        toValue: 1,
-                        useNativeDriver: true,
-                        speed: 50,
-                        bounciness: 4,
-                      }),
-                    ]).start(() => {
-                      setStepIndex((prev) => prev - 1);
-                    });
-                  }}
+                  onPress={() => animateStepChange(() => setStepIndex((prev) => prev - 1))}
                   activeOpacity={0.7}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Feather
-                    name="chevron-left"
-                    size={24}
-                    color="#e4fbfe"
-                  />
+                  <View style={styles.backButtonContent}>
+                    <Feather
+                      name="chevron-left"
+                      size={scaleSize(20)}
+                      color="#e4fbfe"
+                    />
+                    <Text style={styles.backButtonText}>Back</Text>
+                  </View>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -1262,18 +1956,27 @@ const UserOnboarding = () => {
               >
                 <LinearGradient
                   colors={(!validateCurrentStep().isValid || (stepIndex === steps.length - 1 && !userData.acceptedEula))
-                    ? ["#1a1a1a", "#1a1a1a"] 
-                    : ["#38a5c9", "#38a5c9"]}
+                    ? ["#333", "#1a1a1a"] 
+                    : ["#38a5c9", "#2a8aa8"]}
                   style={styles.buttonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
                 >
                   <Text style={[
                     styles.buttonText,
                     (!validateCurrentStep().isValid || (stepIndex === steps.length - 1 && !userData.acceptedEula)) && styles.buttonTextDisabled
                   ]}>
                     {stepIndex === steps.length - 1
-                      ? "Start Exploring! ✈️"
-                      : "Continue Journey →"}
+                      ? "Get Started 🚀"
+                      : "Continue"}
                   </Text>
+                  {!(stepIndex === steps.length - 1) && (
+                    <Feather name="arrow-right" size={scaleSize(18)} color={
+                      (!validateCurrentStep().isValid || (stepIndex === steps.length - 1 && !userData.acceptedEula))
+                        ? "#666"
+                        : "#fff"
+                    } style={styles.buttonIcon} />
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1292,6 +1995,7 @@ const UserOnboarding = () => {
           </Animated.View>
         </TouchableWithoutFeedback>
       </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 };
@@ -1300,45 +2004,75 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: 20,
+    paddingTop: verticalScale(5),
+    paddingBottom: verticalScale(20),
   },
   contentContainer: {
     width: "100%",
-    paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingHorizontal: scaleSize(20),
+    paddingVertical: verticalScale(15),
+    paddingBottom: verticalScale(20),
     alignItems: "center",
-    marginTop: '22%',
+    marginTop: Platform.OS === 'ios' ? verticalScale(50) : verticalScale(30),
+  },
+  progressContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: verticalScale(16),
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: verticalScale(4),
+    backgroundColor: 'rgba(56, 165, 201, 0.2)',
+    borderRadius: scaleSize(2),
+    marginBottom: verticalScale(12),
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#38a5c9',
+    borderRadius: scaleSize(2),
+  },
+  progressText: {
+    color: '#38a5c9',
+    fontSize: scaleFont(12),
+    fontFamily: 'Inter-Medium',
   },
   title: {
-    fontSize: 28,
+    fontSize: scaleFont(isSmallDevice ? 22 : 24),
     fontFamily: "Inter-Bold",
     color: "#e4fbfe",
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: verticalScale(16),
+    paddingHorizontal: scaleSize(8),
+    lineHeight: scaleFont(isSmallDevice ? 28 : 30),
   },
   fieldContainer: {
-    marginBottom: 16,
+    marginBottom: verticalScale(12),
     width: "100%",
-    paddingHorizontal: 4,
+    paddingHorizontal: scaleSize(4),
   },
   fieldLabel: {
     color: "#e4fbfe",
     fontFamily: "Inter-Medium",
-    marginBottom: 8,
-    fontSize: 14,
-    paddingLeft: 4,
+    marginBottom: verticalScale(8),
+    fontSize: scaleFont(14),
+    paddingLeft: scaleSize(4),
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scaleSize(12),
+    padding: scaleSize(isSmallDevice ? 12 : 16),
     borderWidth: 1,
     borderColor: "#38a5c9",
-    minHeight: 64,
+    minHeight: verticalScale(isSmallDevice ? 56 : 64),
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -1373,16 +2107,28 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
+    marginLeft: scaleSize(12),
+    fontSize: scaleFont(16),
     color: "#e4fbfe",
     fontFamily: "Inter-Regular",
-    minHeight: 40,
-    paddingVertical: 8,
+    minHeight: verticalScale(40),
+    paddingVertical: verticalScale(8),
+  },
+  bioInputContainer: {
+    minHeight: verticalScale(110),
+    alignItems: "flex-start",
+    paddingVertical: scaleSize(14),
+  },
+  bioIcon: {
+    marginTop: scaleSize(4),
+  },
+  bioInput: {
+    minHeight: verticalScale(90),
+    maxHeight: verticalScale(140),
   },
   avatarContainer: {
     alignSelf: "center",
-    marginBottom: 11,
+    marginBottom: verticalScale(11),
     position: 'relative',
     width: avatarSize,
     height: avatarSize,
@@ -1498,6 +2244,15 @@ const styles = StyleSheet.create({
   tagsInputPlaceholder: {
     color: '#38a5c9',
   },
+  tagsInputSubtext: {
+    fontSize: scaleFont(12),
+    color: '#ef4444',
+    fontFamily: 'Inter-Regular',
+    marginTop: verticalScale(4),
+  },
+  tagsInputSubtextComplete: {
+    color: '#22c55e',
+  },
   tagsPreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1530,54 +2285,70 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 20,
+    marginTop: verticalScale(20),
+    marginBottom: verticalScale(10),
     width: "100%",
+    gap: scaleSize(12),
   },
   backButton: {
-    width: 56,
-    height: 56,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scaleSize(isSmallDevice ? 12 : 16),
+    borderRadius: scaleSize(12),
+    backgroundColor: "rgba(56, 165, 201, 0.1)",
     borderWidth: 1,
     borderColor: "#38a5c9",
-    marginRight: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scaleSize(6),
+  },
+  backButtonText: {
+    color: '#e4fbfe',
+    fontSize: scaleFont(14),
+    fontFamily: 'Inter-SemiBold',
   },
   nextButton: {
-    borderRadius: 12,
+    borderRadius: scaleSize(12),
     overflow: "hidden",
     flex: 1,
-    borderWidth: 1,
-    borderColor: "#38a5c9",
-    shadowColor: "#000",
+    shadowColor: "#38a5c9",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-    minHeight: 56,
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    minHeight: verticalScale(isSmallDevice ? 52 : 56),
+  },
+  nextButtonDisabled: {
+    opacity: 0.5,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   buttonGradient: {
-    paddingVertical: 20,
+    paddingVertical: verticalScale(isSmallDevice ? 14 : 16),
+    paddingHorizontal: scaleSize(isSmallDevice ? 20 : 24),
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: 'row',
+    gap: scaleSize(8),
+  },
+  buttonIcon: {
+    marginLeft: scaleSize(4),
   },
   buttonText: {
-    color: "#000000",
+    color: "#ffffff",
     fontFamily: "Inter-Bold",
-    fontSize: 16,
+    fontSize: scaleFont(16),
+  },
+  buttonTextDisabled: {
+    color: "#666666",
   },
   loginText: {
     color: "#38a5c9",
@@ -1925,6 +2696,216 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     width: '100%',
     justifyContent: 'center',
+  },
+  radiusContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  radiusOption: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#38a5c9',
+    backgroundColor: '#1a1a1a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radiusOptionSelected: {
+    backgroundColor: '#38a5c9',
+    borderColor: '#38a5c9',
+  },
+  radiusOptionText: {
+    color: '#38a5c9',
+    fontSize: 14,
+    fontFamily: 'Inter-Bold',
+  },
+  radiusOptionTextSelected: {
+    color: '#000000',
+  },
+  // Template Styles
+  templateContainer: {
+    width: '100%',
+  },
+  templateSubtitle: {
+    color: '#38a5c9',
+    fontSize: scaleFont(13),
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
+    marginBottom: verticalScale(16),
+    paddingHorizontal: scaleSize(12),
+  },
+  categorySection: {
+    marginBottom: verticalScale(16),
+  },
+  categoryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: verticalScale(10),
+  },
+  categoryLabel: {
+    color: '#e4fbfe',
+    fontSize: scaleFont(15),
+    fontFamily: 'Inter-Bold',
+    letterSpacing: 0.3,
+  },
+  categoryCount: {
+    color: '#38a5c9',
+    fontSize: scaleFont(12),
+    fontFamily: 'Inter-Medium',
+  },
+  intentChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scaleSize(8),
+  },
+  intentChip: {
+    paddingVertical: verticalScale(isSmallDevice ? 8 : 10),
+    paddingHorizontal: scaleSize(isSmallDevice ? 12 : 16),
+    borderRadius: scaleSize(20),
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 165, 201, 0.5)',
+    backgroundColor: 'rgba(26, 26, 26, 0.6)',
+  },
+  intentChipSelected: {
+    borderColor: '#38a5c9',
+    backgroundColor: 'rgba(56, 165, 201, 0.2)',
+    shadowColor: '#38a5c9',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  intentChipText: {
+    color: '#9ca3af',
+    fontSize: scaleFont(isSmallDevice ? 12 : 13),
+    fontFamily: 'Inter-SemiBold',
+  },
+  intentChipTextSelected: {
+    color: '#e4fbfe',
+  },
+  personalityTemplatesGrid: {
+    gap: scaleSize(10),
+  },
+  personalityTemplateCard: {
+    backgroundColor: 'rgba(26, 26, 26, 0.8)',
+    borderRadius: scaleSize(16),
+    padding: scaleSize(isSmallDevice ? 14 : 16),
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 165, 201, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+    position: 'relative',
+  },
+  templateCardSelected: {
+    borderColor: '#22c55e',
+    borderWidth: 2,
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    shadowColor: '#22c55e',
+    shadowOpacity: 0.3,
+    elevation: 6,
+  },
+  templateSelectedBadge: {
+    position: 'absolute',
+    top: scaleSize(12),
+    right: scaleSize(12),
+  },
+  templateCardHeader: {
+    width: scaleSize(isSmallDevice ? 40 : 44),
+    height: scaleSize(isSmallDevice ? 40 : 44),
+    borderRadius: scaleSize(isSmallDevice ? 20 : 22),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: verticalScale(10),
+  },
+  templateCardTitle: {
+    color: '#e4fbfe',
+    fontSize: scaleFont(isSmallDevice ? 15 : 16),
+    fontFamily: 'Inter-Bold',
+    marginBottom: verticalScale(6),
+  },
+  templateCardDescription: {
+    color: '#9ca3af',
+    fontSize: scaleFont(isSmallDevice ? 12 : 13),
+    fontFamily: 'Inter-Regular',
+    lineHeight: scaleFont(isSmallDevice ? 16 : 18),
+  },
+  radiusTemplatesContainer: {
+    gap: scaleSize(10),
+  },
+  radiusTemplateCard: {
+    backgroundColor: 'rgba(26, 26, 26, 0.8)',
+    borderRadius: scaleSize(16),
+    padding: scaleSize(isSmallDevice ? 14 : 16),
+    borderWidth: 2,
+    borderColor: 'rgba(56, 165, 201, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  radiusTemplateCardSelected: {
+    borderColor: '#38a5c9',
+    backgroundColor: 'rgba(56, 165, 201, 0.1)',
+    shadowColor: '#38a5c9',
+    shadowOpacity: 0.4,
+    elevation: 6,
+  },
+  radiusTemplateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(10),
+    padding: scaleSize(10),
+    borderRadius: scaleSize(12),
+  },
+  radiusBadge: {
+    paddingVertical: verticalScale(3),
+    paddingHorizontal: scaleSize(10),
+    borderRadius: scaleSize(10),
+  },
+  radiusBadgeText: {
+    color: '#000',
+    fontSize: scaleFont(11),
+    fontFamily: 'Inter-Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  radiusTemplateTitle: {
+    color: '#e4fbfe',
+    fontSize: scaleFont(isSmallDevice ? 15 : 16),
+    fontFamily: 'Inter-Bold',
+    marginBottom: verticalScale(6),
+  },
+  radiusTemplateDescription: {
+    color: '#9ca3af',
+    fontSize: scaleFont(isSmallDevice ? 12 : 13),
+    fontFamily: 'Inter-Regular',
+    lineHeight: scaleFont(isSmallDevice ? 16 : 18),
+    marginBottom: verticalScale(10),
+  },
+  radiusTemplateFooter: {
+    alignItems: 'flex-start',
+  },
+  radiusTemplateValue: {
+    fontSize: scaleFont(15),
+    fontFamily: 'Inter-Bold',
   },
 });
 

@@ -9,208 +9,201 @@ import {
   ScrollView,
   Modal,
   Platform,
+  Easing,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeContext } from "../context/ThemeContext";
 import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 
-// Define preset statuses with typed array
+// Simplified mood type with just the essentials
 export type PresetStatus = {
   label: string;
   emoji: string;
-  color: string;
   category: string;
+  radiusMultiplier: number;
+  description: string;
 };
 
+// Streamlined mood list organized by behavior
 export const presetStatuses: PresetStatus[] = [
-  // Basic statuses (shown in "All" category)
+  // SEEKING - Maximum reach
+  { 
+    label: "Looking for Company", 
+    emoji: "👥",
+    category: "seeking",
+    radiusMultiplier: 2.0,
+    description: "Widest reach"
+  },
   { 
     label: "Available", 
     emoji: "✅",
-    color: "#4CAF50",
-    category: "all"
+    category: "seeking",
+    radiusMultiplier: 1.5,
+    description: "Wide reach"
   },
   { 
-    label: "Busy", 
-    emoji: "⏳",
-    color: "#FF9800",
-    category: "all"
-  },
-  { 
-    label: "Away", 
-    emoji: "🚶",
-    color: "#9E9E9E",
-    category: "all"
-  },
-  { 
-    label: "Do Not Disturb", 
-    emoji: "🔕",
-    color: "#F44336",
-    category: "all"
+    label: "Food & Drinks?", 
+    emoji: "🍽️",
+    category: "seeking",
+    radiusMultiplier: 1.5,
+    description: "Food & social"
   },
   { 
     label: "Free to Chat", 
     emoji: "💬",
-    color: "#38a5c9",
-    category: "all"
-  },
-  { 
-    label: "Exploring", 
-    emoji: "✈️",
-    color: "#9C27B0",
-    category: "all"
-  },
-  // Social category
-  { 
-    label: "Down to Chat", 
-    emoji: "💬",
-    color: "#38a5c9",
-    category: "social"
-  },
-  { 
-    label: "Looking for Company", 
-    emoji: "👥",
-    color: "#38a5c9",
-    category: "social"
-  },
-  { 
-    label: "Sharing Stories", 
-    emoji: "📖",
-    color: "#38a5c9",
-    category: "social"
-  },
-  { 
-    label: "Networking", 
-    emoji: "🤝",
-    color: "#38a5c9",
-    category: "social"
-  },
-  { 
-    label: "Language Exchange", 
-    emoji: "🌍",
-    color: "#38a5c9",
-    category: "social"
+    category: "seeking",
+    radiusMultiplier: 1.5,
+    description: "Ready to connect"
   },
   { 
     label: "Group Activities", 
     emoji: "🎯",
-    color: "#38a5c9",
-    category: "social"
-  },
-  // Food category
-  { 
-    label: "Food & Drinks?", 
-    emoji: "🍽️",
-    color: "#4CAF50",
-    category: "food"
+    category: "seeking",
+    radiusMultiplier: 1.8,
+    description: "Activity focused"
   },
   { 
-    label: "Coffee Break", 
-    emoji: "☕",
-    color: "#4CAF50",
-    category: "food"
+    label: "Down to Chat", 
+    emoji: "💭",
+    category: "seeking",
+    radiusMultiplier: 1.5,
+    description: "Open to talk"
   },
-  { 
-    label: "Restaurant Hunting", 
-    emoji: "🔍",
-    color: "#4CAF50",
-    category: "food"
-  },
-  { 
-    label: "Local Cuisine", 
-    emoji: "🍜",
-    color: "#4CAF50",
-    category: "food"
-  },
-  { 
-    label: "Snack Time", 
-    emoji: "🍪",
-    color: "#4CAF50",
-    category: "food"
-  },
-  { 
-    label: "Food Tour", 
-    emoji: "🍕",
-    color: "#4CAF50",
-    category: "food"
-  },
-  // Work category
-  { 
-    label: "Work Mode", 
-    emoji: "💼",
-    color: "#FF9800",
-    category: "work"
-  },
-  { 
-    label: "In a Meeting", 
-    emoji: "📊",
-    color: "#FF9800",
-    category: "work"
-  },
-  { 
-    label: "Remote Work", 
-    emoji: "💻",
-    color: "#FF9800",
-    category: "work"
-  },
-  { 
-    label: "Business Trip", 
-    emoji: "📈",
-    color: "#FF9800",
-    category: "work"
-  },
-  { 
-    label: "Conference Call", 
-    emoji: "📞",
-    color: "#FF9800",
-    category: "work"
-  },
-  { 
-    label: "Project Deadline", 
-    emoji: "⏰",
-    color: "#FF9800",
-    category: "work"
-  },
-  // Travel category
+
+  // OPEN - Balanced
   { 
     label: "Exploring", 
     emoji: "✈️",
-    color: "#9C27B0",
-    category: "travel"
+    category: "open",
+    radiusMultiplier: 1.0,
+    description: "Standard reach"
   },
   { 
     label: "Sightseeing", 
     emoji: "🗺️",
-    color: "#9C27B0",
-    category: "travel"
+    category: "open",
+    radiusMultiplier: 1.0,
+    description: "Tourist mode"
   },
   { 
-    label: "Airport Tour", 
-    emoji: "🏛️",
-    color: "#9C27B0",
-    category: "travel"
+    label: "Restaurant Hunting", 
+    emoji: "🔍",
+    category: "open",
+    radiusMultiplier: 1.0,
+    description: "Finding food"
   },
   { 
-    label: "Duty Free", 
-    emoji: "🛍️",
-    color: "#9C27B0",
-    category: "travel"
+    label: "Food Tour", 
+    emoji: "🍕",
+    category: "open",
+    radiusMultiplier: 1.2,
+    description: "Culinary adventure"
   },
   { 
-    label: "Lounge Access", 
+    label: "Networking", 
+    emoji: "🤝",
+    category: "open",
+    radiusMultiplier: 1.5,
+    description: "Professional"
+  },
+  { 
+    label: "Language Exchange", 
+    emoji: "🌍",
+    category: "open",
+    radiusMultiplier: 1.2,
+    description: "Practice language"
+  },
+
+  // SELECTIVE - Limited
+  { 
+    label: "Coffee Break", 
+    emoji: "☕",
+    category: "selective",
+    radiusMultiplier: 0.7,
+    description: "Nearby only"
+  },
+  { 
+    label: "Snack Time", 
+    emoji: "🍪",
+    category: "selective",
+    radiusMultiplier: 0.7,
+    description: "Quick bite"
+  },
+  { 
+    label: "Away", 
+    emoji: "🚶",
+    category: "selective",
+    radiusMultiplier: 0.5,
+    description: "Very close"
+  },
+  { 
+    label: "Local Cuisine", 
+    emoji: "🍜",
+    category: "selective",
+    radiusMultiplier: 0.9,
+    description: "Local food"
+  },
+  { 
+    label: "Airport Lounge", 
     emoji: "🛋️",
-    color: "#9C27B0",
-    category: "travel"
+    category: "selective",
+    radiusMultiplier: 0.5,
+    description: "Limited"
   },
   { 
-    label: "Gate Change", 
-    emoji: "🔄",
-    color: "#9C27B0",
-    category: "travel"
-  }
+    label: "Shopping", 
+    emoji: "🛍️",
+    category: "selective",
+    radiusMultiplier: 0.8,
+    description: "Retail therapy"
+  },
+
+  // UNAVAILABLE - No notifications
+  { 
+    label: "Do Not Disturb", 
+    emoji: "🔕",
+    category: "unavailable",
+    radiusMultiplier: 0,
+    description: "No pings"
+  },
+  { 
+    label: "Busy", 
+    emoji: "⏳",
+    category: "unavailable",
+    radiusMultiplier: 0,
+    description: "Not available"
+  },
+  { 
+    label: "Work Mode", 
+    emoji: "💼",
+    category: "unavailable",
+    radiusMultiplier: 0,
+    description: "Deep focus"
+  },
+  { 
+    label: "In a Meeting", 
+    emoji: "📊",
+    category: "unavailable",
+    radiusMultiplier: 0,
+    description: "Currently busy"
+  },
+  { 
+    label: "On a Call", 
+    emoji: "📞",
+    category: "unavailable",
+    radiusMultiplier: 0,
+    description: "Can't talk"
+  },
+  { 
+    label: "Deadline Mode", 
+    emoji: "⏰",
+    category: "unavailable",
+    radiusMultiplier: 0,
+    description: "Under pressure"
+  },
 ];
 
-// Define props interface for the StatusSheet component
 interface StatusSheetProps {
   showStatusSheet: boolean;
   sheetAnim: Animated.Value;
@@ -220,7 +213,6 @@ interface StatusSheetProps {
   toggleStatusSheet: () => void;
 }
 
-// StatusSheet component with TypeScript
 export default function StatusSheet({
   showStatusSheet,
   sheetAnim,
@@ -231,37 +223,70 @@ export default function StatusSheet({
 }: StatusSheetProps) {
   const insets = useSafeAreaInsets();
   const { theme } = React.useContext(ThemeContext);
-  const [selectedCategory, setSelectedCategory] = React.useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = React.useState<string>("seeking");
   const cardAnim = useRef(new Animated.Value(0)).current;
+  const overlayAnim = useRef(new Animated.Value(0)).current;
+
+  const primaryColor = "#38a5c9";
+  const textPrimary = theme === "light" ? "#0F172A" : "#e4fbfe";
+  const textSecondary = theme === "light" ? "#64748B" : "#CBD5E1";
+  const textTertiary = theme === "light" ? "#94A3B8" : "#94A3B8";
+  const bgMain = theme === "light" ? "#FFFFFF" : "#000000";
+  const bgSecondary = theme === "light" ? "#f8fafc" : "#1a1a1a";
+  const border = theme === "light" ? "#e2e8f0" : "#2a2a2a";
 
   useEffect(() => {
     if (showStatusSheet) {
-      setSelectedCategory("all");
-      Animated.timing(cardAnim, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
+      setSelectedCategory("seeking");
+      // Animate overlay and sheet in
+      Animated.parallel([
+        Animated.timing(overlayAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.spring(cardAnim, {
+          toValue: 1,
+          tension: 60,
+          friction: 9,
+          useNativeDriver: true,
+        }),
+      ]).start();
     } else {
-      Animated.timing(cardAnim, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
+      // Animate overlay and sheet out
+      Animated.parallel([
+        Animated.timing(overlayAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cardAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
-  }, [showStatusSheet, cardAnim]);
+  }, [showStatusSheet, cardAnim, overlayAnim]);
 
   const categories = [
-    { id: "all", label: "All" },
-    { id: "social", label: "Social" },
-    { id: "food", label: "Food" },
-    { id: "work", label: "Work" },
-    { id: "travel", label: "Travel" }
+    { id: "seeking", label: "Seeking", indicator: "●●●" },
+    { id: "open", label: "Open", indicator: "●●○" },
+    { id: "selective", label: "Selective", indicator: "●○○" },
+    { id: "unavailable", label: "Off", indicator: "○○○" },
   ];
 
-  const filteredStatuses = presetStatuses
-    .filter(status => status.category === selectedCategory)
-    .slice(0, 6);
+  const filteredStatuses = presetStatuses.filter(
+    status => status.category === selectedCategory
+  );
+
+  const getIndicatorOpacity = (multiplier: number) => {
+    if (multiplier >= 1.5) return 1.0;
+    if (multiplier >= 1.0) return 0.75;
+    if (multiplier > 0) return 0.5;
+    return 0.25;
+  };
 
   return (
     <Modal
@@ -274,155 +299,214 @@ export default function StatusSheet({
         style={[
           styles.modalOverlay,
           {
-            opacity: cardAnim,
-            backgroundColor: cardAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: ["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]
-            })
+            opacity: overlayAnim,
           }
         ]}
       >
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 20 : 50}
+          tint={theme === "light" ? "light" : "dark"}
+          style={StyleSheet.absoluteFill}
+        />
+        <TouchableOpacity 
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={toggleStatusSheet}
+        />
         <Animated.View
           style={[
-            styles.card,
+            styles.sheetContainer,
             {
-              backgroundColor: theme === "light" ? "#fff" : "#1a1a1a",
-              shadowColor: theme === "light" ? "#38a5c9" : "#000",
+              opacity: cardAnim,
               transform: [
+                {
+                  translateY: cardAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [600, 0]
+                  })
+                },
                 {
                   scale: cardAnim.interpolate({
                     inputRange: [0, 1],
                     outputRange: [0.95, 1]
                   })
-                },
-                {
-                  translateY: cardAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
                 }
-              ],
-              opacity: cardAnim
+              ]
             }
           ]}
         >
-          {/* Header */}
-          <View style={styles.headerRow}>
-            <View style={[styles.headerIconContainer, {
-              backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-            }]}> 
-              <MaterialIcons name="mood" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-            </View>
-            <Text style={[styles.headerTitle, { color: theme === "light" ? "#000" : "#e4fbfe" }]}>Set Mood Status</Text>
-            <TouchableOpacity
-              style={[styles.closeButton, {
-                backgroundColor: theme === "light" ? "rgba(55, 164, 200, 0.1)" : "rgba(56, 165, 201, 0.1)"
-              }]}
-              onPress={toggleStatusSheet}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.7}
-            >
-              <Feather name="x" size={18} color={theme === "light" ? "#37a4c8" : "#38a5c9"} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Category Chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoriesContainer}
-            contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 8 }}
+          <TouchableOpacity 
+            activeOpacity={1} 
+            style={[styles.sheet, { backgroundColor: bgMain }]}
           >
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category.id}
-                style={[
-                  styles.categoryChip,
-                  selectedCategory === category.id && styles.categoryChipActive,
-                  {
-                    backgroundColor: selectedCategory === category.id
-                      ? (theme === "light" ? "#37a4c8" : "#38a5c9")
-                      : (theme === "light" ? "#f5f5f5" : "#2a2a2a"),
-                    borderColor: selectedCategory === category.id ? "#38a5c9" : "transparent"
-                  }
-                ]}
-                onPress={() => setSelectedCategory(category.id)}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  styles.categoryChipText,
-                  selectedCategory === category.id && styles.categoryChipTextActive,
-                  { color: selectedCategory === category.id ? "#fff" : (theme === "light" ? "#666" : "#a0a0a0") }
-                ]}>
-                  {category.label}
+            {/* Drag Handle */}
+            <View style={[styles.dragHandle, { backgroundColor: border }]} />
+
+            {/* Header */}
+            <View style={styles.header}>
+              <View style={styles.titleContainer}>
+                <Text style={[styles.title, { color: textPrimary }]}>
+                  Set Your Mood
                 </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Status Grid */}
-          <View style={styles.statusGrid}>
-            {filteredStatuses.map((status, index) => (
+                <Text style={[styles.subtitle, { color: textSecondary }]}>
+                  Controls how you receive pings
+                </Text>
+              </View>
               <TouchableOpacity
-                key={index}
-                style={[
-                  styles.statusCard,
-                  {
-                    backgroundColor: status.color,
-                    shadowColor: status.color,
-                  }
-                ]}
-                onPress={() => {
-                  handleUpdateMoodStatus(status.label);
-                  toggleStatusSheet();
-                }}
-                activeOpacity={0.8}
+                style={[styles.closeButton, { backgroundColor: bgSecondary }]}
+                onPress={toggleStatusSheet}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Text style={styles.statusEmoji}>{status.emoji}</Text>
-                <Text style={styles.statusText} numberOfLines={2} ellipsizeMode="tail">{status.label}</Text>
+                <Feather name="x" size={20} color={textSecondary} />
               </TouchableOpacity>
-            ))}
-          </View>
+            </View>
 
-          {/* Custom Status Input */}
-          <View style={styles.customStatusContainer}>
-            <TextInput
-              style={[styles.customStatusInput, {
-                backgroundColor: theme === "light" ? "#f8fafc" : "#2a2a2a",
-                color: theme === "light" ? "#000" : "#e4fbfe",
-                borderColor: theme === "light" ? "rgba(55, 164, 200, 0.3)" : "rgba(56, 165, 201, 0.3)"
-              }]}
-              value={customStatus}
-              onChangeText={setCustomStatus}
-              placeholder="Custom status..."
-              placeholderTextColor={theme === "light" ? "#64748B" : "#64748B"}
-              maxLength={50}
-              returnKeyType="done"
-              onSubmitEditing={() => {
-                if (customStatus.trim().length > 0) {
-                  handleUpdateMoodStatus(customStatus);
-                  toggleStatusSheet();
-                }
-              }}
-            />
-            <TouchableOpacity
-              style={[
-                styles.setButton,
-                {
-                  opacity: customStatus.trim().length > 0 ? 1 : 0.5,
-                  backgroundColor: theme === "light" ? "#37a4c8" : "#38a5c9"
-                }
-              ]}
-              disabled={customStatus.trim().length === 0}
-              onPress={() => {
-                handleUpdateMoodStatus(customStatus);
-                toggleStatusSheet();
-              }}
-              activeOpacity={0.8}
+            <ScrollView 
+              style={styles.scrollView}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 24 }}
             >
-              <Text style={styles.setButtonText}>Set</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Category Selector */}
+              <View style={styles.categoryContainer}>
+                {categories.map((category) => {
+                  const isSelected = selectedCategory === category.id;
+                  return (
+                    <TouchableOpacity
+                      key={category.id}
+                      style={[
+                        styles.categoryButton,
+                        {
+                          backgroundColor: isSelected ? primaryColor : bgSecondary,
+                          borderColor: isSelected ? primaryColor : border,
+                        }
+                      ]}
+                      onPress={() => setSelectedCategory(category.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.categoryLabel,
+                        { color: isSelected ? "#FFFFFF" : textSecondary }
+                      ]}>
+                        {category.label}
+                      </Text>
+                      <Text style={[
+                        styles.categoryIndicator,
+                        { 
+                          color: isSelected ? "#FFFFFF" : textTertiary,
+                          opacity: isSelected ? 0.8 : 0.5
+                        }
+                      ]}>
+                        {category.indicator}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Mood List */}
+              <View style={styles.moodList}>
+                {filteredStatuses.map((status, index) => (
+                  <TouchableOpacity
+                    key={`${status.label}-${index}`}
+                    style={[
+                      styles.moodItem,
+                      {
+                        backgroundColor: bgMain,
+                        borderColor: border,
+                      }
+                    ]}
+                    onPress={() => {
+                      handleUpdateMoodStatus(status.label);
+                      toggleStatusSheet();
+                    }}
+                    activeOpacity={0.6}
+                  >
+                    <View style={styles.moodLeft}>
+                      <Text style={styles.moodEmoji}>{status.emoji}</Text>
+                      <View style={styles.moodTextContainer}>
+                        <Text style={[styles.moodLabel, { color: textPrimary }]}>
+                          {status.label}
+                        </Text>
+                        <Text style={[styles.moodDescription, { color: textSecondary }]}>
+                          {status.description}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {/* Simple indicator */}
+                    <View style={styles.moodRight}>
+                      <Text style={[
+                        styles.multiplier,
+                        { 
+                          color: primaryColor,
+                          opacity: getIndicatorOpacity(status.radiusMultiplier)
+                        }
+                      ]}>
+                        {status.radiusMultiplier > 0 ? `${status.radiusMultiplier}×` : '—'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Info Hint */}
+              <View style={[styles.hint, {
+                backgroundColor: bgSecondary,
+                borderColor: border
+              }]}>
+                <Ionicons 
+                  name="information-circle-outline" 
+                  size={16} 
+                  color={primaryColor} 
+                />
+                <Text style={[styles.hintText, { color: textSecondary }]}>
+                  The multiplier shows how far pings will reach you
+                </Text>
+              </View>
+
+              {/* Custom Status */}
+              <View style={styles.customContainer}>
+                <View style={styles.customInputWrapper}>
+                  <TextInput
+                    style={[styles.customInput, {
+                      backgroundColor: bgSecondary,
+                      color: textPrimary,
+                      borderColor: border
+                    }]}
+                    value={customStatus}
+                    onChangeText={setCustomStatus}
+                    placeholder="Custom status..."
+                    placeholderTextColor={textTertiary}
+                    maxLength={50}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      if (customStatus.trim().length > 0) {
+                        handleUpdateMoodStatus(customStatus);
+                        toggleStatusSheet();
+                      }
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.sendButton,
+                      {
+                        opacity: customStatus.trim().length > 0 ? 1 : 0.4,
+                        backgroundColor: primaryColor
+                      }
+                    ]}
+                    disabled={customStatus.trim().length === 0}
+                    onPress={() => {
+                      handleUpdateMoodStatus(customStatus);
+                      toggleStatusSheet();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="check" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </TouchableOpacity>
         </Animated.View>
       </Animated.View>
     </Modal>
@@ -432,130 +516,160 @@ export default function StatusSheet({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    justifyContent: 'flex-end',
   },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: 24,
-    padding: 24,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 12,
+  sheetContainer: {
+    maxHeight: '85%',
   },
-  headerRow: {
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingHorizontal: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 16,
+  },
+  dragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 20,
   },
-  headerIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  headerTitle: {
+  titleContainer: {
     flex: 1,
-    fontSize: 18,
+  },
+  title: {
+    fontSize: 24,
     fontWeight: '700',
-    textAlign: 'left',
-    letterSpacing: -0.2,
+    letterSpacing: -0.5,
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   closeButton: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 10,
   },
-  categoriesContainer: {
-    marginBottom: 18,
-    marginHorizontal: -8,
+  scrollView: {
+    maxHeight: 560,
   },
-  categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-    marginRight: 8,
+  categoryContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  categoryButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    alignItems: 'center',
+    gap: 4,
   },
-  categoryChipActive: {
-    borderColor: '#38a5c9',
-  },
-  categoryChipText: {
-    fontSize: 13,
+  categoryLabel: {
+    fontSize: 12,
     fontWeight: '600',
   },
-  categoryChipTextActive: {
-    color: '#fff',
+  categoryIndicator: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
-  statusGrid: {
+  moodList: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  moodItem: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 18,
-    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
   },
-  statusCard: {
-    width: '48%',
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 10,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 80,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  statusEmoji: {
-    fontSize: 26,
-    marginBottom: 8,
-  },
-  statusText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 18,
-    flexShrink: 1,
-  },
-  customStatusContainer: {
+  moodLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 2,
-  },
-  customStatusInput: {
     flex: 1,
-    padding: 14,
+    gap: 12,
+  },
+  moodEmoji: {
+    fontSize: 28,
+  },
+  moodTextContainer: {
+    flex: 1,
+  },
+  moodLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  moodDescription: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  moodRight: {
+    marginLeft: 12,
+  },
+  multiplier: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  hint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  hintText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  customContainer: {
+    marginBottom: 20,
+  },
+  customInputWrapper: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  customInput: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 12,
     fontSize: 15,
-    borderWidth: 1.5,
-    marginRight: 6,
+    fontWeight: '500',
+    borderWidth: 1,
   },
-  setButton: {
-    paddingVertical: 14,
-    paddingHorizontal: 24,
+  sendButton: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 70,
-  },
-  setButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.1,
   },
 });
